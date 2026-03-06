@@ -29,7 +29,7 @@ export default function DashboardPage() {
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
           <div className="kpi-val">{fmtFiat(d.totalCost, d.base)}</div>
-          <div className="kpi-sub">{d.lots.length || state.lots.length} lots</div>
+          <div className="kpi-sub">{state.lots.length} lots</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
