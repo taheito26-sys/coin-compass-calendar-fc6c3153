@@ -35,6 +35,15 @@ export interface CalendarEntry {
   perCoin: Record<string, number>;
 }
 
+export interface ImportedFile {
+  name: string;
+  hash: string;
+  importedAt: number;
+  exchange: string;
+  exportType: string;
+  rowCount: number;
+}
+
 export interface CryptoState {
   base: string;
   method: string;
@@ -52,6 +61,8 @@ export interface CryptoState {
   holdings: UserHolding[];
   // Calendar
   calendarEntries: CalendarEntry[];
+  // Import
+  importedFiles: ImportedFile[];
   // UI
   layout: string;
   theme: string;
@@ -73,7 +84,7 @@ export function defaultState(): CryptoState {
     watch: ["BTC","ETH","SOL","BNB"], alerts: [], connections: [],
     accounts: [{ id: "acc_main", name: "Main" }],
     apiUrl: "", market: { trending: [], top: [] },
-    holdings: [], calendarEntries: [],
+    holdings: [], calendarEntries: [], importedFiles: [],
     layout: "flux", theme: "t1",
   };
 }
