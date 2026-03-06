@@ -1,6 +1,7 @@
 import { useCrypto } from "@/lib/cryptoContext";
 
 const pages = [
+  { id: "tracker", label: "Tracker", sub: "Live · FIFO/DCA", icon: "M3 3h18v18H3V3Zm2 2v14h14V5H5Zm2 2h10M7 11h6M7 15h8" },
   { id: "dashboard", label: "Dashboard", sub: "KPIs · trend", icon: "M4 13h7V4H4v9Zm9 7h7V11h-7v9ZM4 20h7v-5H4v5Zm9-11h7V4h-7v5Z" },
   { id: "portfolio", label: "Portfolio", sub: "Positions", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
   { id: "ledger", label: "Ledger", sub: "Journal", icon: "M7 4h10M7 8h10M7 12h10M7 16h10M7 20h10" },

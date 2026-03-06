@@ -11,8 +11,10 @@ import CalendarPage from "@/pages/CalendarPage";
 import MarketsPage from "@/pages/MarketsPage";
 import AlertsPage from "@/pages/AlertsPage";
 import SettingsPage from "@/pages/SettingsPage";
+import PortfolioTrackerPage from "@/pages/PortfolioTrackerPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
+  tracker: ["Portfolio Tracker", "Live Prices · FIFO/DCA · Ledger"],
   dashboard: ["Dashboard", "KPIs · Market Value · Positions"],
   portfolio: ["Portfolio", "Positions · Lots"],
   ledger: ["Ledger", "Transaction Journal"],
@@ -25,7 +27,7 @@ const PAGE_TITLES: Record<string, [string, string]> = {
 };
 
 function AppShell() {
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState("tracker");
   const { toastMsg } = useCrypto();
   const [title, sub] = PAGE_TITLES[page] || ["CryptoTracker", ""];
 
@@ -36,6 +38,7 @@ function AppShell() {
         <div className="mainWrap">
           <Topbar title={title} sub={sub} />
           <div className="scroll">
+            {page === "tracker" && <PortfolioTrackerPage />}
             {page === "dashboard" && <DashboardPage />}
             {page === "portfolio" && <PortfolioPage />}
             {page === "ledger" && <LedgerPage />}
