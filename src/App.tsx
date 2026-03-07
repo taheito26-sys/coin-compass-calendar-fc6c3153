@@ -1,5 +1,6 @@
-import { forwardRef, useState } from "react";
+import { forwardRef, useState, useEffect } from "react";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
+import { supabase } from "@/integrations/supabase/client";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
 import DashboardPage from "@/pages/DashboardPage";
@@ -8,6 +9,7 @@ import LedgerPage from "@/pages/LedgerPage";
 import CalendarPage from "@/pages/CalendarPage";
 import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
+import AuthPage from "@/pages/AuthPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs · Allocation · Heatmap"],
@@ -20,13 +22,37 @@ const PAGE_TITLES: Record<string, [string, string]> = {
 
 function AppShell() {
   const [page, setPage] = useState("dashboard");
+  const [authState, setAuthState] = useState<"loading" | "auth" | "guest">("loading");
   const { toastMsg } = useCrypto();
   const [title, sub] = PAGE_TITLES[page] || ["CryptoTracker", ""];
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthState(session ? "auth" : "guest");
+    });
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setAuthState(session ? "auth" : "guest");
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setAuthState("guest");
+  };
+
+  if (authState === "loading") {
+    return <div style={{ display: "flex", alignItems: "center", justifyContent: "center", minHeight: "100vh", background: "var(--bg)", color: "var(--muted)" }}>Loading…</div>;
+  }
+
+  if (authState === "guest") {
+    return <AuthPage onAuth={() => setAuthState("auth")} />;
+  }
 
   return (
     <>
       <div className="app">
-        <Sidebar page={page} onNav={setPage} />
+        <Sidebar page={page} onNav={setPage} onLogout={handleLogout} />
         <div className="mainWrap">
           <Topbar title={title} sub={sub} onNav={setPage} />
           <div className="scroll">

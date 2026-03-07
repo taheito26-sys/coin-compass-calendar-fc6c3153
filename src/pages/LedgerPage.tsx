@@ -3,6 +3,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
+import CoinAutocomplete from "@/components/CoinAutocomplete";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -191,7 +192,7 @@ export default function LedgerPage() {
                 <option value="reward">Reward</option>
               </select>
             </div>
-            <div className="form-field"><label className="form-label">Asset</label><input className="inp" value={asset} onChange={e => setAsset(e.target.value)} placeholder="BTC" /></div>
+            <div className="form-field"><label className="form-label">Asset</label><CoinAutocomplete value={asset} onChange={setAsset} /></div>
             <div className="form-field"><label className="form-label">Quantity</label><input className="inp" type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
             <div className="form-field"><label className="form-label">Unit Price ({state.base})</label><input className="inp" type="number" value={price} onChange={e => setPrice(e.target.value)} /></div>
             <div className="form-field"><label className="form-label">Venue</label><input className="inp" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Binance, Coinbase..." /></div>
