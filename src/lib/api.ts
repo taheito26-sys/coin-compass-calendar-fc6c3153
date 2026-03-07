@@ -182,3 +182,136 @@ export async function isWorkerAvailable(): Promise<boolean> {
 export function getDataSource(): "worker" | "supabase" {
   return WORKER_BASE ? "worker" : "supabase";
 }
+
+// ── Write operations ────────────────────────────────────────────
+
+export interface CreateTransactionInput {
+  asset_id: string;
+  timestamp: string;
+  type: string;
+  qty: number;
+  unit_price: number;
+  fee_amount?: number;
+  fee_currency?: string;
+  venue?: string;
+  note?: string;
+  tags?: string[];
+  source?: string;
+  external_id?: string;
+}
+
+export async function createTransaction(tx: CreateTransactionInput): Promise<ApiTransaction> {
+  // Try Worker
+  const workerData = await workerFetch<{ transaction: ApiTransaction }>("/api/transactions", {
+    method: "POST",
+    body: JSON.stringify(tx),
+  });
+  if (workerData?.transaction) return workerData.transaction;
+
+  // Fallback to Supabase
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("transactions")
+    .insert({
+      ...tx,
+      user_id: user.id,
+      fee_amount: tx.fee_amount ?? 0,
+      fee_currency: tx.fee_currency ?? "USD",
+      tags: tx.tags ?? null,
+      source: tx.source ?? "manual",
+    })
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ApiTransaction;
+}
+
+export async function deleteTransaction(txId: string): Promise<void> {
+  // Try Worker
+  const workerResult = await workerFetch<{ ok: boolean }>(`/api/transactions/${txId}`, {
+    method: "DELETE",
+  });
+  if (workerResult !== null) return;
+
+  // Fallback to Supabase
+  const { error } = await supabase.from("transactions").delete().eq("id", txId);
+  if (error) throw error;
+}
+
+export async function updateTransaction(txId: string, updates: Partial<CreateTransactionInput>): Promise<ApiTransaction> {
+  // Try Worker
+  const workerData = await workerFetch<{ transaction: ApiTransaction }>(`/api/transactions/${txId}`, {
+    method: "PUT",
+    body: JSON.stringify(updates),
+  });
+  if (workerData?.transaction) return workerData.transaction;
+
+  // Fallback to Supabase
+  const { data, error } = await supabase
+    .from("transactions")
+    .update(updates)
+    .eq("id", txId)
+    .select()
+    .single();
+  if (error) throw error;
+  return data as ApiTransaction;
+}
+
+export interface CreateImportedFileInput {
+  file_name: string;
+  file_hash: string;
+  exchange: string;
+  export_type: string;
+  row_count: number;
+}
+
+export async function createImportedFile(file: CreateImportedFileInput): Promise<any> {
+  // Try Worker
+  const workerData = await workerFetch<{ file: any }>("/api/imported-files", {
+    method: "POST",
+    body: JSON.stringify(file),
+  });
+  if (workerData?.file) return workerData.file;
+
+  // Fallback to Supabase
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("imported_files")
+    .insert({ ...file, user_id: user.id })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
+
+export async function setTrackingPreference(
+  trackingMode: string,
+  assetId?: string
+): Promise<any> {
+  // Try Worker
+  const workerData = await workerFetch<{ preference: any }>("/api/tracking-preferences", {
+    method: "PUT",
+    body: JSON.stringify({ tracking_mode: trackingMode, asset_id: assetId ?? null }),
+  });
+  if (workerData?.preference) return workerData.preference;
+
+  // Fallback to Supabase
+  const { data: { user }, error: userError } = await supabase.auth.getUser();
+  if (userError || !user) throw new Error("Not authenticated");
+
+  const { data, error } = await supabase
+    .from("tracking_preferences")
+    .upsert({
+      user_id: user.id,
+      asset_id: assetId || null,
+      tracking_mode: trackingMode,
+    }, { onConflict: "user_id,asset_id" })
+    .select()
+    .single();
+  if (error) throw error;
+  return data;
+}
