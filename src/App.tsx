@@ -82,7 +82,7 @@ function AppShell() {
   return (
     <>
       <div className="app">
-        <Sidebar page={page} onNav={setPage} onLogout={isSignedIn ? handleLogout : undefined} />
+        <Sidebar page={page} onNav={setPage} onLogout={auth.isSignedIn ? handleLogout : undefined} />
         <div className="mainWrap">
           <Topbar title={title} sub={sub} onNav={setPage} />
           <div className="scroll">
