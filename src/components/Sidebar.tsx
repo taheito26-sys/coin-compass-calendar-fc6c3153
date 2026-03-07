@@ -9,7 +9,7 @@ const pages = [
   { id: "settings", label: "Settings", sub: "Layout · Themes", icon: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a7.9 7.9 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8 8 0 0 0-1.7-1L13 3h-4l-.9 2.9a8 8 0 0 0-1.7 1l-2.4-1-2 3.5L4 13a8 8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a8 8 0 0 0 1.7 1L9 21h4l.9-2.9a8 8 0 0 0 1.7-1l2.4 1 2-3.5-2-1.6Z" },
 ];
 
-export default function Sidebar({ page, onNav }: { page: string; onNav: (p: string) => void }) {
+export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav: (p: string) => void; onLogout?: () => void }) {
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -29,6 +29,17 @@ export default function Sidebar({ page, onNav }: { page: string; onNav: (p: stri
           </button>
         ))}
       </nav>
+      {onLogout && (
+        <div style={{ padding: "8px 12px", marginTop: "auto" }}>
+          <button
+            className="btn secondary"
+            onClick={onLogout}
+            style={{ width: "100%", fontSize: 11, padding: "6px 0" }}
+          >
+            Sign Out
+          </button>
+        </div>
+      )}
     </aside>
   );
 }
