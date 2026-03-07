@@ -1,12 +1,29 @@
 /**
- * API client for the Cloudflare Worker backend.
- * Falls back to Supabase when the Worker is unavailable.
- * Tracks which source served each request for visibility.
+ * API client — dual-source pricing architecture:
+ *
+ * ┌─────────────────────────────────────────────────────────────────┐
+ * │  Environment        │  Price Source                            │
+ * │─────────────────────│─────────────────────────────────────────  │
+ * │  Hosted preview     │  Supabase price_cache (pg_cron → Edge    │
+ * │  (lovableproject)   │  Function → Binance every 2 min)         │
+ * │─────────────────────│─────────────────────────────────────────  │
+ * │  Local dev          │  Worker API (Cloudflare D1/KV) if        │
+ * │                     │  VITE_WORKER_API_URL is set; otherwise   │
+ * │                     │  falls back to Supabase price_cache      │
+ * │─────────────────────│─────────────────────────────────────────  │
+ * │  Production         │  Deployed Worker API (Cloudflare) with   │
+ * │  (deployed Worker)  │  Cron Trigger polling Binance every 2min │
+ * └─────────────────────────────────────────────────────────────────┘
+ *
+ * The client attempts Worker first. If VITE_WORKER_API_URL is empty
+ * or the Worker is unreachable, all requests fall back to Supabase.
+ * Each request logs which source served it for debugging.
  */
 import { supabase } from "@/lib/supabaseClient";
 
-// Set this to your deployed Worker URL, e.g. "https://cryptotracker-api.your-account.workers.dev"
-// When empty/null, all reads fall back to Supabase.
+// Set to your deployed Worker URL. Empty = Supabase-only mode.
+// Local dev: "http://localhost:8788"
+// Production: "https://cryptotracker-api.your-account.workers.dev"
 const WORKER_BASE = import.meta.env.VITE_WORKER_API_URL || "";
 
 // ── Data source tracking ────────────────────────────────────────
