@@ -9,6 +9,7 @@ const LAYOUTS = [
   { id: "carbon", name: "Carbon", desc: "Dark Monitor" },
   { id: "prism", name: "Prism", desc: "Bold Fintech" },
   { id: "noir", name: "Noir", desc: "Luxury Dark" },
+  { id: "pulse", name: "Pulse", desc: "Neon Crypto" },
 ];
 const THEMES = ["t1", "t2", "t3", "t4", "t5"];
 const METHODS = ["FIFO", "DCA"];

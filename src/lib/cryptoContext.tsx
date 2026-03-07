@@ -51,7 +51,19 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
   useEffect(() => {
     document.body.setAttribute("data-layout", state.layout);
     document.body.setAttribute("data-theme", state.theme);
-    document.documentElement.style.setProperty("--app-font", `'Inter', sans-serif`);
+    // Let the CSS layout font take effect by not overriding --app-font
+    // unless the layout doesn't set --lt-font
+    const layoutFonts: Record<string, string> = {
+      flux: "'Inter', sans-serif",
+      cipher: "'JetBrains Mono', monospace",
+      vector: "'Plus Jakarta Sans', sans-serif",
+      aurora: "'Plus Jakarta Sans', sans-serif",
+      carbon: "'JetBrains Mono', monospace",
+      prism: "'Space Grotesk', sans-serif",
+      noir: "'Inter', sans-serif",
+      pulse: "'DM Sans', 'Inter', sans-serif",
+    };
+    document.documentElement.style.setProperty("--app-font", layoutFonts[state.layout] || "'Inter', sans-serif");
   }, [state.layout, state.theme]);
 
   // Auto refresh on mount

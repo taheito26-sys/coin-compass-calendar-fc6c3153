@@ -4,6 +4,7 @@ import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
+import { supabase } from "@/integrations/supabase/client";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -11,6 +12,53 @@ const EXCHANGE_LABELS: Record<string, string> = {
   okx: "OKX",
   gate: "Gate.io",
 };
+
+async function getAuthUser() {
+  const { data: { user } } = await supabase.auth.getUser();
+  return user;
+}
+
+async function findOrCreateAsset(symbol: string): Promise<string | null> {
+  const sym = symbol.toUpperCase();
+  const { data } = await (supabase as any).from('assets').select('id').eq('symbol', sym).maybeSingle();
+  if (data) return data.id;
+  // If asset doesn't exist, we can't create it (no INSERT RLS). Return null.
+  return null;
+}
+
+async function saveTransactionToSupabase(tx: {
+  type: string; asset: string; qty: number; price: number;
+  fee: number; venue: string; note: string; ts: number;
+}) {
+  const user = await getAuthUser();
+  if (!user) return false;
+
+  const assetId = await findOrCreateAsset(tx.asset);
+  if (!assetId) {
+    console.warn(`Asset ${tx.asset} not found in Supabase assets table`);
+    return false;
+  }
+
+  const { error } = await (supabase as any).from('transactions').insert({
+    user_id: user.id,
+    timestamp: new Date(tx.ts).toISOString(),
+    type: tx.type,
+    asset_id: assetId,
+    qty: tx.qty,
+    unit_price: tx.price || 0,
+    fee_amount: tx.fee || 0,
+    fee_currency: 'USD',
+    venue: tx.venue || null,
+    note: tx.note || null,
+    source: 'manual',
+  });
+
+  if (error) {
+    console.error('Supabase insert error:', error);
+    return false;
+  }
+  return true;
+}
 
 export default function LedgerPage() {
   const { state, setState, toast } = useCrypto();
@@ -23,6 +71,7 @@ export default function LedgerPage() {
   const [fee, setFee] = useState("0");
   const [venue, setVenue] = useState("");
   const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
 
   // Import state
   const [importStage, setImportStage] = useState<"upload" | "preview" | "done">("upload");
@@ -42,12 +91,15 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // Manual save
-  const save = () => {
+  // Manual save — writes to both localStorage AND Supabase
+  const save = async () => {
     const a = asset.trim().toUpperCase(), q = parseFloat(qty), p = parseFloat(price), f = parseFloat(fee) || 0;
     if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
     const total = (type === "buy" || type === "sell") ? q * p : 0;
-    const tx = { id: uid(), ts: Date.now(), type, asset: a, qty: q, price: p, total, fee: f, feeAsset: state.base, accountId: "acc_main", note, lots: "" };
+    const ts = Date.now();
+    const tx = { id: uid(), ts, type, asset: a, qty: q, price: p, total, fee: f, feeAsset: state.base, accountId: "acc_main", note, lots: "" };
+
+    // Save to local state
     setState(prev => {
       const newState = { ...prev, txs: [tx, ...prev.txs] };
       if (type === "buy" || type === "reward" || type === "transfer_in") {
@@ -65,8 +117,14 @@ export default function LedgerPage() {
       }
       return newState;
     });
+
+    // Also save to Supabase
+    setSaving(true);
+    const saved = await saveTransactionToSupabase({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
+    setSaving(false);
+
     setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-    toast("Transaction saved ✓", "good");
+    toast(saved ? "Transaction saved ✓ (synced to cloud)" : "Transaction saved locally ✓", "good");
   };
 
   // Edit handlers
@@ -127,8 +185,10 @@ export default function LedgerPage() {
     setImportLoading(false);
   }, [importedFiles]);
 
-  const commitImport = () => {
+  const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
+
+    // Save to local state
     setState(prev => {
       const newTxs = [...prev.txs];
       const newLots = [...prev.lots];
@@ -159,7 +219,25 @@ export default function LedgerPage() {
         importedFiles: [...(prev.importedFiles || []), { name: fileName, hash: fileHash, importedAt: Date.now(), exchange: importResult.exchange, exportType: importResult.exportType, rowCount: importResult.rows.length }],
       };
     });
-    toast(`Imported ${importResult.rows.length} trades from ${EXCHANGE_LABELS[importResult.exchange]}`, "good");
+
+    // Also sync each imported row to Supabase
+    const user = await getAuthUser();
+    if (user) {
+      let synced = 0;
+      for (const row of importResult.rows) {
+        const assetSym = extractBase(row.symbol);
+        const ok = await saveTransactionToSupabase({
+          type: row.side, asset: assetSym, qty: row.qty,
+          price: row.unitPrice, fee: row.feeAmount,
+          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+          note: `Import: ${row.externalId}`, ts: row.timestamp,
+        });
+        if (ok) synced++;
+      }
+      toast(`Imported ${importResult.rows.length} trades (${synced} synced to cloud)`, "good");
+    } else {
+      toast(`Imported ${importResult.rows.length} trades from ${EXCHANGE_LABELS[importResult.exchange]}`, "good");
+    }
     setImportStage("done");
   };
 
@@ -180,7 +258,7 @@ export default function LedgerPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         {/* Manual Entry */}
         <div className="panel">
-          <div className="panel-head"><h2>+ Manual Entry</h2></div>
+          <div className="panel-head"><h2>+ Manual Entry</h2>{saving && <span className="pill">Syncing…</span>}</div>
           <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div className="form-field">
               <label className="form-label">Type</label>
@@ -198,7 +276,7 @@ export default function LedgerPage() {
             <div className="form-field"><label className="form-label">Venue</label><input className="inp" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Binance, Coinbase..." /></div>
             <div className="form-field"><label className="form-label">Tags</label><input className="inp" value={note} onChange={e => setNote(e.target.value)} placeholder="Optional" /></div>
             <div style={{ gridColumn: "1/-1", display: "flex", gap: 8 }}>
-              <button className="btn" onClick={save}>Save Transaction</button>
+              <button className="btn" onClick={save} disabled={saving}>Save Transaction</button>
             </div>
           </div>
         </div>
