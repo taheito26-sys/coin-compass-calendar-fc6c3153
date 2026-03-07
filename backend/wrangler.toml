@@ -11,12 +11,12 @@ crons = ["*/2 * * * *"]
 [[d1_databases]]
 binding         = "DB"
 database_name   = "crypto-tracker"
-database_id     = "PLACEHOLDER_D1_ID"           # Replace after: wrangler d1 create crypto-tracker
+database_id     = "PLACEHOLDER_D1_ID"           # Paste your D1 ID here after: wrangler d1 list
 
 # ── KV Namespace ────────────────────────────────────────────────
 [[kv_namespaces]]
 binding = "PRICE_KV"
-id      = "PLACEHOLDER_KV_ID"                   # Replace after: wrangler kv namespace create PRICE_KV
+id      = "5a8b838fa6fc43578654af2d14674439"
 
 # ── Secrets (set via wrangler secret put) ───────────────────────
 # CLERK_JWKS_URL     — e.g. https://your-clerk-domain.clerk.accounts.dev/.well-known/jwks.json
