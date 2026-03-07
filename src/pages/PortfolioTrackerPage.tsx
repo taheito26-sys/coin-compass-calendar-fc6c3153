@@ -105,7 +105,7 @@ export default function PortfolioTrackerPage() {
         venue: txForm.venue || null,
         note: txForm.note || null,
         tags: null,
-        updated_at: new Date().toISOString(),
+        
       });
 
       setShowAddTx(false);
