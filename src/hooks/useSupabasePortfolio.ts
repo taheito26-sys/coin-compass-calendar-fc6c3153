@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { fetchAssets, fetchTransactions, fetchPrices, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
+import { fetchAssets, fetchTransactions, fetchPrices, getLastDataSource, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
 
 export interface SupabasePosition {
   assetId: string;
@@ -150,7 +150,7 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
         fetchPrices(),
       ]);
 
-      setDataSource(import.meta.env.VITE_WORKER_API_URL ? "worker" : "supabase");
+      setDataSource(getLastDataSource());
       setTxCount(txs.length);
       setPriceTs(priceData.ts);
 
