@@ -41,10 +41,18 @@ function MissingClerkConfig() {
   );
 }
 
+const rootElement = document.getElementById("root");
+
+if (!rootElement) {
+  throw new Error("Root element not found");
+}
+
+const root = createRoot(rootElement);
+
 if (!clerkKey) {
-  createRoot(document.getElementById("root")!).render(<MissingClerkConfig />);
+  root.render(<MissingClerkConfig />);
 } else {
-  createRoot(document.getElementById("root")!).render(
+  root.render(
     <ClerkProvider publishableKey={clerkKey}>
       <App />
     </ClerkProvider>,
