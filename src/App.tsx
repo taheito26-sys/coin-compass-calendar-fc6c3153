@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { forwardRef, useState } from "react";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
@@ -44,10 +44,15 @@ function AppShell() {
   );
 }
 
-export default function App() {
+const App = forwardRef<HTMLDivElement, Record<string, never>>(function App(_props, _ref) {
   return (
     <CryptoProvider>
       <AppShell />
     </CryptoProvider>
   );
-}
+});
+
+App.displayName = "App";
+
+export default App;
+

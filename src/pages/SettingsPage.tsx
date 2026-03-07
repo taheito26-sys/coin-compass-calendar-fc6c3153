@@ -1,3 +1,4 @@
+import { forwardRef } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 
 const LAYOUTS = [
@@ -13,7 +14,7 @@ const THEMES = ["t1", "t2", "t3", "t4", "t5"];
 const METHODS = ["FIFO", "DCA"];
 const CURRENCIES = ["USD", "EUR", "GBP", "QAR"];
 
-export default function SettingsPage() {
+const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
 
   return (
@@ -119,4 +120,9 @@ export default function SettingsPage() {
       </div>
     </>
   );
-}
+});
+
+SettingsPage.displayName = "SettingsPage";
+
+export default SettingsPage;
+

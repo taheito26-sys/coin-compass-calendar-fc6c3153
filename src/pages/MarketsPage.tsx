@@ -1,6 +1,5 @@
-import { useState, useEffect, useMemo, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { CRYPTO_ID_MAP, fmtPx, cryptoPriceOf } from "@/lib/cryptoState";
 
 interface CoinData {
   id: string;
@@ -43,7 +42,7 @@ function formatCompact(n: number): string {
 }
 
 export default function MarketsPage() {
-  const { state, setState, refresh, toast } = useCrypto();
+  const { state, setState, toast } = useCrypto();
   const [coins, setCoins] = useState<CoinData[]>([]);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"bubbles" | "table">("bubbles");
@@ -238,14 +237,14 @@ export default function MarketsPage() {
     }
   };
 
-  function ChangePill({ val }: { val: number }) {
+  const renderChangePill = (val: number) => {
     if (!val && val !== 0) return <span className="mono muted">—</span>;
     return (
       <span className={`mono ${val > 0 ? "good" : val < 0 ? "bad" : "muted"}`} style={{ fontWeight: 700, fontSize: 11 }}>
         {val > 0 ? "▲" : val < 0 ? "▼" : ""} {Math.abs(val).toFixed(2)}%
       </span>
     );
-  }
+  };
 
   return (
     <>
@@ -319,9 +318,9 @@ export default function MarketsPage() {
                         <span className="mono" style={{ fontWeight: 900 }}>{coin.name}</span>
                         <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {coin.symbol.toUpperCase()}</span>
                       </td>
-                      <td><ChangePill val={coin.price_change_percentage_1h_in_currency} /></td>
-                      <td><ChangePill val={coin.price_change_percentage_24h_in_currency} /></td>
-                      <td><ChangePill val={coin.price_change_percentage_7d_in_currency} /></td>
+                      <td>{renderChangePill(coin.price_change_percentage_1h_in_currency)}</td>
+                      <td>{renderChangePill(coin.price_change_percentage_24h_in_currency)}</td>
+                      <td>{renderChangePill(coin.price_change_percentage_7d_in_currency)}</td>
                       <td className="mono" style={{ fontWeight: 700, color: "var(--brand)" }}>
                         ${coin.current_price?.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: coin.current_price < 1 ? 6 : 2 })}
                       </td>
