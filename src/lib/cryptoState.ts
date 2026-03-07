@@ -89,10 +89,37 @@ export function defaultState(): CryptoState {
   };
 }
 
+function sanitizeLoadedState(parsed: any): CryptoState {
+  const base = defaultState();
+  if (!parsed || typeof parsed !== "object") return base;
+
+  return {
+    ...base,
+    ...parsed,
+    base: typeof parsed.base === "string" && parsed.base ? parsed.base : base.base,
+    method: typeof parsed.method === "string" && parsed.method ? parsed.method : base.method,
+    txs: Array.isArray(parsed.txs) ? parsed.txs : base.txs,
+    lots: Array.isArray(parsed.lots) ? parsed.lots : base.lots,
+    watch: Array.isArray(parsed.watch) && parsed.watch.length
+      ? parsed.watch.filter((v: any) => typeof v === "string" && v.trim())
+      : base.watch,
+    alerts: Array.isArray(parsed.alerts) ? parsed.alerts : base.alerts,
+    connections: Array.isArray(parsed.connections) ? parsed.connections : base.connections,
+    accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : base.accounts,
+    holdings: Array.isArray(parsed.holdings) ? parsed.holdings : base.holdings,
+    calendarEntries: Array.isArray(parsed.calendarEntries) ? parsed.calendarEntries : base.calendarEntries,
+    importedFiles: Array.isArray(parsed.importedFiles) ? parsed.importedFiles : base.importedFiles,
+    prices: parsed.prices && typeof parsed.prices === "object" ? parsed.prices : base.prices,
+    pricesTs: Number.isFinite(Number(parsed.pricesTs)) ? Number(parsed.pricesTs) : base.pricesTs,
+    layout: typeof parsed.layout === "string" && parsed.layout ? parsed.layout : base.layout,
+    theme: typeof parsed.theme === "string" && parsed.theme ? parsed.theme : base.theme,
+  };
+}
+
 export function loadState(): CryptoState {
   try {
     const raw = localStorage.getItem(SK);
-    if (raw) return { ...defaultState(), ...JSON.parse(raw) };
+    if (raw) return sanitizeLoadedState(JSON.parse(raw));
   } catch {}
   return defaultState();
 }
@@ -176,21 +203,27 @@ export function calcDCA(holdings: UserHolding[], asset: string) {
 export async function refreshPrices(state: CryptoState, force = false): Promise<CryptoState> {
   const last = cnum(state.pricesTs, 0);
   if (!force && last && Date.now() - last < 15000) return state;
+
+  const watch = Array.isArray(state.watch) ? state.watch : [];
+  const lots = Array.isArray(state.lots) ? state.lots : [];
+  const holdings = Array.isArray(state.holdings) ? state.holdings : [];
+
   const assets = [...new Set([
-    ...state.watch,
-    ...state.lots.filter(l => cnum(l.qtyRem, 0) > 0).map(l => l.asset.toUpperCase()),
-    ...state.holdings.map(h => h.asset.toUpperCase()),
-  ])];
+    ...watch,
+    ...lots.filter(l => cnum(l.qtyRem, 0) > 0).map(l => String(l.asset || "").toUpperCase()),
+    ...holdings.map(h => String(h.asset || "").toUpperCase()),
+  ].filter(Boolean))];
+
   const ids = assets.map(s => CRYPTO_ID_MAP[s]).filter(Boolean);
   if (!ids.length) return { ...state, pricesTs: Date.now() };
-  const base = state.base.toLowerCase();
+  const base = String(state.base || "USD").toLowerCase();
   const url = state.apiUrl
     ? `${state.apiUrl.replace(/\/+$/, "")}/api/prices?ids=${encodeURIComponent(ids.join(","))}&vs=${encodeURIComponent(base)}`
     : `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=${encodeURIComponent(base)}&include_24hr_change=true`;
   const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
   if (!r.ok) throw new Error("price " + r.status);
   const data = await r.json();
-  const prices = { ...state.prices };
+  const prices = { ...(state.prices && typeof state.prices === "object" ? state.prices : {}) };
   const inv: Record<string, string> = {};
   Object.entries(CRYPTO_ID_MAP).forEach(([sym, id]) => inv[id] = sym);
   for (const [id, obj] of Object.entries(data || {})) {
