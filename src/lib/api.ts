@@ -353,14 +353,16 @@ export async function setTrackingPreference(
   trackingMode: string,
   assetId?: string
 ): Promise<any> {
-  // Try Worker
-  const workerData = await workerFetch<{ preference: any }>("/api/tracking-preferences", {
+  const result = await workerFetch<{ preference: any }>("/api/tracking-preferences", {
     method: "PUT",
     body: JSON.stringify({ tracking_mode: trackingMode, asset_id: assetId ?? null }),
   });
-  if (workerData?.preference) return workerData.preference;
+  if (result?.data.preference) {
+    logSource("PUT /api/tracking-preferences", "worker");
+    return result.data.preference;
+  }
 
-  // Fallback to Supabase
+  logSource("PUT /api/tracking-preferences", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("Not authenticated");
 
