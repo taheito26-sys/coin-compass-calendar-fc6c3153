@@ -288,7 +288,7 @@ export default function PortfolioPage() {
                         </td>
                       )}
                       {show("sparkline") && (
-                        <td><Sparkline data={pos.sparkData} positive={pos.change7d >= 0} /></td>
+                        <td><Sparkline data={sparkData.get(pos.coinId) || []} positive={pos.change7d >= 0} /></td>
                       )}
                       {show("amount") && <td className="mono">{fmtQty(pos.qty)}</td>}
                       {show("change1h") && <td>{renderChangePill(pos.change1h)}</td>}
