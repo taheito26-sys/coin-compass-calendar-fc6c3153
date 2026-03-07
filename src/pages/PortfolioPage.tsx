@@ -115,23 +115,13 @@ export default function PortfolioPage() {
       const total = livePrice !== null ? livePrice * qty : 0;
       const pnlAbs = livePrice !== null ? total - cost : 0;
       const pnlPct = cost > 0 && livePrice !== null ? (pnlAbs / cost) * 100 : 0;
-      // Generate fake sparkline from change data
       const c1h = live?.price_change_percentage_1h_in_currency ?? 0;
       const c24h = live?.price_change_percentage_24h_in_currency ?? 0;
       const c7d = live?.price_change_percentage_7d_in_currency ?? 0;
-      const p = livePrice ?? 1;
-      const sparkData = [
-        p / (1 + c7d / 100),
-        p / (1 + c7d / 100) * (1 + c7d / 200),
-        p / (1 + c24h / 100),
-        p / (1 + c24h / 100) * (1 + c24h / 200),
-        p / (1 + c1h / 100),
-        p,
-      ];
       return {
         sym, name, qty, price: livePrice, avg, total, cost, pnlAbs, pnlPct,
+        coinId: live?.id ?? sym.toLowerCase(),
         change1h: c1h, change24h: c24h, change7d: c7d,
-        sparkData,
         marketCap: live?.market_cap ?? 0,
         volume: live?.total_volume ?? 0,
       };
@@ -141,6 +131,10 @@ export default function PortfolioPage() {
     }
     return localD.rows.map(r => buildPos(r.sym, r.sym, r.qty, r.cost));
   }, [useSupabase, sb.positions, localD.rows, liveCoinsList, getPrice]);
+
+  // Fetch real 7-day sparkline data
+  const sparkCoinIds = useMemo(() => positions.map(p => p.coinId), [positions]);
+  const sparkData = useSparklineData(sparkCoinIds);
 
   const totalMV = positions.reduce((s, p) => s + p.total, 0);
 
