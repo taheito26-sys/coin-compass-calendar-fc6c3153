@@ -23,6 +23,17 @@ const PAGE_TITLES: Record<string, [string, string]> = {
 };
 
 function AuthGate({ children }: { children: React.ReactNode }) {
+  const clerkAvailable = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+  // If Clerk isn't configured, skip auth entirely
+  if (!clerkAvailable) {
+    return <>{children}</>;
+  }
+
+  return <ClerkAuthGate>{children}</ClerkAuthGate>;
+}
+
+function ClerkAuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const [skipAuth, setSkipAuth] = useState(false);
 
