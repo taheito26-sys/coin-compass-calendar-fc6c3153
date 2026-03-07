@@ -1,0 +1,1 @@
+INSERT INTO price_cache (asset_id, price, source, timestamp) VALUES ('93fafce8-8779-40cc-b6a2-b99c71c8f825', 1.0, 'static', now()), ('6b509f59-1735-4a02-bb03-827e7756f09b', 1.0, 'static', now()) ON CONFLICT (asset_id) DO UPDATE SET price = EXCLUDED.price, timestamp = now();
