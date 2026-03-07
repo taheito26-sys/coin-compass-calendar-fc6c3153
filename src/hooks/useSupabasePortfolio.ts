@@ -1,6 +1,6 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { fetchAssets, fetchTransactions, fetchPrices, getLastDataSource, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
+import { fetchAssets, fetchTransactions, fetchPrices, getLastDataSource, isWorkerAvailable, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
 
 export interface SupabasePosition {
   assetId: string;
@@ -34,6 +34,7 @@ export interface SupabasePortfolioData {
   error: string | null;
   authenticated: boolean;
   dataSource: string;
+  workerOnline: boolean;
   refresh: () => Promise<void>;
 }
 
@@ -118,6 +119,8 @@ function buildPositions(
 
 // ── Hook ─────────────────────────────────────────────────────────
 
+const PRICE_POLL_MS = 120_000; // Re-fetch prices every 2 min
+
 export function useSupabasePortfolio(): SupabasePortfolioData {
   const [positions, setPositions] = useState<SupabasePosition[]>([]);
   const [txCount, setTxCount] = useState(0);
@@ -126,13 +129,17 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
   const [authenticated, setAuthenticated] = useState(false);
   const [priceTs, setPriceTs] = useState(0);
   const [dataSource, setDataSource] = useState("supabase");
+  const [workerOnline, setWorkerOnline] = useState(false);
+
+  // Cache assets & txs so price polls don't re-fetch them
+  const assetsRef = useRef<ApiAsset[]>([]);
+  const txsRef = useRef<ApiTransaction[]>([]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // Check auth (still via Supabase in Phase A)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setAuthenticated(false);
@@ -143,13 +150,17 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
       }
       setAuthenticated(true);
 
-      // Fetch all data via api.ts (Worker-first, Supabase fallback)
-      const [assets, txs, priceData] = await Promise.all([
+      const [assets, txs, priceData, online] = await Promise.all([
         fetchAssets(),
         fetchTransactions(user.id),
         fetchPrices(),
+        isWorkerAvailable(),
       ]);
 
+      assetsRef.current = assets;
+      txsRef.current = txs;
+
+      setWorkerOnline(online);
       setDataSource(getLastDataSource());
       setTxCount(txs.length);
       setPriceTs(priceData.ts);
@@ -164,9 +175,29 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     }
   }, []);
 
+  // Lightweight price-only refresh (no auth/tx re-fetch)
+  const refreshPrices = useCallback(async () => {
+    if (assetsRef.current.length === 0) return;
+    try {
+      const priceData = await fetchPrices();
+      setDataSource(getLastDataSource());
+      setPriceTs(priceData.ts);
+      const result = buildPositions(assetsRef.current, txsRef.current, priceData.prices);
+      setPositions(result);
+    } catch (e: any) {
+      console.warn("Price refresh failed:", e.message);
+    }
+  }, []);
+
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Auto-poll prices
+  useEffect(() => {
+    const id = window.setInterval(refreshPrices, PRICE_POLL_MS);
+    return () => clearInterval(id);
+  }, [refreshPrices]);
 
   const derived = useMemo(() => {
     const totalMV = positions.reduce((s, p) => s + (p.mv ?? 0), 0);
@@ -192,6 +223,7 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     error,
     authenticated,
     dataSource,
+    workerOnline,
     refresh: loadData,
   };
 }

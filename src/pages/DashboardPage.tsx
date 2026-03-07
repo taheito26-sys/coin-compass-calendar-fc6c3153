@@ -208,11 +208,21 @@ export default function DashboardPage() {
         <span className="pill">{base}</span>
         {useSupabase && (
           <span className="pill" style={{
-            background: sb.dataSource === "worker" ? "hsl(var(--primary) / 0.15)" : "var(--brand3)",
-            color: sb.dataSource === "worker" ? "hsl(var(--primary))" : "var(--brand)",
+            background: sb.dataSource === "worker" ? "hsl(var(--primary) / 0.15)" : "hsl(var(--muted) / 0.15)",
+            color: sb.dataSource === "worker" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
             fontWeight: 700,
           }}>
             {sb.dataSource === "worker" ? "⚡ Worker" : "🔄 Supabase"} ✓
+          </span>
+        )}
+        {sb.workerOnline && (
+          <span className="pill" style={{
+            background: "hsl(142 76% 36% / 0.15)",
+            color: "hsl(142 76% 36%)",
+            fontWeight: 700,
+            fontSize: 10,
+          }}>
+            Worker Online
           </span>
         )}
       </div>
