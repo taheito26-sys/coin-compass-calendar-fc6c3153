@@ -52,6 +52,7 @@ const ALL_COLUMNS = [
 ];
 
 const STORAGE_KEY = "portfolio_visible_cols";
+const COL_ORDER_KEY = "portfolio_col_order";
 
 function loadVisibleCols(): Set<string> {
   try {
@@ -59,6 +60,14 @@ function loadVisibleCols(): Set<string> {
     if (raw) return new Set(JSON.parse(raw));
   } catch {}
   return new Set(ALL_COLUMNS.filter(c => c.default).map(c => c.key));
+}
+
+function loadColOrder(): string[] {
+  try {
+    const raw = localStorage.getItem(COL_ORDER_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch {}
+  return ALL_COLUMNS.map(c => c.key);
 }
 
 export default function PortfolioPage() {
