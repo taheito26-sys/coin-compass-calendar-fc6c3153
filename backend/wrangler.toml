@@ -1,23 +1,16 @@
-name            = "cryptotracker-api"
-main            = "src/index.ts"
+name = "cryptotracker-api"
+main = "src/index.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 
-# ── Cron Trigger — every 2 minutes ──
 [triggers]
 crons = ["*/2 * * * *"]
 
-# ── D1 Database ─────────────────────────────────────────────────
 [[d1_databases]]
-binding         = "DB"
-database_name   = "crypto-tracker"
-database_id     = "e51dd932-5912-4a1b-b354-ff03bc25d23e"
+binding = "DB"
+database_name = "crypto-tracker"
+database_id = "e51dd932-5912-4a1b-b354-ff03bc25d23e"
 
-# ── KV Namespace ────────────────────────────────────────────────
 [[kv_namespaces]]
 binding = "PRICE_KV"
-id      = "5a8b838fa6fc43578654af2d14674439"
-
-# ── Secrets (set via wrangler secret put) ───────────────────────
-# CLERK_JWKS_URL     — e.g. https://your-clerk-domain.clerk.accounts.dev/.well-known/jwks.json
-# ALLOWED_ORIGINS    — comma-separated list of frontend origins
+id = "5a8b838fa6fc43578654af2d14674439"
