@@ -227,21 +227,50 @@ export default function PortfolioPage() {
       {/* Column configurator */}
       {showColConfig && (
         <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
-            {ALL_COLUMNS.map(col => (
-              <label key={col.key} style={{
-                display: "flex", alignItems: "center", gap: 4, fontSize: 11,
-                padding: "4px 8px", borderRadius: 6,
-                background: visibleCols.has(col.key) ? "var(--brand3)" : "var(--panel2)",
-                cursor: "pointer", userSelect: "none",
-                border: `1px solid ${visibleCols.has(col.key) ? "var(--brand)" : "var(--line)"}`,
-                color: visibleCols.has(col.key) ? "var(--brand)" : "var(--muted)",
-                fontWeight: visibleCols.has(col.key) ? 700 : 400,
-              }}>
-                <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} style={{ display: "none" }} />
-                {col.label}
-              </label>
-            ))}
+          <div className="panel-body" style={{ padding: 10 }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder · Click to toggle</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {colOrder.map(key => {
+                const col = ALL_COLUMNS.find(c => c.key === key);
+                if (!col) return null;
+                return (
+                  <label
+                    key={col.key}
+                    draggable
+                    onDragStart={() => setDragCol(col.key)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragCol && dragCol !== col.key) {
+                        setColOrder(prev => {
+                          const next = [...prev];
+                          const fromIdx = next.indexOf(dragCol);
+                          const toIdx = next.indexOf(col.key);
+                          next.splice(fromIdx, 1);
+                          next.splice(toIdx, 0, dragCol);
+                          return next;
+                        });
+                      }
+                      setDragCol(null);
+                    }}
+                    onDragEnd={() => setDragCol(null)}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 4, fontSize: 11,
+                      padding: "4px 8px", borderRadius: 6, cursor: "grab",
+                      background: visibleCols.has(col.key) ? "var(--brand3)" : "var(--panel2)",
+                      border: `1px solid ${dragCol === col.key ? "var(--brand)" : visibleCols.has(col.key) ? "var(--brand)" : "var(--line)"}`,
+                      color: visibleCols.has(col.key) ? "var(--brand)" : "var(--muted)",
+                      fontWeight: visibleCols.has(col.key) ? 700 : 400,
+                      opacity: dragCol === col.key ? 0.5 : 1,
+                      userSelect: "none",
+                    }}
+                  >
+                    <span style={{ cursor: "grab", marginRight: 2 }}>⠿</span>
+                    <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} style={{ display: "none" }} />
+                    {col.label}
+                  </label>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}
