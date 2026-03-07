@@ -77,7 +77,7 @@ export const CRYPTO_ID_MAP: Record<string, string> = {
   PEPE:"pepe", SHIB:"shiba-inu"
 };
 
-const VALID_LAYOUTS = new Set(["flux", "cipher", "vector", "aurora", "carbon", "prism", "noir"]);
+const VALID_LAYOUTS = new Set(["flux", "cipher", "vector", "aurora", "carbon", "prism", "noir", "pulse"]);
 const VALID_THEMES = new Set(["t1", "t2", "t3", "t4", "t5"]);
 const VALID_METHODS = new Set(["FIFO", "DCA"]);
 const VALID_BASES = new Set(["USD", "EUR", "GBP", "QAR"]);
