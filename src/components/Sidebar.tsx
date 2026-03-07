@@ -6,6 +6,7 @@ const pages = [
   { id: "calendar", label: "Calendar", sub: "Daily P&L", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" },
   { id: "ledger", label: "Ledger", sub: "Journal · Import", icon: "M7 4h10M7 8h10M7 12h10M7 16h10M7 20h10" },
   { id: "markets", label: "Markets", sub: "Live Prices", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+  { id: "vault", label: "Vault", sub: "Snapshots · Backup", icon: "M12 2L3 7v10l9 5 9-5V7l-9-5ZM3 7l9 5M12 12l9-5M12 12v10" },
   { id: "settings", label: "Settings", sub: "Layout · Themes", icon: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a7.9 7.9 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8 8 0 0 0-1.7-1L13 3h-4l-.9 2.9a8 8 0 0 0-1.7 1l-2.4-1-2 3.5L4 13a8 8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a8 8 0 0 0 1.7 1L9 21h4l.9-2.9a8 8 0 0 0 1.7-1l2.4 1 2-3.5-2-1.6Z" },
 ];
 

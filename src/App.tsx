@@ -9,6 +9,7 @@ import LedgerPage from "@/pages/LedgerPage";
 import CalendarPage from "@/pages/CalendarPage";
 import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
+import VaultPage from "@/pages/VaultPage";
 import AuthPage from "@/pages/AuthPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
@@ -17,6 +18,7 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   calendar: ["Calendar", "Daily P&L · Per Coin"],
   ledger: ["Ledger", "Journal · Import · Manual Entry"],
   markets: ["Live Markets", "Bubbles · Prices · Watchlist"],
+  vault: ["Vault", "Snapshots · Backups · Export"],
   settings: ["Settings", "Layout · Themes · Data"],
 };
 
@@ -61,6 +63,7 @@ function AppShell() {
             {page === "calendar" && <CalendarPage />}
             {page === "ledger" && <LedgerPage />}
             {page === "markets" && <MarketsPage />}
+            {page === "vault" && <VaultPage />}
             {page === "settings" && <SettingsPage />}
           </div>
         </div>
