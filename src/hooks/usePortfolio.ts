@@ -1,6 +1,15 @@
-import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { useAuth } from "@clerk/clerk-react";
-import { setAuthTokenProvider, fetchAssets, fetchTransactions, fetchPrices, isWorkerAvailable, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useAuth } from "@clerk/react";
+import {
+  fetchAssets,
+  fetchPrices,
+  fetchTransactions,
+  isWorkerAvailable,
+  setAuthTokenProvider,
+  type ApiAsset,
+  type ApiPriceEntry,
+  type ApiTransaction,
+} from "@/lib/api";
 
 export interface Position {
   assetId: string;
@@ -40,14 +49,15 @@ export interface PortfolioData {
 function buildPositions(
   assets: ApiAsset[],
   txs: ApiTransaction[],
-  prices: Record<string, ApiPriceEntry>
+  prices: Record<string, ApiPriceEntry>,
 ): Position[] {
   const assetMap = new Map<string, ApiAsset>();
-  for (const a of assets) assetMap.set(a.id, a);
+  for (const asset of assets) assetMap.set(asset.id, asset);
 
-  const posMap = new Map<string, { qty: number; cost: number }>();
+  const positionMap = new Map<string, { qty: number; cost: number }>();
+
   for (const tx of txs) {
-    const current = posMap.get(tx.asset_id) || { qty: 0, cost: 0 };
+    const current = positionMap.get(tx.asset_id) || { qty: 0, cost: 0 };
     const txTotal = tx.qty * tx.unit_price;
 
     switch (tx.type) {
@@ -69,34 +79,40 @@ function buildPositions(
       case "fee":
         current.cost += tx.fee_amount;
         break;
+      default:
+        break;
     }
 
     if (current.qty < 0.00000001) {
       current.qty = 0;
       current.cost = 0;
     }
-    posMap.set(tx.asset_id, current);
+
+    positionMap.set(tx.asset_id, current);
   }
 
   const result: Position[] = [];
-  for (const [assetId, pos] of posMap) {
-    if (pos.qty <= 0) continue;
+
+  for (const [assetId, position] of positionMap) {
+    if (position.qty <= 0) continue;
+
     const asset = assetMap.get(assetId);
     if (!asset) continue;
+
     const priceData = prices[assetId];
     const price = priceData?.price ?? null;
-    const mv = price !== null ? price * pos.qty : null;
-    const pnlAbs = mv !== null ? mv - pos.cost : null;
-    const pnlPct = pos.cost > 0 && pnlAbs !== null ? (pnlAbs / pos.cost) * 100 : null;
+    const mv = price !== null ? price * position.qty : null;
+    const pnlAbs = mv !== null ? mv - position.cost : null;
+    const pnlPct = position.cost > 0 && pnlAbs !== null ? (pnlAbs / position.cost) * 100 : null;
 
     result.push({
       assetId,
       symbol: asset.symbol,
       name: asset.name,
       category: asset.category || "other",
-      qty: pos.qty,
-      cost: pos.cost,
-      avg: pos.qty > 0 ? pos.cost / pos.qty : 0,
+      qty: position.qty,
+      cost: position.cost,
+      avg: position.qty > 0 ? position.cost / position.qty : 0,
       price,
       priceChange1h: priceData?.change_1h ?? null,
       priceChange24h: priceData?.change_24h ?? null,
@@ -113,10 +129,10 @@ function buildPositions(
   return result;
 }
 
-const PRICE_POLL_MS = 120_000;
+const PRICE_POLL_MS = 120000;
 
 export function usePortfolio(): PortfolioData {
-  const { isSignedIn, getToken } = useAuth();
+  const { isLoaded, isSignedIn, getToken } = useAuth();
   const [positions, setPositions] = useState<Position[]>([]);
   const [txCount, setTxCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -127,16 +143,29 @@ export function usePortfolio(): PortfolioData {
   const assetsRef = useRef<ApiAsset[]>([]);
   const txsRef = useRef<ApiTransaction[]>([]);
 
-  // Wire up Clerk token provider
   useEffect(() => {
-    setAuthTokenProvider(() => getToken());
-  }, [getToken]);
+    setAuthTokenProvider(async () => {
+      if (!isSignedIn) return null;
+      return getToken();
+    });
+  }, [getToken, isSignedIn]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
+      if (!isSignedIn) {
+        assetsRef.current = [];
+        txsRef.current = [];
+        setPositions([]);
+        setTxCount(0);
+        setPriceTs(0);
+        setWorkerOnline(false);
+        setLoading(false);
+        return;
+      }
+
       const [assets, txs, priceData, online] = await Promise.all([
         fetchAssets(),
         fetchTransactions(),
@@ -149,48 +178,55 @@ export function usePortfolio(): PortfolioData {
       setWorkerOnline(online);
       setTxCount(txs.length);
       setPriceTs(priceData.ts);
-
-      const result = buildPositions(assets, txs, priceData.prices);
-      setPositions(result);
-    } catch (e: any) {
-      console.error("Portfolio load error:", e);
-      setError(e.message || "Failed to load portfolio");
+      setPositions(buildPositions(assets, txs, priceData.prices));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Failed to load portfolio";
+      console.error("Portfolio load error:", err);
+      setError(message);
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [isSignedIn]);
 
   const refreshPrices = useCallback(async () => {
-    if (assetsRef.current.length === 0) return;
+    if (!isSignedIn || assetsRef.current.length === 0) {
+      return;
+    }
+
     try {
       const priceData = await fetchPrices();
       setPriceTs(priceData.ts);
-      const result = buildPositions(assetsRef.current, txsRef.current, priceData.prices);
-      setPositions(result);
-    } catch (e: any) {
-      console.warn("Price refresh failed:", e.message);
+      setPositions(buildPositions(assetsRef.current, txsRef.current, priceData.prices));
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Price refresh failed";
+      console.warn("Price refresh failed:", message);
     }
-  }, []);
+  }, [isSignedIn]);
 
   useEffect(() => {
-    loadData();
+    void loadData();
   }, [loadData]);
 
   useEffect(() => {
-    const id = window.setInterval(refreshPrices, PRICE_POLL_MS);
-    return () => clearInterval(id);
-  }, [refreshPrices]);
+    if (!isSignedIn) return undefined;
+
+    const timer = window.setInterval(() => {
+      void refreshPrices();
+    }, PRICE_POLL_MS);
+
+    return () => clearInterval(timer);
+  }, [isSignedIn, refreshPrices]);
 
   const derived = useMemo(() => {
-    const totalMV = positions.reduce((s, p) => s + (p.mv ?? 0), 0);
-    const totalCost = positions.reduce((s, p) => s + p.cost, 0);
+    const totalMV = positions.reduce((sum, position) => sum + (position.mv ?? 0), 0);
+    const totalCost = positions.reduce((sum, position) => sum + position.cost, 0);
     const totalPnl = totalMV - totalCost;
     const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
-    let priceAge = "—";
+    let priceAge = "-";
     if (priceTs > 0) {
       const ageMs = Date.now() - priceTs;
-      priceAge = ageMs < 60000 ? Math.round(ageMs / 1000) + "s" : Math.round(ageMs / 60000) + "m";
+      priceAge = ageMs < 60000 ? `${Math.round(ageMs / 1000)}s` : `${Math.round(ageMs / 60000)}m`;
     }
 
     return { totalMV, totalCost, totalPnl, totalPnlPct, priceAge };
@@ -201,9 +237,10 @@ export function usePortfolio(): PortfolioData {
     ...derived,
     assetCount: positions.length,
     txCount,
-    loading,
+    priceAge: derived.priceAge,
+    loading: !isLoaded || loading,
     error,
-    authenticated: !!isSignedIn,
+    authenticated: Boolean(isSignedIn),
     workerOnline,
     refresh: loadData,
   };

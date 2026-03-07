@@ -1,132 +1,143 @@
-import { Context, Next } from 'hono';
-import type { Env } from '../types';
+import { Context, Next } from "hono";
+import type { Env } from "../types";
 
-/**
- * Auth middleware — verifies Clerk JWTs using RS256 / JWKS.
- * Fetches Clerk's public keys from JWKS URL, verifies signature,
- * extracts user_id from the `sub` claim.
- */
-
-// Cache JWKS keys in memory (Worker instance lifetime)
-let _jwksCache: Map<string, CryptoKey> = new Map();
-let _jwksCacheTs = 0;
-const JWKS_CACHE_TTL = 3600_000; // 1 hour
+let jwksCache: Map<string, CryptoKey> = new Map();
+let jwksCacheTs = 0;
+const JWKS_CACHE_TTL_MS = 60 * 60 * 1000;
 
 export async function authMiddleware(c: Context<{ Bindings: Env }>, next: Next) {
-  const authHeader = c.req.header('Authorization');
-  if (!authHeader?.startsWith('Bearer ')) {
-    return c.json({ error: 'Missing or invalid Authorization header' }, 401);
+  const authHeader = c.req.header("Authorization");
+  if (!authHeader?.startsWith("Bearer ")) {
+    return c.json({ error: "Missing or invalid Authorization header" }, 401);
+  }
+
+  const jwksUrl = c.env.CLERK_JWKS_URL;
+  if (!jwksUrl) {
+    console.error("CLERK_JWKS_URL is missing");
+    return c.json({ error: "Server misconfiguration: missing Clerk JWKS URL" }, 500);
   }
 
   const token = authHeader.slice(7);
 
-  // Default Clerk JWKS URL pattern
-  const jwksUrl = c.env.CLERK_JWKS_URL;
-  if (!jwksUrl) {
-    console.error('CLERK_JWKS_URL not configured');
-    return c.json({ error: 'Server misconfiguration: missing JWKS URL' }, 500);
-  }
-
   try {
-    const payload = await verifyRS256(token, jwksUrl);
+    const payload = await verifyRs256(token, jwksUrl);
+    const now = Date.now() / 1000;
     const userId = payload.sub;
-    if (!userId || typeof userId !== 'string') {
-      return c.json({ error: 'Invalid token: missing sub' }, 401);
+
+    if (!userId || typeof userId !== "string") {
+      return c.json({ error: "Invalid token: missing sub" }, 401);
     }
 
-    // Check expiration
-    if (payload.exp && typeof payload.exp === 'number' && payload.exp < Date.now() / 1000) {
-      return c.json({ error: 'Token expired' }, 401);
+    if (typeof payload.exp === "number" && payload.exp < now) {
+      return c.json({ error: "Token expired" }, 401);
     }
 
-    c.set('userId', userId);
+    if (typeof payload.nbf === "number" && payload.nbf > now) {
+      return c.json({ error: "Token not active yet" }, 401);
+    }
+
+    c.set("userId", userId);
     await next();
-  } catch (err) {
-    console.error('JWT verification failed:', err);
-    return c.json({ error: 'Invalid token' }, 401);
+  } catch (error) {
+    console.error("JWT verification failed:", error);
+    return c.json({ error: "Invalid token" }, 401);
   }
 }
 
-/**
- * Verify RS256 JWT using JWKS endpoint.
- * Uses Web Crypto API available in Cloudflare Workers.
- */
-async function verifyRS256(token: string, jwksUrl: string): Promise<Record<string, unknown>> {
-  const parts = token.split('.');
-  if (parts.length !== 3) throw new Error('Invalid JWT format');
+async function verifyRs256(
+  token: string,
+  jwksUrl: string,
+): Promise<Record<string, string | number | boolean | null | undefined>> {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    throw new Error("Invalid JWT format");
+  }
 
   const [headerB64, payloadB64, signatureB64] = parts;
+  const header = JSON.parse(base64UrlDecode(headerB64)) as { alg?: string; kid?: string };
 
-  // Parse header to get kid
-  const header = JSON.parse(b64UrlDecode(headerB64));
-  if (header.alg !== 'RS256') throw new Error(`Unsupported algorithm: ${header.alg}`);
-
-  const kid = header.kid;
-  if (!kid) throw new Error('JWT missing kid in header');
-
-  // Get the public key from JWKS
-  const key = await getJWKSKey(jwksUrl, kid);
-  if (!key) throw new Error(`No matching key found for kid: ${kid}`);
-
-  // Verify signature
-  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
-  const signature = b64UrlToBuffer(signatureB64);
-  const valid = await crypto.subtle.verify(
-    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
-    key,
-    signature,
-    data
-  );
-
-  if (!valid) throw new Error('Invalid signature');
-
-  return JSON.parse(b64UrlDecode(payloadB64));
-}
-
-async function getJWKSKey(jwksUrl: string, kid: string): Promise<CryptoKey | null> {
-  // Check cache
-  if (_jwksCache.has(kid) && Date.now() - _jwksCacheTs < JWKS_CACHE_TTL) {
-    return _jwksCache.get(kid)!;
+  if (header.alg !== "RS256") {
+    throw new Error(`Unsupported algorithm: ${header.alg ?? "unknown"}`);
   }
 
-  // Fetch JWKS
-  const res = await fetch(jwksUrl, { signal: AbortSignal.timeout(5000) });
-  if (!res.ok) throw new Error(`Failed to fetch JWKS: ${res.status}`);
-  const jwks: { keys: JsonWebKey[] } = await res.json();
+  if (!header.kid) {
+    throw new Error("JWT missing kid in header");
+  }
 
-  // Import all keys
-  _jwksCache = new Map();
-  _jwksCacheTs = Date.now();
+  const key = await getJwksKey(jwksUrl, header.kid);
+  if (!key) {
+    throw new Error(`No matching key found for kid: ${header.kid}`);
+  }
 
-  for (const jwk of jwks.keys) {
-    if (jwk.kty !== 'RSA' || !jwk.kid) continue;
+  const data = new TextEncoder().encode(`${headerB64}.${payloadB64}`);
+  const signature = base64UrlToBuffer(signatureB64);
+
+  const valid = await crypto.subtle.verify(
+    { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+    key,
+    signature,
+    data,
+  );
+
+  if (!valid) {
+    throw new Error("Invalid signature");
+  }
+
+  return JSON.parse(base64UrlDecode(payloadB64));
+}
+
+async function getJwksKey(jwksUrl: string, kid: string): Promise<CryptoKey | null> {
+  if (jwksCache.has(kid) && Date.now() - jwksCacheTs < JWKS_CACHE_TTL_MS) {
+    return jwksCache.get(kid) ?? null;
+  }
+
+  const response = await fetch(jwksUrl, { signal: AbortSignal.timeout(5000) });
+  if (!response.ok) {
+    throw new Error(`Failed to fetch JWKS: ${response.status}`);
+  }
+
+  const jwks = (await response.json()) as { keys?: JsonWebKey[] };
+
+  jwksCache = new Map();
+  jwksCacheTs = Date.now();
+
+  for (const jwk of jwks.keys ?? []) {
+    if (jwk.kty !== "RSA" || !jwk.kid) continue;
+
     try {
       const key = await crypto.subtle.importKey(
-        'jwk',
+        "jwk",
         jwk,
-        { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' },
+        { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
         false,
-        ['verify']
+        ["verify"],
       );
-      _jwksCache.set(jwk.kid as string, key);
-    } catch (e) {
-      console.warn(`Failed to import JWK kid=${jwk.kid}:`, e);
+      jwksCache.set(jwk.kid, key);
+    } catch (error) {
+      console.warn(`Failed to import JWK kid=${jwk.kid}:`, error);
     }
   }
 
-  return _jwksCache.get(kid) ?? null;
+  return jwksCache.get(kid) ?? null;
 }
 
-function b64UrlDecode(str: string): string {
-  const padded = str.replace(/-/g, '+').replace(/_/g, '/');
-  return atob(padded);
+function normalizeBase64Url(input: string): string {
+  const normalized = input.replace(/-/g, "+").replace(/_/g, "/");
+  const pad = normalized.length % 4;
+  return pad === 0 ? normalized : `${normalized}${"=".repeat(4 - pad)}`;
 }
 
-function b64UrlToBuffer(str: string): ArrayBuffer {
-  const binary = b64UrlDecode(str);
+function base64UrlDecode(input: string): string {
+  return atob(normalizeBase64Url(input));
+}
+
+function base64UrlToBuffer(input: string): ArrayBuffer {
+  const binary = atob(normalizeBase64Url(input));
   const bytes = new Uint8Array(binary.length);
-  for (let i = 0; i < binary.length; i++) {
+
+  for (let i = 0; i < binary.length; i += 1) {
     bytes[i] = binary.charCodeAt(i);
   }
+
   return bytes.buffer;
 }

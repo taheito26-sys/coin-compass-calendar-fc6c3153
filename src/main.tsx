@@ -1,19 +1,52 @@
 import { createRoot } from "react-dom/client";
-import { ClerkProvider } from "@clerk/clerk-react";
-import App from "./App.tsx";
+import { ClerkProvider } from "@clerk/react";
+import App from "./App";
 import "./index.css";
 
-const CLERK_KEY = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY || "";
+const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
 
-const root = createRoot(document.getElementById("root")!);
-
-if (CLERK_KEY) {
-  root.render(
-    <ClerkProvider publishableKey={CLERK_KEY}>
-      <App />
-    </ClerkProvider>
+function MissingClerkConfig() {
+  return (
+    <div
+      style={{
+        minHeight: "100vh",
+        display: "grid",
+        placeItems: "center",
+        background: "var(--bg, #0a0a0a)",
+        color: "var(--text, #ffffff)",
+        padding: 24,
+        fontFamily: "Inter, system-ui, sans-serif",
+      }}
+    >
+      <div
+        style={{
+          width: "min(640px, 100%)",
+          background: "rgba(255,255,255,0.04)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 20,
+          padding: 24,
+          boxShadow: "0 12px 40px rgba(0,0,0,0.35)",
+        }}
+      >
+        <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8 }}>CoinCompass</div>
+        <div style={{ color: "var(--muted, #a1a1aa)", marginBottom: 18 }}>
+          Authentication is required for the cloud-backed app.
+        </div>
+        <div style={{ lineHeight: 1.6, color: "var(--muted2, #d4d4d8)" }}>
+          Missing <code>VITE_CLERK_PUBLISHABLE_KEY</code> in your frontend environment.
+          Add it to <code>.env.local</code>, then restart Vite.
+        </div>
+      </div>
+    </div>
   );
+}
+
+if (!clerkKey) {
+  createRoot(document.getElementById("root")!).render(<MissingClerkConfig />);
 } else {
-  // No Clerk key — render without auth
-  root.render(<App />);
+  createRoot(document.getElementById("root")!).render(
+    <ClerkProvider publishableKey={clerkKey}>
+      <App />
+    </ClerkProvider>,
+  );
 }
