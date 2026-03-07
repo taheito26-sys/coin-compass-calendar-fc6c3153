@@ -78,15 +78,20 @@ export default function PortfolioPage() {
   const [sortCol, setSortCol] = useState<string>("total");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [visibleCols, setVisibleCols] = useState<Set<string>>(loadVisibleCols);
+  const [colOrder, setColOrder] = useState<string[]>(loadColOrder);
   const [showColConfig, setShowColConfig] = useState(false);
+  const [dragCol, setDragCol] = useState<string | null>(null);
 
   const useSupabase = sb.authenticated && !sb.error;
   const base = state.base || "USD";
 
-  // Persist visible columns
+  // Persist visible columns and order
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleCols]));
   }, [visibleCols]);
+  useEffect(() => {
+    localStorage.setItem(COL_ORDER_KEY, JSON.stringify(colOrder));
+  }, [colOrder]);
 
   const toggleCol = (key: string) => {
     setVisibleCols(prev => {
