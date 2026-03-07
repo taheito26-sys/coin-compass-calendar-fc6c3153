@@ -40,7 +40,10 @@ npm install
 ```bash
 # --local flag creates a local SQLite file for development
 npm run db:init:local
-# Equivalent to: npx wrangler d1 execute crypto-tracker --local --file=../seed/schema.sql
+# Equivalent to:
+#   npx wrangler d1 execute crypto-tracker --local --file=../seed/schema.sql
+#   npx wrangler d1 execute crypto-tracker --local --file=../seed/assets.sql
+```
 ```
 
 ### 3. Set local secrets
