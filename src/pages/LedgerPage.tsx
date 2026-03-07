@@ -4,8 +4,7 @@ import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
-import { supabase } from "@/integrations/supabase/client";
-import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
+import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets } from "@/lib/api";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
