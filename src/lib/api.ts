@@ -147,16 +147,14 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
   });
   return response.transaction;
 }
-
 export async function deleteTransaction(transactionId: string): Promise<void> {
   await apiFetch<{ ok: boolean }>(`/api/transactions/${transactionId}`, {
     method: "DELETE",
   });
 }
-
 export async function updateTransaction(
   transactionId: string,
-  updates: Partial<ApiTransaction>,
+  updates: Partial<CreateTransactionInput>,
 ): Promise<ApiTransaction> {
   const response = await apiFetch<{ transaction: ApiTransaction }>(`/api/transactions/${transactionId}`, {
     method: "PUT",
@@ -164,7 +162,6 @@ export async function updateTransaction(
   });
   return response.transaction;
 }
-
 export interface CreateImportedFileInput {
   file_name: string;
   file_hash: string;
@@ -180,7 +177,6 @@ export async function createImportedFile(input: CreateImportedFileInput): Promis
   });
   return response.file;
 }
-
 export async function setTrackingPreference(trackingMode: string, assetId?: string): Promise<any> {
   const response = await apiFetch<{ preference: any }>("/api/tracking-preferences", {
     method: "PUT",

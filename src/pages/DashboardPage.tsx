@@ -182,13 +182,11 @@ export default function DashboardPage() {
     <>
       {/* Source indicator */}
       {portfolio.loading && (
-        <div className="pill" style={{ marginBottom: 8 }}>Loading dataâ€¦</div>
+        <div className="pill" style={{ marginBottom: 8 }}>Loading data...</div>
       )}
       {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body muted" style={{ fontSize: 12 }}>
-            âš  Not signed in â€” showing local data only. Sign in to sync your portfolio.
-          </div>
+          <div className="panel-body muted" style={{ fontSize: 12 }}>Not signed in, showing local data only. Sign in to sync your portfolio.</div>
         </div>
       )}
       {portfolio.error && (
@@ -200,7 +198,7 @@ export default function DashboardPage() {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>â†» Refresh</button>
+        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>Refresh</button>
         <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
         {portfolio.workerOnline && (
@@ -209,9 +207,7 @@ export default function DashboardPage() {
             color: "hsl(142 76% 36%)",
             fontWeight: 700,
             fontSize: 10,
-          }}>
-            âš¡ Worker Online
-          </span>
+          }}>Worker Online</span>
         )}
       </div>
 
@@ -227,14 +223,14 @@ export default function DashboardPage() {
         </div>
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className={`kpi-badge ${totalPnl >= 0 ? "good" : "bad"}`}>{totalPnl >= 0 ? "â–²" : "â–¼"}</span>
+            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "â–²" : "â–¼"}</span>
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
             {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
           </div>
           <div className="kpi-sub">
-            {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "â€”"}
+            {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "-"}
           </div>
         </div>
         <div className="kpi-card">
@@ -245,7 +241,7 @@ export default function DashboardPage() {
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
           <div className="kpi-val" style={{ fontSize: 16 }}>{method}</div>
-          <div className="kpi-sub">{assetCount > 0 ? "All priced âœ“" : "No positions"}</div>
+          <div className="kpi-sub">{assetCount > 0 ? "All priced OK" : "No positions"}</div>
         </div>
       </div>
 
@@ -258,7 +254,7 @@ export default function DashboardPage() {
               <>
                 <DonutChart
                   slices={coinSlices}
-                  centerLabel={topCoin?.label || "â€”"}
+                  centerLabel={topCoin?.label || "-"}
                   centerValue={fmtFiat(topCoin?.value || 0, base).split(" ")[0]}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
@@ -308,10 +304,10 @@ export default function DashboardPage() {
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
                       <td className="mono">{fmtPx(avg)} {base}</td>
-                      <td className="mono">{r.price === null ? "â€”" : fmtPx(r.price) + " " + base}</td>
-                      <td className="mono">{r.mv === null ? "â€”" : fmtFiat(r.mv, base)}</td>
+                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
+                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "â€”" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
                       </td>
                     </tr>
                   );

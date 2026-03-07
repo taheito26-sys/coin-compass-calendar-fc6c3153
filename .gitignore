@@ -29,3 +29,6 @@ backend/.wrangler/
 _auth_patch_backup_*/
 
 *.ps1
+clerk-reset-fix.ps1
+clerk-reset-fix-clean.ps1
+clerk-reset-fix-fixed.ps1
