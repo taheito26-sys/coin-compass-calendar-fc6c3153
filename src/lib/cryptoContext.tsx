@@ -66,11 +66,8 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     document.documentElement.style.setProperty("--app-font", layoutFonts[state.layout] || "'Inter', sans-serif");
   }, [state.layout, state.theme]);
 
-  // Auto refresh on mount
-  useEffect(() => {
-    refresh().catch(() => {});
-    // eslint-disable-next-line
-  }, []);
+  // Skip auto refresh on mount — useLivePrices handles polling
+  // This avoids duplicate CoinGecko calls causing 429s
 
   return (
     <Ctx.Provider value={{ state, setState, refresh, toast, toastMsg }}>

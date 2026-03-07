@@ -19,11 +19,12 @@ let _cache: LiveCoin[] = [];
 let _cacheTs = 0;
 let _fetching = false;
 let _listeners: Set<() => void> = new Set();
-let _backoffMs = 0; // exponential backoff on 429
+let _backoffMs = 0;
 let _consecutiveFails = 0;
+let _fetchPromise: Promise<void> | null = null;
 
-const POLL_MS = 120_000; // 120s between polls to avoid 429s
-const STALE_MS = 110_000;
+const POLL_MS = 180_000; // 180s between polls
+const STALE_MS = 170_000;
 
 async function fetchPage(page: number, signal: AbortSignal): Promise<LiveCoin[]> {
   const r = await fetch(
@@ -32,7 +33,7 @@ async function fetchPage(page: number, signal: AbortSignal): Promise<LiveCoin[]>
   );
   if (r.status === 429) {
     _consecutiveFails++;
-    _backoffMs = Math.min(300_000, (2 ** _consecutiveFails) * 30_000); // 30s, 60s, 120s, 240s, 300s max
+    _backoffMs = Math.min(600_000, (2 ** _consecutiveFails) * 60_000);
     return [];
   }
   if (!r.ok) return [];
@@ -43,19 +44,17 @@ async function fetchPage(page: number, signal: AbortSignal): Promise<LiveCoin[]>
 
 async function doFetch() {
   if (_fetching) return;
-  // Respect backoff
   if (_backoffMs > 0 && Date.now() - _cacheTs < _backoffMs) return;
   _fetching = true;
   try {
-    // Fetch only 1 page of 250 to reduce rate limit pressure
     const p1 = await fetchPage(1, AbortSignal.timeout(15000));
     if (p1.length > 0) {
       _cache = p1;
       _cacheTs = Date.now();
       _listeners.forEach(cb => cb());
-      
-      // Try page 2 after delay only if page 1 succeeded
-      await new Promise(r => setTimeout(r, 3000));
+
+      // Page 2 after 5s delay
+      await new Promise(r => setTimeout(r, 5000));
       const p2 = await fetchPage(2, AbortSignal.timeout(15000));
       if (p2.length > 0) {
         _cache = [...p1, ...p2];
@@ -71,9 +70,9 @@ let _intervalId: number | null = null;
 
 function ensurePolling() {
   if (_intervalId) return;
-  if (Date.now() - _cacheTs > STALE_MS) doFetch();
+  if (Date.now() - _cacheTs > STALE_MS && !_fetching) doFetch();
   _intervalId = window.setInterval(() => {
-    if (Date.now() - _cacheTs > STALE_MS) doFetch();
+    if (Date.now() - _cacheTs > STALE_MS && !_fetching) doFetch();
   }, POLL_MS);
 }
 

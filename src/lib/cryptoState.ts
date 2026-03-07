@@ -204,37 +204,8 @@ export function calcDCA(holdings: UserHolding[], asset: string) {
   return { totalQty, totalCost, avgPrice, entries: filtered.length };
 }
 
-// Refresh prices from CoinGecko
-export async function refreshPrices(state: CryptoState, force = false): Promise<CryptoState> {
-  const last = cnum(state.pricesTs, 0);
-  if (!force && last && Date.now() - last < 15000) return state;
-
-  const watch = Array.isArray(state.watch) ? state.watch : [];
-  const lots = Array.isArray(state.lots) ? state.lots : [];
-  const holdings = Array.isArray(state.holdings) ? state.holdings : [];
-
-  const assets = [...new Set([
-    ...watch,
-    ...lots.filter(l => cnum(l.qtyRem, 0) > 0).map(l => String(l.asset || "").toUpperCase()),
-    ...holdings.map(h => String(h.asset || "").toUpperCase()),
-  ].filter(Boolean))];
-
-  const ids = assets.map(s => CRYPTO_ID_MAP[s]).filter(Boolean);
-  if (!ids.length) return { ...state, pricesTs: Date.now() };
-  const base = String(state.base || "USD").toLowerCase();
-  const url = state.apiUrl
-    ? `${state.apiUrl.replace(/\/+$/, "")}/api/prices?ids=${encodeURIComponent(ids.join(","))}&vs=${encodeURIComponent(base)}`
-    : `https://api.coingecko.com/api/v3/simple/price?ids=${encodeURIComponent(ids.join(","))}&vs_currencies=${encodeURIComponent(base)}&include_24hr_change=true`;
-  const r = await fetch(url, { signal: AbortSignal.timeout(12000) });
-  if (!r.ok) throw new Error("price " + r.status);
-  const data = await r.json();
-  const prices = { ...(state.prices && typeof state.prices === "object" ? state.prices : {}) };
-  const inv: Record<string, string> = {};
-  Object.entries(CRYPTO_ID_MAP).forEach(([sym, id]) => inv[id] = sym);
-  for (const [id, obj] of Object.entries(data || {})) {
-    const sym = inv[id]; if (!sym) continue;
-    const px = (obj as any)?.[base];
-    if (Number.isFinite(px)) prices[sym] = px;
-  }
-  return { ...state, prices, pricesTs: Date.now() };
+// Refresh prices - no-op now since useLivePrices handles polling.
+// Kept for API compatibility. Returns state unchanged.
+export async function refreshPrices(state: CryptoState, _force = false): Promise<CryptoState> {
+  return { ...state, pricesTs: Date.now() };
 }
