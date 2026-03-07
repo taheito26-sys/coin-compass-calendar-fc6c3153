@@ -19,34 +19,49 @@ let _cache: LiveCoin[] = [];
 let _cacheTs = 0;
 let _fetching = false;
 let _listeners: Set<() => void> = new Set();
+let _backoffMs = 0; // exponential backoff on 429
+let _consecutiveFails = 0;
 
-const POLL_MS = 60_000; // 60s to avoid 429s
-const STALE_MS = 55_000;
+const POLL_MS = 120_000; // 120s between polls to avoid 429s
+const STALE_MS = 110_000;
 
 async function fetchPage(page: number, signal: AbortSignal): Promise<LiveCoin[]> {
   const r = await fetch(
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false&price_change_percentage=1h,24h,7d`,
     { signal }
   );
-  if (r.status === 429) return []; // rate limited, skip
+  if (r.status === 429) {
+    _consecutiveFails++;
+    _backoffMs = Math.min(300_000, (2 ** _consecutiveFails) * 30_000); // 30s, 60s, 120s, 240s, 300s max
+    return [];
+  }
   if (!r.ok) return [];
+  _consecutiveFails = 0;
+  _backoffMs = 0;
   return r.json();
 }
 
 async function doFetch() {
   if (_fetching) return;
+  // Respect backoff
+  if (_backoffMs > 0 && Date.now() - _cacheTs < _backoffMs) return;
   _fetching = true;
   try {
-    // Fetch 2 pages of 250 = 500 coins, sequentially to avoid 429
+    // Fetch only 1 page of 250 to reduce rate limit pressure
     const p1 = await fetchPage(1, AbortSignal.timeout(15000));
-    // Small delay before next page
-    await new Promise(r => setTimeout(r, 1500));
-    const p2 = await fetchPage(2, AbortSignal.timeout(15000));
-    const all = [...p1, ...p2];
-    if (all.length > 0) {
-      _cache = all;
+    if (p1.length > 0) {
+      _cache = p1;
       _cacheTs = Date.now();
       _listeners.forEach(cb => cb());
+      
+      // Try page 2 after delay only if page 1 succeeded
+      await new Promise(r => setTimeout(r, 3000));
+      const p2 = await fetchPage(2, AbortSignal.timeout(15000));
+      if (p2.length > 0) {
+        _cache = [...p1, ...p2];
+        _cacheTs = Date.now();
+        _listeners.forEach(cb => cb());
+      }
     }
   } catch {}
   _fetching = false;
@@ -74,7 +89,6 @@ export function useLivePrices() {
     };
     _listeners.add(update);
     ensurePolling();
-    // If cache already populated, use it
     if (_cache.length > 0) { setCoins(_cache); setLoading(false); }
     return () => { _listeners.delete(update); };
   }, []);
