@@ -206,7 +206,15 @@ export default function DashboardPage() {
         <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
         <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
-        {useSupabase && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Supabase ✓</span>}
+        {useSupabase && (
+          <span className="pill" style={{
+            background: sb.dataSource === "worker" ? "hsl(var(--primary) / 0.15)" : "var(--brand3)",
+            color: sb.dataSource === "worker" ? "hsl(var(--primary))" : "var(--brand)",
+            fontWeight: 700,
+          }}>
+            {sb.dataSource === "worker" ? "⚡ Worker" : "🔄 Supabase"} ✓
+          </span>
+        )}
       </div>
 
       {/* KPI Cards */}

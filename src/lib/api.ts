@@ -231,9 +231,9 @@ export async function isWorkerAvailable(): Promise<boolean> {
   }
 }
 
-/** Returns which data source is active */
-export function getDataSource(): "worker" | "supabase" {
-  return WORKER_BASE ? "worker" : "supabase";
+/** Returns which data source actually served the most recent requests */
+export function getDataSource(): DataSourceResult {
+  return getLastDataSource();
 }
 
 // ── Write operations ────────────────────────────────────────────

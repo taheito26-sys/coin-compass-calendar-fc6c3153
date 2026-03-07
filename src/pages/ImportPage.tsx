@@ -3,6 +3,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult, NormalizedRow } from "@/lib/importers";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
 
 type Stage = "upload" | "preview" | "done";
 
@@ -62,9 +63,10 @@ export default function ImportPage() {
     if (file) handleFile(file);
   }, [handleFile]);
 
-  const commit = () => {
+  const commit = async () => {
     if (!result || result.rows.length === 0) return;
 
+    // Save to local state (unchanged)
     setState(prev => {
       const newTxs = [...prev.txs];
       const newLots = [...prev.lots];
@@ -72,7 +74,6 @@ export default function ImportPage() {
 
       for (const row of result.rows) {
         const txId = uid();
-        // Split symbol into base/quote (best effort)
         const asset = extractBase(row.symbol);
 
         const tx = {
@@ -115,7 +116,6 @@ export default function ImportPage() {
             note: `Imported from ${fileName}`,
           });
         } else if (row.side === "sell") {
-          // FIFO lot matching
           const lots = newLots.filter(l => l.asset.toUpperCase() === asset && (l.qtyRem || 0) > 0).sort((a, b) => a.ts - b.ts);
           let rem = row.qty, cost = 0;
           for (const l of lots) {
@@ -142,7 +142,52 @@ export default function ImportPage() {
       return { ...prev, txs: newTxs, lots: newLots, holdings: newHoldings, importedFiles: newImported };
     });
 
-    toast(`Imported ${result.rows.length} trades from ${EXCHANGE_LABELS[result.exchange]}`, "good");
+    // Sync to backend via API client (Worker-first, Supabase fallback)
+    let synced = 0;
+    const assets = await fetchAssets().catch(() => [] as any[]);
+    for (const row of result.rows) {
+      const assetSym = extractBase(row.symbol);
+      const match = assets.find((a: any) => a.symbol.toUpperCase() === assetSym.toUpperCase());
+      if (!match) {
+        console.warn(`[import] Asset ${assetSym} not found, skipping sync`);
+        continue;
+      }
+      try {
+        await createTransaction({
+          asset_id: match.id,
+          timestamp: new Date(row.timestamp).toISOString(),
+          type: row.side,
+          qty: row.qty,
+          unit_price: row.unitPrice,
+          fee_amount: row.feeAmount,
+          fee_currency: row.feeAsset || "USD",
+          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+          note: `Import: ${row.externalId}`,
+          source: "csv-import",
+          external_id: row.externalId || undefined,
+        });
+        synced++;
+      } catch (err: any) {
+        console.warn(`[import] Failed to sync row:`, err.message);
+      }
+    }
+
+    // Record imported file metadata
+    try {
+      await createImportedFile({
+        file_name: fileName,
+        file_hash: fileHash,
+        exchange: result.exchange,
+        export_type: result.exportType,
+        row_count: result.rows.length,
+      });
+    } catch (err: any) {
+      console.warn("[import] Failed to record imported file:", err.message);
+    }
+
+    const log = getSourceLog(1);
+    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+    toast(`Imported ${result.rows.length} trades (${synced} synced via ${source})`, "good");
     setStage("done");
   };
 

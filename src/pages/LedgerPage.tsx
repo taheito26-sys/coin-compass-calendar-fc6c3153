@@ -5,6 +5,7 @@ import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import { supabase } from "@/integrations/supabase/client";
+import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -13,51 +14,47 @@ const EXCHANGE_LABELS: Record<string, string> = {
   gate: "Gate.io",
 };
 
-async function getAuthUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
-}
-
-async function findOrCreateAsset(symbol: string): Promise<string | null> {
+async function findAssetId(symbol: string): Promise<string | null> {
   const sym = symbol.toUpperCase();
-  const { data } = await (supabase as any).from('assets').select('id').eq('symbol', sym).maybeSingle();
-  if (data) return data.id;
-  // If asset doesn't exist, we can't create it (no INSERT RLS). Return null.
-  return null;
+  try {
+    const assets = await fetchAssets();
+    const match = assets.find(a => a.symbol.toUpperCase() === sym);
+    return match?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
-async function saveTransactionToSupabase(tx: {
+async function saveTransactionViaApi(tx: {
   type: string; asset: string; qty: number; price: number;
   fee: number; venue: string; note: string; ts: number;
-}) {
-  const user = await getAuthUser();
-  if (!user) return false;
-
-  const assetId = await findOrCreateAsset(tx.asset);
+}): Promise<{ ok: boolean; source: string }> {
+  const assetId = await findAssetId(tx.asset);
   if (!assetId) {
-    console.warn(`Asset ${tx.asset} not found in Supabase assets table`);
-    return false;
+    console.warn(`[ledger] Asset ${tx.asset} not found in assets table`);
+    return { ok: false, source: "none" };
   }
 
-  const { error } = await (supabase as any).from('transactions').insert({
-    user_id: user.id,
-    timestamp: new Date(tx.ts).toISOString(),
-    type: tx.type,
-    asset_id: assetId,
-    qty: tx.qty,
-    unit_price: tx.price || 0,
-    fee_amount: tx.fee || 0,
-    fee_currency: 'USD',
-    venue: tx.venue || null,
-    note: tx.note || null,
-    source: 'manual',
-  });
-
-  if (error) {
-    console.error('Supabase insert error:', error);
-    return false;
+  try {
+    await createTransaction({
+      asset_id: assetId,
+      timestamp: new Date(tx.ts).toISOString(),
+      type: tx.type,
+      qty: tx.qty,
+      unit_price: tx.price || 0,
+      fee_amount: tx.fee || 0,
+      fee_currency: "USD",
+      venue: tx.venue || undefined,
+      note: tx.note || undefined,
+      source: "manual",
+    });
+    const log = getSourceLog(1);
+    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+    return { ok: true, source };
+  } catch (err: any) {
+    console.error("[ledger] Save failed:", err);
+    return { ok: false, source: "error" };
   }
-  return true;
 }
 
 export default function LedgerPage() {
@@ -118,13 +115,17 @@ export default function LedgerPage() {
       return newState;
     });
 
-    // Also save to Supabase
+    // Save to backend via API client (Worker-first, Supabase fallback)
     setSaving(true);
-    const saved = await saveTransactionToSupabase({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
+    const result = await saveTransactionViaApi({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
     setSaving(false);
 
     setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-    toast(saved ? "Transaction saved ✓ (synced to cloud)" : "Transaction saved locally ✓", "good");
+    if (result.ok) {
+      toast(`Transaction saved ✓ (via ${result.source})`, "good");
+    } else {
+      toast("Transaction saved locally only (backend sync failed)", "good");
+    }
   };
 
   // Edit handlers
@@ -220,24 +221,35 @@ export default function LedgerPage() {
       };
     });
 
-    // Also sync each imported row to Supabase
-    const user = await getAuthUser();
-    if (user) {
-      let synced = 0;
-      for (const row of importResult.rows) {
-        const assetSym = extractBase(row.symbol);
-        const ok = await saveTransactionToSupabase({
-          type: row.side, asset: assetSym, qty: row.qty,
-          price: row.unitPrice, fee: row.feeAmount,
-          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-          note: `Import: ${row.externalId}`, ts: row.timestamp,
-        });
-        if (ok) synced++;
-      }
-      toast(`Imported ${importResult.rows.length} trades (${synced} synced to cloud)`, "good");
-    } else {
-      toast(`Imported ${importResult.rows.length} trades from ${EXCHANGE_LABELS[importResult.exchange]}`, "good");
+    // Sync each imported row to backend via API client
+    let synced = 0;
+    for (const row of importResult.rows) {
+      const assetSym = extractBase(row.symbol);
+      const result = await saveTransactionViaApi({
+        type: row.side, asset: assetSym, qty: row.qty,
+        price: row.unitPrice, fee: row.feeAmount,
+        venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+        note: `Import: ${row.externalId}`, ts: row.timestamp,
+      });
+      if (result.ok) synced++;
     }
+
+    // Also record the imported file
+    try {
+      await createImportedFile({
+        file_name: fileName,
+        file_hash: fileHash,
+        exchange: importResult.exchange,
+        export_type: importResult.exportType,
+        row_count: importResult.rows.length,
+      });
+    } catch (err: any) {
+      console.warn("[import] Failed to record imported file:", err.message);
+    }
+
+    const log = getSourceLog(1);
+    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+    toast(`Imported ${importResult.rows.length} trades (${synced} synced via ${source})`, "good");
     setImportStage("done");
   };
 
