@@ -113,7 +113,7 @@ export default function SettingsPage() {
             <div className="cal-stat"><div className="kpi-lbl">Transactions</div><div className="kpi-val">{state.txs.length}</div></div>
             <div className="cal-stat"><div className="kpi-lbl">Lots</div><div className="kpi-val">{state.lots.length}</div></div>
             <div className="cal-stat"><div className="kpi-lbl">Holdings</div><div className="kpi-val">{state.holdings.length}</div></div>
-            <div className="cal-stat"><div className="kpi-lbl">Imports</div><div className="kpi-val">{importedFiles.length}</div></div>
+            <div className="cal-stat"><div className="kpi-lbl">Imports</div><div className="kpi-val">{(state.importedFiles || []).length}</div></div>
           </div>
         </div>
       </div>
