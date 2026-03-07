@@ -9,7 +9,15 @@ interface CryptoCtx {
   toastMsg: { msg: string; type: string } | null;
 }
 
-const Ctx = createContext<CryptoCtx>(null!);
+const fallbackCtx: CryptoCtx = {
+  state: defaultState(),
+  setState: () => {},
+  refresh: async () => {},
+  toast: () => {},
+  toastMsg: null,
+};
+
+const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
 export function CryptoProvider({ children }: { children: React.ReactNode }) {
