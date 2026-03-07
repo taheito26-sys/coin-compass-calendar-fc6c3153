@@ -11,11 +11,8 @@ const EXCHANGE_LABELS: Record<string, string> = {
   gate: "Gate.io",
 };
 
-type Tab = "journal" | "import" | "manual";
-
 export default function LedgerPage() {
   const { state, setState, toast } = useCrypto();
-  const [tab, setTab] = useState<Tab>("journal");
 
   // Manual entry state
   const [type, setType] = useState("buy");
@@ -34,6 +31,13 @@ export default function LedgerPage() {
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
+
+  // Edit state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editAsset, setEditAsset] = useState("");
+  const [editQty, setEditQty] = useState("");
+  const [editPrice, setEditPrice] = useState("");
+  const [editType, setEditType] = useState("");
 
   const importedFiles = state.importedFiles || [];
 
@@ -62,6 +66,37 @@ export default function LedgerPage() {
     });
     setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
     toast("Transaction saved ✓", "good");
+  };
+
+  // Edit handlers
+  const startEdit = (t: any) => {
+    setEditId(t.id);
+    setEditAsset(t.asset);
+    setEditQty(String(t.qty));
+    setEditPrice(String(t.price));
+    setEditType(t.type);
+  };
+
+  const saveEdit = () => {
+    if (!editId) return;
+    setState(prev => ({
+      ...prev,
+      txs: prev.txs.map(t => t.id === editId ? {
+        ...t,
+        asset: editAsset.toUpperCase(),
+        qty: parseFloat(editQty) || t.qty,
+        price: parseFloat(editPrice) || t.price,
+        type: editType,
+        total: (editType === "buy" || editType === "sell") ? (parseFloat(editQty) || 0) * (parseFloat(editPrice) || 0) : t.total,
+      } : t),
+    }));
+    setEditId(null);
+    toast("Transaction updated ✓", "good");
+  };
+
+  const deleteTx = (id: string) => {
+    setState(prev => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
+    toast("Transaction deleted", "good");
   };
 
   // Import handlers
@@ -140,20 +175,11 @@ export default function LedgerPage() {
 
   return (
     <>
-      {/* Tab bar */}
-      <div style={{ display: "flex", gap: 8, marginBottom: 10, flexWrap: "wrap", alignItems: "center" }}>
-        <div className="seg">
-          <button className={tab === "journal" ? "active" : ""} onClick={() => setTab("journal")}>Journal</button>
-          <button className={tab === "manual" ? "active" : ""} onClick={() => setTab("manual")}>+ Manual Entry</button>
-          <button className={tab === "import" ? "active" : ""} onClick={() => { setTab("import"); resetImport(); }}>📥 CSV Import</button>
-        </div>
-        <span className="pill">{state.txs.length} transactions</span>
-      </div>
-
-      {/* Manual Entry */}
-      {tab === "manual" && (
-        <div className="panel" style={{ marginBottom: 10 }}>
-          <div className="panel-head"><h2>New Transaction</h2></div>
+      {/* Top row: Manual Entry + CSV Import side by side */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+        {/* Manual Entry */}
+        <div className="panel">
+          <div className="panel-head"><h2>+ Manual Entry</h2></div>
           <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
             <div className="form-field">
               <label className="form-label">Type</label>
@@ -163,42 +189,36 @@ export default function LedgerPage() {
                 <option value="transfer_in">Transfer In</option>
                 <option value="transfer_out">Transfer Out</option>
                 <option value="reward">Reward</option>
-                <option value="fee">Fee</option>
               </select>
             </div>
             <div className="form-field"><label className="form-label">Asset</label><input className="inp" value={asset} onChange={e => setAsset(e.target.value)} placeholder="BTC" /></div>
             <div className="form-field"><label className="form-label">Quantity</label><input className="inp" type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
-            <div className="form-field"><label className="form-label">Price ({state.base})</label><input className="inp" type="number" value={price} onChange={e => setPrice(e.target.value)} /></div>
-            <div className="form-field"><label className="form-label">Fee</label><input className="inp" type="number" value={fee} onChange={e => setFee(e.target.value)} /></div>
+            <div className="form-field"><label className="form-label">Unit Price ({state.base})</label><input className="inp" type="number" value={price} onChange={e => setPrice(e.target.value)} /></div>
             <div className="form-field"><label className="form-label">Venue</label><input className="inp" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Binance, Coinbase..." /></div>
-            <div className="form-field" style={{ gridColumn: "1/-1" }}><label className="form-label">Note</label><input className="inp" value={note} onChange={e => setNote(e.target.value)} /></div>
+            <div className="form-field"><label className="form-label">Tags</label><input className="inp" value={note} onChange={e => setNote(e.target.value)} placeholder="Optional" /></div>
             <div style={{ gridColumn: "1/-1", display: "flex", gap: 8 }}>
               <button className="btn" onClick={save}>Save Transaction</button>
             </div>
           </div>
         </div>
-      )}
 
-      {/* CSV Import */}
-      {tab === "import" && (
-        <>
-          {importStage === "upload" && (
-            <div className="panel">
-              <div className="panel-head">
-                <h2>Import Spot Trade History</h2>
-                <span className="pill">v1 · Trades Only</span>
-              </div>
-              <div className="panel-body">
-                <div className="import-exchanges">
+        {/* CSV Import */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>📥 CSV Import</h2>
+            <span className="pill">Spot Trades</span>
+          </div>
+          <div className="panel-body">
+            {importStage === "upload" && (
+              <>
+                <div className="import-exchanges" style={{ marginBottom: 8 }}>
                   {["binance", "bybit", "okx", "gate"].map(ex => (
                     <span key={ex} className="pill">{EXCHANGE_LABELS[ex]}</span>
                   ))}
                 </div>
-                <p className="muted" style={{ margin: "8px 0 0", fontSize: 12 }}>
-                  Accepted: Spot Trade History CSV only. Rejected: Futures, Margin, Options, Earn, P2P.
-                </p>
                 <div
                   className="import-drop"
+                  style={{ minHeight: 100 }}
                   onDragOver={e => e.preventDefault()}
                   onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
                   onClick={() => fileRef.current?.click()}
@@ -206,118 +226,108 @@ export default function LedgerPage() {
                   <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
                   {importLoading ? <div className="muted">Parsing…</div> : (
                     <>
-                      <svg viewBox="0 0 24 24" fill="none" width="32" height="32"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      <div style={{ marginTop: 8 }}>Drop CSV file or click to browse</div>
+                      <svg viewBox="0 0 24 24" fill="none" width="28" height="28"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <div style={{ marginTop: 4, fontSize: 12 }}>Drop CSV or click to browse</div>
                     </>
                   )}
                 </div>
                 {importError && <div className="import-error">{importError}</div>}
-                {importedFiles.length > 0 && (
-                  <div style={{ marginTop: 16 }}>
-                    <h3 style={{ fontSize: 13, marginBottom: 6, opacity: 0.7 }}>Previously Imported</h3>
-                    <div className="tableWrap"><table>
-                      <thead><tr><th>File</th><th>Exchange</th><th>Rows</th><th>Date</th></tr></thead>
-                      <tbody>
-                        {importedFiles.map((f: any, i: number) => (
-                          <tr key={i}>
-                            <td className="mono">{f.name}</td>
-                            <td>{EXCHANGE_LABELS[f.exchange] || f.exchange}</td>
-                            <td className="mono">{f.rowCount}</td>
-                            <td className="mono muted">{new Date(f.importedAt).toLocaleDateString()}</td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table></div>
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {importStage === "preview" && importResult && (
-            <div className="panel">
-              <div className="panel-head">
-                <h2>Preview Import</h2>
-                <span className="pill">{EXCHANGE_LABELS[importResult.exchange]}</span>
-              </div>
-              <div className="panel-body">
-                <div className="import-summary">
+              </>
+            )}
+            {importStage === "preview" && importResult && (
+              <>
+                <div className="import-summary" style={{ marginBottom: 8 }}>
                   <div className="import-stat"><div className="import-stat-val good">{importResult.rowCount}</div><div className="import-stat-lbl">Parsed</div></div>
                   <div className="import-stat"><div className="import-stat-val" style={{ color: importResult.skippedCount > 0 ? "var(--bad)" : "var(--muted)" }}>{importResult.skippedCount}</div><div className="import-stat-lbl">Skipped</div></div>
-                  <div className="import-stat"><div className="import-stat-val">{importResult.warnings.length}</div><div className="import-stat-lbl">Warnings</div></div>
                 </div>
                 {importResult.warnings.length > 0 && (
                   <div className="import-warnings">{importResult.warnings.map((w, i) => <div key={i} className="import-warning">⚠ {w}</div>)}</div>
                 )}
-                <div className="tableWrap" style={{ maxHeight: 350, overflow: "auto" }}>
-                  <table>
-                    <thead><tr><th>Date</th><th>Side</th><th>Symbol</th><th>Qty</th><th>Price</th><th>Value</th><th>Fee</th></tr></thead>
-                    <tbody>
-                      {importResult.rows.slice(0, 50).map((r, i) => (
-                        <tr key={i}>
-                          <td className="mono">{new Date(r.timestamp).toLocaleString()}</td>
-                          <td className={`mono ${r.side === "buy" ? "good" : "bad"}`} style={{ fontWeight: 900 }}>{r.side.toUpperCase()}</td>
-                          <td className="mono" style={{ fontWeight: 900 }}>{r.symbol}</td>
-                          <td className="mono">{fmtQty(r.qty)}</td>
-                          <td className="mono">{fmtPx(r.unitPrice)}</td>
-                          <td className="mono">{fmtFiat(r.grossValue, state.base)}</td>
-                          <td className="mono">{r.feeAmount > 0 ? `${fmtQty(r.feeAmount)} ${r.feeAsset}` : "—"}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div style={{ display: "flex", gap: 8, marginTop: 12 }}>
+                <div style={{ display: "flex", gap: 8 }}>
                   <button className="btn secondary" onClick={resetImport}>Cancel</button>
                   <button className="btn" onClick={commitImport}>Commit {importResult.rowCount} Trades</button>
                 </div>
-              </div>
-            </div>
-          )}
-
-          {importStage === "done" && importResult && (
-            <div className="panel">
-              <div className="panel-head"><h2>Import Complete ✓</h2></div>
-              <div className="panel-body">
-                <p><strong>{importResult.rowCount}</strong> trades from <strong>{EXCHANGE_LABELS[importResult.exchange]}</strong> committed.</p>
-                <button className="btn" onClick={resetImport} style={{ marginTop: 12 }}>Import Another</button>
-              </div>
-            </div>
-          )}
-        </>
-      )}
-
-      {/* Journal */}
-      {tab === "journal" && (
-        <div className="panel">
-          <div className="panel-head"><h2>Transaction Journal</h2><span className="pill">{txs.length} shown</span></div>
-          <div className="panel-body" style={{ padding: 0 }}>
-            <div className="tableWrap">
-              <table>
-                <thead><tr><th>Date</th><th>Type</th><th>Asset</th><th>Qty</th><th>Price</th><th>Total</th><th>Fee</th><th>Realized</th><th>Venue</th><th>Note</th></tr></thead>
-                <tbody>
-                  {txs.length ? txs.map(t => (
-                    <tr key={t.id}>
-                      <td className="mono">{new Date(t.ts).toLocaleString()}</td>
-                      <td className={`mono ${t.type === "sell" ? "bad" : t.type === "buy" ? "good" : ""}`} style={{ fontWeight: 900 }}>{t.type.toUpperCase()}</td>
-                      <td className="mono" style={{ fontWeight: 900 }}>{t.asset}</td>
-                      <td className="mono">{fmtQty(t.qty)}</td>
-                      <td className="mono">{t.type === "buy" || t.type === "sell" ? fmtPx(t.price) + " " + state.base : "—"}</td>
-                      <td className="mono">{t.type === "buy" || t.type === "sell" ? fmtFiat(t.total, state.base) : "—"}</td>
-                      <td className="mono">{fmtFiat(t.fee, state.base)}</td>
-                      <td className={`mono ${(t as any).realized != null ? ((t as any).realized >= 0 ? "good" : "bad") : ""}`}>
-                        {(t as any).realized != null ? fmtFiat((t as any).realized, state.base) : "—"}
-                      </td>
-                      <td className="mono muted">{(t as any).venue || "—"}</td>
-                      <td className="mono muted" style={{ maxWidth: 160, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note || "—"}</td>
-                    </tr>
-                  )) : <tr><td colSpan={10} className="muted">No transactions yet. Use Manual Entry or CSV Import.</td></tr>}
-                </tbody>
-              </table>
-            </div>
+              </>
+            )}
+            {importStage === "done" && importResult && (
+              <>
+                <p><strong>{importResult.rowCount}</strong> trades from <strong>{EXCHANGE_LABELS[importResult.exchange]}</strong> committed ✓</p>
+                <button className="btn" onClick={resetImport} style={{ marginTop: 8 }}>Import Another</button>
+              </>
+            )}
           </div>
         </div>
-      )}
+      </div>
+
+      {/* Transaction Ledger */}
+      <div className="panel">
+        <div className="panel-head"><h2>Transaction Ledger</h2><span className="pill">{txs.length} entries</span></div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>DATE</th>
+                  <th>TYPE</th>
+                  <th>ASSET</th>
+                  <th>QTY</th>
+                  <th>UNIT PRICE</th>
+                  <th>FEE</th>
+                  <th>VENUE</th>
+                  <th>TAGS</th>
+                  <th>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txs.length ? txs.map(t => (
+                  <tr key={t.id}>
+                    {editId === t.id ? (
+                      <>
+                        <td className="mono">{new Date(t.ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td>
+                          <select className="inp" value={editType} onChange={e => setEditType(e.target.value)} style={{ width: 80, padding: "2px 4px", fontSize: 11 }}>
+                            <option value="buy">BUY</option>
+                            <option value="sell">SELL</option>
+                          </select>
+                        </td>
+                        <td><input className="inp" value={editAsset} onChange={e => setEditAsset(e.target.value)} style={{ width: 60, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td><input className="inp" type="number" value={editQty} onChange={e => setEditQty(e.target.value)} style={{ width: 90, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td><input className="inp" type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)} style={{ width: 80, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td className="mono muted">—</td>
+                        <td className="mono muted">—</td>
+                        <td className="mono muted">—</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={saveEdit} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--good)", fontSize: 12 }}>✓</button>
+                            <button onClick={() => setEditId(null)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>✕</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="mono">{new Date(t.ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className={`mono ${t.type === "sell" ? "bad" : t.type === "buy" ? "good" : ""}`} style={{ fontWeight: 900 }}>{t.type.toUpperCase()}</td>
+                        <td className="mono" style={{ fontWeight: 900 }}>{t.asset}</td>
+                        <td className="mono">{fmtQty(t.qty)}</td>
+                        <td className="mono">{t.type === "buy" || t.type === "sell" ? "$" + fmtPx(t.price) : "—"}</td>
+                        <td className="mono muted">{t.fee > 0 ? fmtFiat(t.fee, state.base) : "—"}</td>
+                        <td className="mono muted">{(t as any).venue || "—"}</td>
+                        <td className="mono muted" style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note || "—"}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={() => startEdit(t)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--text)", fontSize: 13 }}>✎</button>
+                            <button onClick={() => deleteTx(t.id)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--bad)", fontSize: 13 }}>🗑</button>
+                          </div>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                )) : <tr><td colSpan={9} className="muted">No transactions yet. Use Manual Entry or CSV Import above.</td></tr>}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
     </>
   );
 }
