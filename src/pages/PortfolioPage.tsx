@@ -2,6 +2,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { useSupabasePortfolio } from "@/hooks/useSupabasePortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
+import { useSparklineData } from "@/hooks/useSparklineData";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
 // Mini sparkline canvas component
