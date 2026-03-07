@@ -3,7 +3,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult, NormalizedRow } from "@/lib/importers";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
+import { createTransaction, createImportedFile, fetchAssets } from "@/lib/api";
 
 type Stage = "upload" | "preview" | "done";
 
