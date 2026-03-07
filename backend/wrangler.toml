@@ -1,0 +1,24 @@
+name            = "cryptotracker-api"
+main            = "src/index.ts"
+compatibility_date = "2025-03-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── Cron Trigger — every 2 minutes (matches ref repo pattern) ──
+[triggers]
+crons = ["*/2 * * * *"]
+
+# ── D1 Database ─────────────────────────────────────────────────
+[[d1_databases]]
+binding         = "DB"
+database_name   = "crypto-tracker"
+database_id     = "PLACEHOLDER_D1_ID"           # Replace after: wrangler d1 create crypto-tracker
+# preview_database_id = "PLACEHOLDER_PREVIEW_ID" # For local dev
+
+# ── KV Namespace ────────────────────────────────────────────────
+[[kv_namespaces]]
+binding = "PRICE_KV"
+id      = "PLACEHOLDER_KV_ID"                   # Replace after: wrangler kv namespace create PRICE_KV
+
+# ── Environment variables (set via wrangler secret or dashboard) ─
+# SUPABASE_JWT_SECRET  — used in Phase A to verify Supabase JWTs
+# ALLOWED_ORIGINS      — comma-separated list of frontend origins
