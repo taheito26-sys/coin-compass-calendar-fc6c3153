@@ -1,51 +1,90 @@
 import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { useSupabasePortfolio } from "@/hooks/useSupabasePortfolio";
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useLivePrices } from "@/hooks/useLivePrices";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
-interface CoinGeckoPrice {
-  id: string;
-  symbol: string;
-  current_price: number;
-  price_change_percentage_1h_in_currency: number | null;
-  price_change_percentage_24h_in_currency: number | null;
-  price_change_percentage_7d_in_currency: number | null;
+// Mini sparkline canvas component
+function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
+  const ref = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = ref.current;
+    if (!canvas || data.length < 2) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width, h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const min = Math.min(...data), max = Math.max(...data);
+    const range = max - min || 1;
+    ctx.beginPath();
+    ctx.strokeStyle = positive ? "var(--good, #16a34a)" : "var(--bad, #dc2626)";
+    ctx.lineWidth = 1.5;
+    data.forEach((v, i) => {
+      const x = (i / (data.length - 1)) * w;
+      const y = h - ((v - min) / range) * (h - 4) - 2;
+      i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  }, [data, positive]);
+  return <canvas ref={ref} width={100} height={30} style={{ display: "block" }} />;
+}
+
+// Available column definitions
+const ALL_COLUMNS = [
+  { key: "rank", label: "#", default: true },
+  { key: "asset", label: "Asset", default: true },
+  { key: "amount", label: "Amount", default: true },
+  { key: "sparkline", label: "Price Graph", default: true },
+  { key: "change1h", label: "1h %", default: true },
+  { key: "change24h", label: "24h %", default: true },
+  { key: "change7d", label: "7d %", default: true },
+  { key: "price", label: "Price", default: true },
+  { key: "total", label: "Value", default: true },
+  { key: "allocation", label: "Allocation %", default: true },
+  { key: "avg", label: "Avg Buy", default: true },
+  { key: "avgSell", label: "Avg Sell", default: false },
+  { key: "pnl", label: "P/L", default: true },
+  { key: "pnlPct", label: "Profit %", default: true },
+  { key: "profitAbs", label: "Profit / Unrealized", default: false },
+  { key: "marketCap", label: "Market Cap", default: false },
+  { key: "volume", label: "Volume 24h", default: false },
+];
+
+const STORAGE_KEY = "portfolio_visible_cols";
+
+function loadVisibleCols(): Set<string> {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) return new Set(JSON.parse(raw));
+  } catch {}
+  return new Set(ALL_COLUMNS.filter(c => c.default).map(c => c.key));
 }
 
 export default function PortfolioPage() {
   const sb = useSupabasePortfolio();
   const { state, refresh } = useCrypto();
+  const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
   const localD = cryptoDerived(state);
   const [sortCol, setSortCol] = useState<string>("total");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [livePrices, setLivePrices] = useState<Map<string, CoinGeckoPrice>>(new Map());
-  const intervalRef = useRef<number>(0);
+  const [visibleCols, setVisibleCols] = useState<Set<string>>(loadVisibleCols);
+  const [showColConfig, setShowColConfig] = useState(false);
 
   const useSupabase = sb.authenticated && !sb.error;
   const base = state.base || "USD";
 
-  // Fetch live prices from CoinGecko every 30s
+  // Persist visible columns
   useEffect(() => {
-    const fetchPrices = async () => {
-      try {
-        const pages = [1, 2, 3, 4, 5];
-        const results = await Promise.all(
-          pages.map(page =>
-            fetch(`https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=100&page=${page}&sparkline=false&price_change_percentage=1h,24h,7d`, { signal: AbortSignal.timeout(15000) })
-              .then(r => r.ok ? r.json() : [])
-              .catch(() => [])
-          )
-        );
-        const all: CoinGeckoPrice[] = results.flat();
-        const map = new Map<string, CoinGeckoPrice>();
-        for (const c of all) map.set(c.symbol.toUpperCase(), c);
-        setLivePrices(map);
-      } catch {}
-    };
-    fetchPrices();
-    intervalRef.current = window.setInterval(fetchPrices, 30000);
-    return () => clearInterval(intervalRef.current);
-  }, []);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleCols]));
+  }, [visibleCols]);
+
+  const toggleCol = (key: string) => {
+    setVisibleCols(prev => {
+      const next = new Set(prev);
+      next.has(key) ? next.delete(key) : next.add(key);
+      return next;
+    });
+  };
 
   const toggleSort = (col: string) => {
     if (sortCol === col) setSortDir(d => d === "asc" ? "desc" : "asc");
@@ -55,34 +94,40 @@ export default function PortfolioPage() {
   // Build unified position list with live prices
   const positions = useMemo(() => {
     const buildPos = (sym: string, name: string, qty: number, cost: number) => {
-      const live = livePrices.get(sym.toUpperCase());
+      const live = getPrice(sym);
       const livePrice = live?.current_price ?? null;
-      const price = livePrice;
       const avg = qty > 0 ? cost / qty : 0;
-      const total = price !== null ? price * qty : 0;
-      const pnlAbs = price !== null ? total - cost : 0;
-      const pnlPct = cost > 0 && price !== null ? (pnlAbs / cost) * 100 : 0;
+      const total = livePrice !== null ? livePrice * qty : 0;
+      const pnlAbs = livePrice !== null ? total - cost : 0;
+      const pnlPct = cost > 0 && livePrice !== null ? (pnlAbs / cost) * 100 : 0;
+      // Generate fake sparkline from change data
+      const c1h = live?.price_change_percentage_1h_in_currency ?? 0;
+      const c24h = live?.price_change_percentage_24h_in_currency ?? 0;
+      const c7d = live?.price_change_percentage_7d_in_currency ?? 0;
+      const p = livePrice ?? 1;
+      const sparkData = [
+        p / (1 + c7d / 100),
+        p / (1 + c7d / 100) * (1 + c7d / 200),
+        p / (1 + c24h / 100),
+        p / (1 + c24h / 100) * (1 + c24h / 200),
+        p / (1 + c1h / 100),
+        p,
+      ];
       return {
-        sym,
-        name,
-        qty,
-        price,
-        avg,
-        total,
-        cost,
-        pnlAbs,
-        pnlPct,
-        change1h: live?.price_change_percentage_1h_in_currency ?? 0,
-        change24h: live?.price_change_percentage_24h_in_currency ?? 0,
-        change7d: live?.price_change_percentage_7d_in_currency ?? 0,
+        sym, name, qty, price: livePrice, avg, total, cost, pnlAbs, pnlPct,
+        change1h: c1h, change24h: c24h, change7d: c7d,
+        sparkData,
+        marketCap: live?.market_cap ?? 0,
+        volume: live?.total_volume ?? 0,
       };
     };
-
     if (useSupabase && sb.positions.length > 0) {
       return sb.positions.map(p => buildPos(p.symbol, p.name, p.qty, p.cost));
     }
     return localD.rows.map(r => buildPos(r.sym, r.sym, r.qty, r.cost));
-  }, [useSupabase, sb.positions, localD.rows, livePrices]);
+  }, [useSupabase, sb.positions, localD.rows, liveCoinsList, getPrice]);
+
+  const totalMV = positions.reduce((s, p) => s + p.total, 0);
 
   const sorted = useMemo(() => {
     const m = sortDir === "asc" ? 1 : -1;
@@ -93,6 +138,7 @@ export default function PortfolioPage() {
         case "total": return (a.total - b.total) * m;
         case "avg": return (a.avg - b.avg) * m;
         case "pnl": return (a.pnlAbs - b.pnlAbs) * m;
+        case "allocation": return (a.total - b.total) * m;
         default: return (a.total - b.total) * m;
       }
     });
@@ -117,18 +163,25 @@ export default function PortfolioPage() {
     await Promise.all([sb.refresh(), refresh(true)]);
   };
 
-  // Totals
-  const totalMV = positions.reduce((s, p) => s + p.total, 0);
   const totalCost = positions.reduce((s, p) => s + p.cost, 0);
   const totalPnl = totalMV - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+
+  const show = (key: string) => visibleCols.has(key);
+
+  function formatCompact(n: number): string {
+    if (n >= 1e12) return "$" + (n / 1e12).toFixed(1) + "T";
+    if (n >= 1e9) return "$" + (n / 1e9).toFixed(0) + "B";
+    if (n >= 1e6) return "$" + (n / 1e6).toFixed(0) + "M";
+    return "$" + n.toLocaleString();
+  }
 
   return (
     <>
       {!sb.loading && !sb.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not logged in — showing local data only. Sign in to see Supabase positions.
+            ⚠ Not logged in — showing local data only.
           </div>
         </div>
       )}
@@ -153,11 +206,36 @@ export default function PortfolioPage() {
         </div>
       </div>
 
-      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
         <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
+        <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
+          ⚙ Columns
+        </button>
         {useSupabase && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Supabase ✓</span>}
         <span className="pill">Live prices · Top 500</span>
       </div>
+
+      {/* Column configurator */}
+      {showColConfig && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body" style={{ display: "flex", flexWrap: "wrap", gap: 6, padding: 10 }}>
+            {ALL_COLUMNS.map(col => (
+              <label key={col.key} style={{
+                display: "flex", alignItems: "center", gap: 4, fontSize: 11,
+                padding: "4px 8px", borderRadius: 6,
+                background: visibleCols.has(col.key) ? "var(--brand3)" : "var(--panel2)",
+                cursor: "pointer", userSelect: "none",
+                border: `1px solid ${visibleCols.has(col.key) ? "var(--brand)" : "var(--line)"}`,
+                color: visibleCols.has(col.key) ? "var(--brand)" : "var(--muted)",
+                fontWeight: visibleCols.has(col.key) ? 700 : 400,
+              }}>
+                <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} style={{ display: "none" }} />
+                {col.label}
+              </label>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="panel">
         <div className="panel-head">
@@ -169,52 +247,86 @@ export default function PortfolioPage() {
             <table>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Asset</th>
-                  <th>Amount</th>
-                  <th>1h</th>
-                  <th>24h</th>
-                  <th>7d</th>
-                  <SortTh col="price" label="Price" />
-                  <SortTh col="total" label="Value" />
-                  <SortTh col="avg" label="Avg Buy" />
-                  <SortTh col="pnl" label="P/L" />
+                  {show("rank") && <th>#</th>}
+                  {show("asset") && <th>Asset</th>}
+                  {show("sparkline") && <th>Price Graph</th>}
+                  {show("amount") && <th>Amount</th>}
+                  {show("change1h") && <th>1h</th>}
+                  {show("change24h") && <th>24h</th>}
+                  {show("change7d") && <th>7d</th>}
+                  {show("price") && <SortTh col="price" label="Price" />}
+                  {show("total") && <SortTh col="total" label="Value" />}
+                  {show("allocation") && <SortTh col="allocation" label="Alloc %" />}
+                  {show("avg") && <SortTh col="avg" label="Avg Buy" />}
+                  {show("avgSell") && <th>Avg Sell</th>}
+                  {show("pnl") && <SortTh col="pnl" label="P/L" />}
+                  {show("pnlPct") && <th>Profit %</th>}
+                  {show("profitAbs") && <th>Profit / Unrealized</th>}
+                  {show("marketCap") && <th>Market Cap</th>}
+                  {show("volume") && <th>Volume 24h</th>}
                 </tr>
               </thead>
               <tbody>
-                {sorted.length > 0 ? sorted.map((pos, i) => (
-                  <tr key={pos.sym}>
-                    <td className="mono muted">{i + 1}</td>
-                    <td>
-                      <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
-                      {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {pos.name}</span>}
-                    </td>
-                    <td className="mono">{fmtQty(pos.qty)}</td>
-                    <td>{renderChangePill(pos.change1h)}</td>
-                    <td>{renderChangePill(pos.change24h)}</td>
-                    <td>{renderChangePill(pos.change7d)}</td>
-                    <td className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>
-                    <td className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>
-                    <td className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>
-                    <td style={{ textAlign: "right" }}>
-                      <div style={{
-                        fontWeight: 900,
-                        fontFamily: "var(--lt-font-mono)",
-                        color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)",
-                      }}>
-                        {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                      </div>
-                      <div style={{
-                        fontSize: 10,
-                        color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)",
-                        fontWeight: 600,
-                      }}>
-                        {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
-                      </div>
-                    </td>
-                  </tr>
-                )) : (
-                  <tr><td colSpan={10} className="muted">No assets. Import trades in the Ledger.</td></tr>
+                {sorted.length > 0 ? sorted.map((pos, i) => {
+                  const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
+                  return (
+                    <tr key={pos.sym}>
+                      {show("rank") && <td className="mono muted">{i + 1}</td>}
+                      {show("asset") && (
+                        <td>
+                          <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
+                          {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {pos.name}</span>}
+                        </td>
+                      )}
+                      {show("sparkline") && (
+                        <td><Sparkline data={pos.sparkData} positive={pos.change7d >= 0} /></td>
+                      )}
+                      {show("amount") && <td className="mono">{fmtQty(pos.qty)}</td>}
+                      {show("change1h") && <td>{renderChangePill(pos.change1h)}</td>}
+                      {show("change24h") && <td>{renderChangePill(pos.change24h)}</td>}
+                      {show("change7d") && <td>{renderChangePill(pos.change7d)}</td>}
+                      {show("price") && <td className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>}
+                      {show("total") && <td className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>}
+                      {show("allocation") && (
+                        <td>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                            <div style={{ width: 40, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
+                              <div style={{ width: `${Math.min(alloc, 100)}%`, height: "100%", borderRadius: 3, background: "var(--brand)" }} />
+                            </div>
+                            <span className="mono" style={{ fontSize: 11 }}>{alloc.toFixed(1)}%</span>
+                          </div>
+                        </td>
+                      )}
+                      {show("avg") && <td className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>}
+                      {show("avgSell") && <td className="mono muted">—</td>}
+                      {show("pnl") && (
+                        <td style={{ textAlign: "right" }}>
+                          <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
+                            {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                          </div>
+                          <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
+                            {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                          </div>
+                        </td>
+                      )}
+                      {show("pnlPct") && (
+                        <td>
+                          <span className={`mono ${pos.pnlPct >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                            {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                          </span>
+                        </td>
+                      )}
+                      {show("profitAbs") && (
+                        <td className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
+                          {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </td>
+                      )}
+                      {show("marketCap") && <td className="mono">{formatCompact(pos.marketCap)}</td>}
+                      {show("volume") && <td className="mono">{formatCompact(pos.volume)}</td>}
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan={20} className="muted">No assets. Import trades in the Ledger.</td></tr>
                 )}
               </tbody>
             </table>

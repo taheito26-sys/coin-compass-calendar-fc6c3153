@@ -1,31 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-
-interface CoinData {
-  id: string;
-  symbol: string;
-  name: string;
-  current_price: number;
-  market_cap: number;
-  total_volume: number;
-  price_change_percentage_1h_in_currency: number;
-  price_change_percentage_24h_in_currency: number;
-  price_change_percentage_7d_in_currency: number;
-  market_cap_rank: number;
-}
+import { useLivePrices, type LiveCoin } from "@/hooks/useLivePrices";
 
 interface Bubble {
-  id: string;
-  symbol: string;
-  name: string;
-  price: number;
-  change: number;
-  marketCap: number;
-  x: number;
-  y: number;
-  r: number;
-  vx: number;
-  vy: number;
+  id: string; symbol: string; name: string; price: number;
+  change: number; marketCap: number;
+  x: number; y: number; r: number; vx: number; vy: number;
 }
 
 const TIME_RANGES = [
@@ -41,115 +21,77 @@ function formatCompact(n: number): string {
   return "$" + n.toLocaleString();
 }
 
+function getChange(coin: LiveCoin, timeRange: string) {
+  switch (timeRange) {
+    case "1h": return coin.price_change_percentage_1h_in_currency || 0;
+    case "7d": return coin.price_change_percentage_7d_in_currency || 0;
+    default: return coin.price_change_percentage_24h_in_currency || 0;
+  }
+}
+
 export default function MarketsPage() {
   const { state, setState, toast } = useCrypto();
-  const [coins, setCoins] = useState<CoinData[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { coins: allCoins, loading } = useLivePrices();
   const [view, setView] = useState<"bubbles" | "table">("bubbles");
   const [timeRange, setTimeRange] = useState("24h");
-  const [coinCount, setCoinCount] = useState(500);
+  const [coinCount, setCoinCount] = useState(100);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bubblesRef = useRef<Bubble[]>([]);
   const animRef = useRef<number>(0);
   const containerRef = useRef<HTMLDivElement>(null);
+  const hoveredRef = useRef<Bubble | null>(null);
+  const mouseRef = useRef({ x: 0, y: 0 });
 
-  // Fetch coin data from CoinGecko
-  useEffect(() => {
-    let cancelled = false;
-    const fetchCoins = async () => {
-      setLoading(true);
-      try {
-        const perPage = 100;
-        const pages = Math.ceil(coinCount / perPage);
-        const allData: CoinData[] = [];
-        for (let page = 1; page <= pages; page++) {
-          const r = await fetch(
-            `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${page}&sparkline=false&price_change_percentage=1h,24h,7d`,
-            { signal: AbortSignal.timeout(15000) }
-          );
-          if (!r.ok) throw new Error("API " + r.status);
-          const data = await r.json();
-          allData.push(...data);
-          if (cancelled) return;
-        }
-        if (!cancelled) setCoins(allData);
-      } catch (e) {
-        console.error("Failed to fetch market data:", e);
-      }
-      if (!cancelled) setLoading(false);
-    };
-    fetchCoins();
-    return () => { cancelled = true; };
-  }, [coinCount]);
-
-  // Get change % based on timeRange
-  const getChange = useCallback((coin: CoinData) => {
-    switch (timeRange) {
-      case "1h": return coin.price_change_percentage_1h_in_currency || 0;
-      case "7d": return coin.price_change_percentage_7d_in_currency || 0;
-      default: return coin.price_change_percentage_24h_in_currency || 0;
-    }
-  }, [timeRange]);
+  const coins = allCoins.slice(0, coinCount);
 
   // Initialize bubbles
   useEffect(() => {
     if (coins.length === 0 || view !== "bubbles") return;
     const container = containerRef.current;
     if (!container) return;
-
     const W = container.clientWidth;
     const H = container.clientHeight || 500;
-
     const maxMcap = Math.max(...coins.map(c => c.market_cap || 1));
-    
-    bubblesRef.current = coins.map((coin, i) => {
-      const change = getChange(coin);
+
+    bubblesRef.current = coins.map((coin) => {
+      const change = getChange(coin, timeRange);
       const mcapRatio = Math.sqrt((coin.market_cap || 1) / maxMcap);
-      const r = Math.max(16, Math.min(60, mcapRatio * 60));
+      const r = Math.max(14, Math.min(55, mcapRatio * 55));
       return {
-        id: coin.id,
-        symbol: coin.symbol.toUpperCase(),
-        name: coin.name,
-        price: coin.current_price,
-        change,
-        marketCap: coin.market_cap,
+        id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
+        price: coin.current_price, change, marketCap: coin.market_cap,
         x: Math.random() * (W - r * 2) + r,
         y: Math.random() * (H - r * 2) + r,
-        r,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
+        r, vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
       };
     });
 
-    // Simple physics simulation
     const canvas = canvasRef.current;
     if (!canvas) return;
-    canvas.width = W;
-    canvas.height = H;
+    canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
     const animate = () => {
       const bubbles = bubblesRef.current;
       ctx.clearRect(0, 0, W, H);
+      let hovered: Bubble | null = null;
+      const mx = mouseRef.current.x, my = mouseRef.current.y;
 
-      // Update positions with simple collision
       for (const b of bubbles) {
-        b.x += b.vx;
-        b.y += b.vy;
-
-        // Wall bounce
+        b.x += b.vx; b.y += b.vy;
         if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.8; }
         if (b.x + b.r > W) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.8; }
         if (b.y - b.r < 0) { b.y = b.r; b.vy = Math.abs(b.vy) * 0.8; }
         if (b.y + b.r > H) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.8; }
+        b.vx *= 0.998; b.vy *= 0.998;
 
-        // Damping
-        b.vx *= 0.998;
-        b.vy *= 0.998;
+        const dx = mx - b.x, dy = my - b.y;
+        if (Math.sqrt(dx * dx + dy * dy) < b.r) hovered = b;
       }
+      hoveredRef.current = hovered;
 
-      // Basic bubble-bubble collision
+      // Collision
       for (let i = 0; i < bubbles.length; i++) {
         for (let j = i + 1; j < bubbles.length; j++) {
           const a = bubbles[i], b = bubbles[j];
@@ -159,49 +101,40 @@ export default function MarketsPage() {
           if (dist < minDist && dist > 0) {
             const overlap = (minDist - dist) / 2;
             const nx = dx / dist, ny = dy / dist;
-            a.x -= nx * overlap * 0.5;
-            a.y -= ny * overlap * 0.5;
-            b.x += nx * overlap * 0.5;
-            b.y += ny * overlap * 0.5;
-            // Transfer velocity
+            a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
+            b.x += nx * overlap * 0.5; b.y += ny * overlap * 0.5;
             const dvx = a.vx - b.vx, dvy = a.vy - b.vy;
             const dvn = dvx * nx + dvy * ny;
             if (dvn > 0) {
-              a.vx -= dvn * nx * 0.3;
-              a.vy -= dvn * ny * 0.3;
-              b.vx += dvn * nx * 0.3;
-              b.vy += dvn * ny * 0.3;
+              a.vx -= dvn * nx * 0.3; a.vy -= dvn * ny * 0.3;
+              b.vx += dvn * nx * 0.3; b.vy += dvn * ny * 0.3;
             }
           }
         }
       }
 
-      // Draw bubbles
+      // Draw
       for (const b of bubbles) {
         const isPos = b.change >= 0;
         const intensity = Math.min(Math.abs(b.change) / 15, 1);
-        
-        // Bubble fill
-        const alpha = 0.15 + intensity * 0.35;
+        const isHov = hovered === b;
+        const alpha = 0.15 + intensity * 0.35 + (isHov ? 0.15 : 0);
+
         ctx.beginPath();
-        ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2);
+        ctx.arc(b.x, b.y, b.r + (isHov ? 2 : 0), 0, Math.PI * 2);
         ctx.fillStyle = isPos
           ? `rgba(22, 163, 74, ${alpha})`
           : `rgba(220, 38, 38, ${alpha})`;
         ctx.fill();
-
-        // Bubble border
         ctx.strokeStyle = isPos
           ? `rgba(22, 163, 74, ${0.3 + intensity * 0.5})`
           : `rgba(220, 38, 38, ${0.3 + intensity * 0.5})`;
-        ctx.lineWidth = 1.5;
+        ctx.lineWidth = isHov ? 2.5 : 1.5;
         ctx.stroke();
 
-        // Text
         ctx.textAlign = "center";
         ctx.fillStyle = isPos ? "#4ade80" : "#f87171";
-
-        if (b.r > 25) {
+        if (b.r > 22) {
           ctx.font = `bold ${Math.max(9, b.r * 0.32)}px Inter, sans-serif`;
           ctx.fillText(b.symbol, b.x, b.y - 2);
           ctx.font = `${Math.max(8, b.r * 0.22)}px Inter, sans-serif`;
@@ -213,39 +146,74 @@ export default function MarketsPage() {
         }
       }
 
+      // Tooltip
+      if (hovered) {
+        const b = hovered;
+        const tw = 160, th = 60;
+        let tx = b.x + b.r + 10, ty = b.y - th / 2;
+        if (tx + tw > W) tx = b.x - b.r - tw - 10;
+        if (ty < 0) ty = 4; if (ty + th > H) ty = H - th - 4;
+        ctx.fillStyle = "rgba(0,0,0,0.85)";
+        ctx.beginPath();
+        const rr = 6;
+        ctx.moveTo(tx + rr, ty); ctx.lineTo(tx + tw - rr, ty);
+        ctx.quadraticCurveTo(tx + tw, ty, tx + tw, ty + rr);
+        ctx.lineTo(tx + tw, ty + th - rr);
+        ctx.quadraticCurveTo(tx + tw, ty + th, tx + tw - rr, ty + th);
+        ctx.lineTo(tx + rr, ty + th);
+        ctx.quadraticCurveTo(tx, ty + th, tx, ty + th - rr);
+        ctx.lineTo(tx, ty + rr);
+        ctx.quadraticCurveTo(tx, ty, tx + rr, ty);
+        ctx.fill();
+        ctx.fillStyle = "#fff"; ctx.font = "bold 11px Inter"; ctx.textAlign = "left";
+        ctx.fillText(`${b.symbol} · ${b.name}`, tx + 8, ty + 16);
+        ctx.font = "11px Inter"; ctx.fillStyle = "#aaa";
+        ctx.fillText(`$${b.price.toLocaleString()}`, tx + 8, ty + 32);
+        ctx.fillStyle = b.change >= 0 ? "#4ade80" : "#f87171";
+        ctx.fillText(`${b.change >= 0 ? "+" : ""}${b.change.toFixed(2)}%`, tx + 8, ty + 48);
+        ctx.fillStyle = "#777";
+        ctx.fillText(formatCompact(b.marketCap), tx + 90, ty + 48);
+      }
+
       animRef.current = requestAnimationFrame(animate);
     };
-
     animRef.current = requestAnimationFrame(animate);
     return () => cancelAnimationFrame(animRef.current);
-  }, [coins, view, timeRange, getChange]);
+  }, [coins, view, timeRange]);
 
-  // Handle resize
+  // Mouse tracking
   useEffect(() => {
-    const handleResize = () => {
-      const container = containerRef.current;
-      const canvas = canvasRef.current;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const h = (e: MouseEvent) => {
+      const rect = canvas.getBoundingClientRect();
+      mouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+    };
+    canvas.addEventListener("mousemove", h);
+    return () => canvas.removeEventListener("mousemove", h);
+  }, []);
+
+  // Resize
+  useEffect(() => {
+    const h = () => {
+      const container = containerRef.current, canvas = canvasRef.current;
       if (!container || !canvas) return;
       canvas.width = container.clientWidth;
       canvas.height = container.clientHeight || 500;
     };
-    window.addEventListener("resize", handleResize);
-    return () => window.removeEventListener("resize", handleResize);
+    window.addEventListener("resize", h);
+    return () => window.removeEventListener("resize", h);
   }, []);
 
   const isWatched = (sym: string) => state.watch.includes(sym.toUpperCase());
   const toggleWatch = (sym: string) => {
     const s = sym.toUpperCase();
-    if (isWatched(s)) {
-      setState(prev => ({ ...prev, watch: prev.watch.filter(w => w !== s) }));
-    } else {
-      setState(prev => ({ ...prev, watch: [...prev.watch, s] }));
-      toast("Added " + s + " to watchlist", "good");
-    }
+    if (isWatched(s)) setState(prev => ({ ...prev, watch: prev.watch.filter(w => w !== s) }));
+    else { setState(prev => ({ ...prev, watch: [...prev.watch, s] })); toast("Added " + s + " to watchlist", "good"); }
   };
 
-  const renderChangePill = (val: number) => {
-    if (!val && val !== 0) return <span className="mono muted">—</span>;
+  const renderChangePill = (val: number | null) => {
+    if (val == null) return <span className="mono muted">—</span>;
     return (
       <span className={`mono ${val > 0 ? "good" : val < 0 ? "bad" : "muted"}`} style={{ fontWeight: 700, fontSize: 11 }}>
         {val > 0 ? "▲" : val < 0 ? "▼" : ""} {Math.abs(val).toFixed(2)}%
@@ -266,27 +234,23 @@ export default function MarketsPage() {
           ))}
         </div>
         <div className="seg">
-          {[50, 100].map(n => (
-            <button key={n} className={coinCount === n ? "active" : ""} onClick={() => setCoinCount(n)}>1-{n}</button>
+          {[100, 250, 500].map(n => (
+            <button key={n} className={coinCount === n ? "active" : ""} onClick={() => setCoinCount(n)}>Top {n}</button>
           ))}
         </div>
         <span className="pill">{coins.length} coins</span>
       </div>
 
-      {loading && (
-        <div className="panel"><div className="panel-body muted">Loading market data…</div></div>
-      )}
+      {loading && <div className="panel"><div className="panel-body muted">Loading market data…</div></div>}
 
-      {/* Bubbles View */}
       {!loading && view === "bubbles" && (
         <div className="panel" style={{ overflow: "hidden" }}>
           <div ref={containerRef} style={{ width: "100%", height: 500, position: "relative", background: "var(--bg)" }}>
-            <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%" }} />
+            <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }} />
           </div>
         </div>
       )}
 
-      {/* Table View */}
       {!loading && view === "table" && (
         <div className="panel">
           <div className="panel-head">
@@ -313,10 +277,7 @@ export default function MarketsPage() {
                   {coins.map(coin => (
                     <tr key={coin.id}>
                       <td>
-                        <span
-                          onClick={() => toggleWatch(coin.symbol)}
-                          style={{ cursor: "pointer", fontSize: 14, color: isWatched(coin.symbol) ? "var(--warn)" : "var(--muted2)" }}
-                        >
+                        <span onClick={() => toggleWatch(coin.symbol)} style={{ cursor: "pointer", fontSize: 14, color: isWatched(coin.symbol) ? "var(--warn)" : "var(--muted2)" }}>
                           {isWatched(coin.symbol) ? "★" : "☆"}
                         </span>
                       </td>

@@ -28,7 +28,7 @@ function AppShell() {
       <div className="app">
         <Sidebar page={page} onNav={setPage} />
         <div className="mainWrap">
-          <Topbar title={title} sub={sub} />
+          <Topbar title={title} sub={sub} onNav={setPage} />
           <div className="scroll">
             {page === "dashboard" && <DashboardPage />}
             {page === "assets" && <PortfolioPage />}
@@ -55,4 +55,3 @@ const App = forwardRef<HTMLDivElement, Record<string, never>>(function App(_prop
 App.displayName = "App";
 
 export default App;
-
