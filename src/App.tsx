@@ -23,6 +23,17 @@ const PAGE_TITLES: Record<string, [string, string]> = {
 };
 
 function AuthGate({ children }: { children: React.ReactNode }) {
+  const clerkAvailable = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+
+  // If Clerk isn't configured, skip auth entirely
+  if (!clerkAvailable) {
+    return <>{children}</>;
+  }
+
+  return <ClerkAuthGate>{children}</ClerkAuthGate>;
+}
+
+function ClerkAuthGate({ children }: { children: React.ReactNode }) {
   const { isSignedIn, isLoaded } = useAuth();
   const [skipAuth, setSkipAuth] = useState(false);
 
@@ -60,17 +71,18 @@ function AuthGate({ children }: { children: React.ReactNode }) {
 function AppShell() {
   const [page, setPage] = useState("dashboard");
   const { toastMsg } = useCrypto();
-  const { signOut, isSignedIn } = useAuth();
+  const clerkAvailable = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const auth = clerkAvailable ? useAuth() : { signOut: async () => {}, isSignedIn: false };
   const [title, sub] = PAGE_TITLES[page] || ["CryptoTracker", ""];
 
   const handleLogout = async () => {
-    await signOut();
+    await auth.signOut();
   };
 
   return (
     <>
       <div className="app">
-        <Sidebar page={page} onNav={setPage} onLogout={isSignedIn ? handleLogout : undefined} />
+        <Sidebar page={page} onNav={setPage} onLogout={auth.isSignedIn ? handleLogout : undefined} />
         <div className="mainWrap">
           <Topbar title={title} sub={sub} onNav={setPage} />
           <div className="scroll">
