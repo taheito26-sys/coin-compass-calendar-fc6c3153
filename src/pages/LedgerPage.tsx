@@ -47,9 +47,7 @@ async function saveTransactionViaApi(tx: {
       note: tx.note || undefined,
       source: "manual",
     });
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    return { ok: true, source };
+    return { ok: true, source: "worker" };
   } catch (err: any) {
     console.error("[ledger] Save failed:", err);
     return { ok: false, source: "error" };
@@ -162,9 +160,7 @@ export default function LedgerPage() {
         qty: newQty || undefined,
         unit_price: newPrice || undefined,
       });
-      const log = getSourceLog(1);
-      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-      toast(`Transaction updated ✓ (via ${source})`, "good");
+      toast("Transaction updated ✓", "good");
     } catch (err: any) {
       console.error("[ledger] Update failed:", err);
       toast("Updated locally only (backend sync failed)", "good");
@@ -177,9 +173,7 @@ export default function LedgerPage() {
     // Persist to backend
     try {
       await deleteTransaction(id);
-      const log = getSourceLog(1);
-      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-      toast(`Transaction deleted ✓ (via ${source})`, "good");
+      toast("Transaction deleted ✓", "good");
     } catch (err: any) {
       console.error("[ledger] Delete failed:", err);
       toast("Deleted locally only (backend sync failed)", "good");
@@ -274,9 +268,7 @@ export default function LedgerPage() {
       console.warn("[import] Failed to record imported file:", err.message);
     }
 
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    toast(`Imported ${importResult.rows.length} trades (${synced} synced via ${source})`, "good");
+    toast(`Imported ${importResult.rows.length} trades (${synced} synced)`, "good");
     setImportStage("done");
   };
 
