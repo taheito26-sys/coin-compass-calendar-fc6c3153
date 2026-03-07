@@ -11,7 +11,7 @@ crons = ["*/2 * * * *"]
 [[d1_databases]]
 binding         = "DB"
 database_name   = "crypto-tracker"
-database_id     = "PLACEHOLDER_D1_ID"           # Paste your D1 ID here after: wrangler d1 list
+database_id     = "e51dd932-5912-4a1b-b354-ff03bc25d23e"
 
 # ── KV Namespace ────────────────────────────────────────────────
 [[kv_namespaces]]
