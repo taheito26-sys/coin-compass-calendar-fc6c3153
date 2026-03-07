@@ -185,9 +185,7 @@ export default function ImportPage() {
       console.warn("[import] Failed to record imported file:", err.message);
     }
 
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    toast(`Imported ${result.rows.length} trades (${synced} synced via ${source})`, "good");
+    toast(`Imported ${result.rows.length} trades (${synced} synced)`, "good");
     setStage("done");
   };
 
