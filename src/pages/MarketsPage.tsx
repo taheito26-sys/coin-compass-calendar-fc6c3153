@@ -47,7 +47,7 @@ export default function MarketsPage() {
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"bubbles" | "table">("bubbles");
   const [timeRange, setTimeRange] = useState("24h");
-  const [coinCount, setCoinCount] = useState(100);
+  const [coinCount, setCoinCount] = useState(500);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const bubblesRef = useRef<Bubble[]>([]);
   const animRef = useRef<number>(0);
@@ -59,13 +59,20 @@ export default function MarketsPage() {
     const fetchCoins = async () => {
       setLoading(true);
       try {
-        const r = await fetch(
-          `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${coinCount}&page=1&sparkline=false&price_change_percentage=1h,24h,7d`,
-          { signal: AbortSignal.timeout(15000) }
-        );
-        if (!r.ok) throw new Error("API " + r.status);
-        const data = await r.json();
-        if (!cancelled) setCoins(data);
+        const perPage = 100;
+        const pages = Math.ceil(coinCount / perPage);
+        const allData: CoinData[] = [];
+        for (let page = 1; page <= pages; page++) {
+          const r = await fetch(
+            `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=${perPage}&page=${page}&sparkline=false&price_change_percentage=1h,24h,7d`,
+            { signal: AbortSignal.timeout(15000) }
+          );
+          if (!r.ok) throw new Error("API " + r.status);
+          const data = await r.json();
+          allData.push(...data);
+          if (cancelled) return;
+        }
+        if (!cancelled) setCoins(allData);
       } catch (e) {
         console.error("Failed to fetch market data:", e);
       }
