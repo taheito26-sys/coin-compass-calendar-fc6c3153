@@ -1,12 +1,48 @@
 /**
  * API client for the Cloudflare Worker backend.
  * Falls back to Supabase when the Worker is unavailable.
+ * Tracks which source served each request for visibility.
  */
 import { supabase } from "@/lib/supabaseClient";
 
 // Set this to your deployed Worker URL, e.g. "https://cryptotracker-api.your-account.workers.dev"
 // When empty/null, all reads fall back to Supabase.
 const WORKER_BASE = import.meta.env.VITE_WORKER_API_URL || "";
+
+// ── Data source tracking ────────────────────────────────────────
+
+export type DataSourceResult = "worker" | "supabase";
+
+interface SourceLog {
+  endpoint: string;
+  source: DataSourceResult;
+  ts: number;
+  error?: string;
+}
+
+const _sourceLog: SourceLog[] = [];
+
+/** Returns the last N source log entries for debugging */
+export function getSourceLog(n = 20): SourceLog[] {
+  return _sourceLog.slice(-n);
+}
+
+/** Returns a summary of which source served the last batch of requests */
+export function getLastDataSource(): DataSourceResult {
+  if (_sourceLog.length === 0) return "supabase";
+  // If any recent request was served by worker, report worker
+  const recent = _sourceLog.slice(-5);
+  return recent.some(l => l.source === "worker") ? "worker" : "supabase";
+}
+
+function logSource(endpoint: string, source: DataSourceResult, error?: string) {
+  _sourceLog.push({ endpoint, source, ts: Date.now(), error });
+  // Keep log bounded
+  if (_sourceLog.length > 100) _sourceLog.splice(0, _sourceLog.length - 50);
+  const icon = source === "worker" ? "⚡" : "🔄";
+  const suffix = error ? ` (fallback: ${error})` : "";
+  console.log(`[api] ${icon} ${endpoint} → ${source}${suffix}`);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -15,7 +51,7 @@ async function getAuthToken(): Promise<string | null> {
   return data?.session?.access_token ?? null;
 }
 
-async function workerFetch<T>(path: string, options?: RequestInit): Promise<T | null> {
+async function workerFetch<T>(path: string, options?: RequestInit): Promise<{ data: T; source: "worker" } | null> {
   if (!WORKER_BASE) return null;
   const token = await getAuthToken();
   const headers: Record<string, string> = {
@@ -28,9 +64,15 @@ async function workerFetch<T>(path: string, options?: RequestInit): Promise<T | 
       headers: { ...headers, ...(options?.headers as Record<string, string> ?? {}) },
       signal: options?.signal ?? AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+      throw new Error(`Worker ${res.status}: ${errorText}`);
+    }
+    const data = await res.json() as T;
+    return { data, source: "worker" };
+  } catch (err: any) {
+    // Don't silently swallow — log the failure
+    console.warn(`[api] Worker failed for ${path}:`, err.message);
     return null;
   }
 }
