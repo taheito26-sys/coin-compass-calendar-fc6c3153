@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { fmtFiat } from "@/lib/cryptoState";
+import { fetchAssets, fetchTransactions, fetchPrices, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
 
 export interface SupabasePosition {
   assetId: string;
@@ -33,34 +33,90 @@ export interface SupabasePortfolioData {
   loading: boolean;
   error: string | null;
   authenticated: boolean;
+  dataSource: string;
   refresh: () => Promise<void>;
 }
 
-interface AssetRow {
-  id: string;
-  symbol: string;
-  name: string;
-  category: string | null;
+// ── Position builder (shared logic) ─────────────────────────────
+
+function buildPositions(
+  assets: ApiAsset[],
+  txs: ApiTransaction[],
+  prices: Record<string, ApiPriceEntry>
+): SupabasePosition[] {
+  const assetMap = new Map<string, ApiAsset>();
+  for (const a of assets) assetMap.set(a.id, a);
+
+  // Aggregate transactions into positions
+  const posMap = new Map<string, { qty: number; cost: number }>();
+  for (const tx of txs) {
+    const current = posMap.get(tx.asset_id) || { qty: 0, cost: 0 };
+    const txTotal = tx.qty * tx.unit_price;
+
+    switch (tx.type) {
+      case "buy":
+      case "transfer_in":
+      case "reward":
+        current.qty += tx.qty;
+        current.cost += txTotal + tx.fee_amount;
+        break;
+      case "sell":
+      case "transfer_out":
+        if (current.qty > 0) {
+          const avgCost = current.cost / current.qty;
+          const soldQty = Math.min(tx.qty, current.qty);
+          current.qty -= soldQty;
+          current.cost -= avgCost * soldQty;
+        }
+        break;
+      case "fee":
+        current.cost += tx.fee_amount;
+        break;
+    }
+
+    if (current.qty < 0.00000001) {
+      current.qty = 0;
+      current.cost = 0;
+    }
+    posMap.set(tx.asset_id, current);
+  }
+
+  const result: SupabasePosition[] = [];
+  for (const [assetId, pos] of posMap) {
+    if (pos.qty <= 0) continue;
+    const asset = assetMap.get(assetId);
+    if (!asset) continue;
+    const priceData = prices[assetId];
+    const price = priceData?.price ?? null;
+    const mv = price !== null ? price * pos.qty : null;
+    const pnlAbs = mv !== null ? mv - pos.cost : null;
+    const pnlPct = pos.cost > 0 && pnlAbs !== null ? (pnlAbs / pos.cost) * 100 : null;
+
+    result.push({
+      assetId,
+      symbol: asset.symbol,
+      name: asset.name,
+      category: asset.category || "other",
+      qty: pos.qty,
+      cost: pos.cost,
+      avg: pos.qty > 0 ? pos.cost / pos.qty : 0,
+      price,
+      priceChange1h: priceData?.change_1h ?? null,
+      priceChange24h: priceData?.change_24h ?? null,
+      priceChange7d: priceData?.change_7d ?? null,
+      marketCap: priceData?.market_cap ?? null,
+      volume24h: priceData?.volume_24h ?? null,
+      mv,
+      pnlAbs,
+      pnlPct,
+    });
+  }
+
+  result.sort((a, b) => (b.mv ?? 0) - (a.mv ?? 0));
+  return result;
 }
 
-interface TxRow {
-  asset_id: string;
-  type: string;
-  qty: number;
-  unit_price: number;
-  fee_amount: number;
-}
-
-interface PriceRow {
-  asset_id: string;
-  price: number;
-  price_change_1h: number | null;
-  price_change_24h: number | null;
-  price_change_7d: number | null;
-  market_cap: number | null;
-  volume_24h: number | null;
-  timestamp: string | null;
-}
+// ── Hook ─────────────────────────────────────────────────────────
 
 export function useSupabasePortfolio(): SupabasePortfolioData {
   const [positions, setPositions] = useState<SupabasePosition[]>([]);
@@ -68,14 +124,15 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [authenticated, setAuthenticated] = useState(false);
-  const [priceTs, setPriceTs] = useState<string | null>(null);
+  const [priceTs, setPriceTs] = useState(0);
+  const [dataSource, setDataSource] = useState("supabase");
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      // Check auth
+      // Check auth (still via Supabase in Phase A)
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         setAuthenticated(false);
@@ -86,105 +143,18 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
       }
       setAuthenticated(true);
 
-      // Fetch assets, transactions, and prices in parallel
-      const [assetsRes, txRes, pricesRes] = await Promise.all([
-        supabase.from("assets").select("id, symbol, name, category"),
-        supabase.from("transactions").select("asset_id, type, qty, unit_price, fee_amount").eq("user_id", user.id),
-        supabase.from("price_cache").select("asset_id, price, price_change_1h, price_change_24h, price_change_7d, market_cap, volume_24h, timestamp"),
+      // Fetch all data via api.ts (Worker-first, Supabase fallback)
+      const [assets, txs, priceData] = await Promise.all([
+        fetchAssets(),
+        fetchTransactions(user.id),
+        fetchPrices(),
       ]);
 
-      if (assetsRes.error) throw assetsRes.error;
-      if (txRes.error) throw txRes.error;
-      if (pricesRes.error) throw pricesRes.error;
-
-      const assets: AssetRow[] = assetsRes.data || [];
-      const txs: TxRow[] = txRes.data || [];
-      const prices: PriceRow[] = pricesRes.data || [];
-
+      setDataSource(import.meta.env.VITE_WORKER_API_URL ? "worker" : "supabase");
       setTxCount(txs.length);
+      setPriceTs(priceData.ts);
 
-      // Build asset lookup
-      const assetMap = new Map<string, AssetRow>();
-      for (const a of assets) assetMap.set(a.id, a);
-
-      // Build price lookup
-      const priceMap = new Map<string, PriceRow>();
-      for (const p of prices) {
-        priceMap.set(p.asset_id, p);
-        if (p.timestamp && (!priceTs || p.timestamp > priceTs)) {
-          setPriceTs(p.timestamp);
-        }
-      }
-
-      // Compute positions from transactions (FIFO-style aggregation)
-      const posMap = new Map<string, { qty: number; cost: number }>();
-      for (const tx of txs) {
-        const current = posMap.get(tx.asset_id) || { qty: 0, cost: 0 };
-        const txTotal = tx.qty * tx.unit_price;
-
-        switch (tx.type) {
-          case "buy":
-          case "transfer_in":
-          case "reward":
-            current.qty += tx.qty;
-            current.cost += txTotal + tx.fee_amount;
-            break;
-          case "sell":
-          case "transfer_out":
-            if (current.qty > 0) {
-              const avgCost = current.cost / current.qty;
-              const soldQty = Math.min(tx.qty, current.qty);
-              current.qty -= soldQty;
-              current.cost -= avgCost * soldQty;
-            }
-            break;
-          case "fee":
-            current.cost += tx.fee_amount;
-            break;
-        }
-
-        // Clamp to zero
-        if (current.qty < 0.00000001) {
-          current.qty = 0;
-          current.cost = 0;
-        }
-        posMap.set(tx.asset_id, current);
-      }
-
-      // Build final positions
-      const result: SupabasePosition[] = [];
-      for (const [assetId, pos] of posMap) {
-        if (pos.qty <= 0) continue;
-        const asset = assetMap.get(assetId);
-        if (!asset) continue;
-        const priceData = priceMap.get(assetId);
-        const price = priceData?.price ?? null;
-        const mv = price !== null ? price * pos.qty : null;
-        const pnlAbs = mv !== null ? mv - pos.cost : null;
-        const pnlPct = pos.cost > 0 && pnlAbs !== null ? (pnlAbs / pos.cost) * 100 : null;
-
-        result.push({
-          assetId,
-          symbol: asset.symbol,
-          name: asset.name,
-          category: asset.category || "other",
-          qty: pos.qty,
-          cost: pos.cost,
-          avg: pos.qty > 0 ? pos.cost / pos.qty : 0,
-          price,
-          priceChange1h: priceData?.price_change_1h ?? null,
-          priceChange24h: priceData?.price_change_24h ?? null,
-          priceChange7d: priceData?.price_change_7d ?? null,
-          marketCap: priceData?.market_cap ?? null,
-          volume24h: priceData?.volume_24h ?? null,
-          mv,
-          pnlAbs,
-          pnlPct,
-        });
-      }
-
-      // Sort by market value descending
-      result.sort((a, b) => (b.mv ?? 0) - (a.mv ?? 0));
+      const result = buildPositions(assets, txs, priceData.prices);
       setPositions(result);
     } catch (e: any) {
       console.error("Portfolio load error:", e);
@@ -205,8 +175,8 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
     let priceAge = "—";
-    if (priceTs) {
-      const ageMs = Date.now() - new Date(priceTs).getTime();
+    if (priceTs > 0) {
+      const ageMs = Date.now() - priceTs;
       priceAge = ageMs < 60000 ? Math.round(ageMs / 1000) + "s" : Math.round(ageMs / 60000) + "m";
     }
 
@@ -221,6 +191,7 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     loading,
     error,
     authenticated,
+    dataSource,
     refresh: loadData,
   };
 }
