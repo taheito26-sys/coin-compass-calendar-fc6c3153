@@ -1,6 +1,6 @@
 /**
  * API client — Cloudflare Worker is the ONLY backend.
- * No Supabase fallback. All data flows through the Worker API.
+ * No fallback. All data flows through the Worker API.
  *
  * Environment:
  *   VITE_WORKER_API_URL — public deployed Worker URL (required for production)

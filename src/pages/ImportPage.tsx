@@ -142,7 +142,7 @@ export default function ImportPage() {
       return { ...prev, txs: newTxs, lots: newLots, holdings: newHoldings, importedFiles: newImported };
     });
 
-    // Sync to backend via API client (Worker-first, Supabase fallback)
+    // Sync to backend via Worker API
     let synced = 0;
     const assets = await fetchAssets().catch(() => [] as any[]);
     for (const row of result.rows) {
