@@ -285,82 +285,73 @@ export default function PortfolioPage() {
             <table>
               <thead>
                 <tr>
-                  {show("rank") && <th>#</th>}
-                  {show("asset") && <th>Asset</th>}
-                  {show("sparkline") && <th>Price Graph</th>}
-                  {show("amount") && <th>Amount</th>}
-                  {show("change1h") && <th>1h</th>}
-                  {show("change24h") && <th>24h</th>}
-                  {show("change7d") && <th>7d</th>}
-                  {show("price") && <SortTh col="price" label="Price" />}
-                  {show("total") && <SortTh col="total" label="Value" />}
-                  {show("allocation") && <SortTh col="allocation" label="Alloc %" />}
-                  {show("avg") && <SortTh col="avg" label="Avg Buy" />}
-                  {show("avgSell") && <th>Avg Sell</th>}
-                  {show("pnl") && <SortTh col="pnl" label="P/L" />}
-                  {show("pnlPct") && <th>Profit %</th>}
-                  {show("profitAbs") && <th>Profit / Unrealized</th>}
-                  {show("marketCap") && <th>Market Cap</th>}
-                  {show("volume") && <th>Volume 24h</th>}
+                  {colOrder.filter(k => visibleCols.has(k)).map(key => {
+                    const col = ALL_COLUMNS.find(c => c.key === key)!;
+                    const sortable = ["price", "total", "allocation", "avg", "pnl", "qty"].includes(key);
+                    return sortable
+                      ? <SortTh key={key} col={key} label={col.label} />
+                      : <th key={key}>{col.label}</th>;
+                  })}
                 </tr>
               </thead>
               <tbody>
                 {sorted.length > 0 ? sorted.map((pos, i) => {
                   const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
+                  const cellMap: Record<string, React.ReactNode> = {
+                    rank: <td key="rank" className="mono muted">{i + 1}</td>,
+                    asset: (
+                      <td key="asset">
+                        <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
+                        {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {pos.name}</span>}
+                      </td>
+                    ),
+                    sparkline: <td key="sparkline"><Sparkline data={sparkData.get(pos.coinId) || []} positive={pos.change7d >= 0} /></td>,
+                    amount: <td key="amount" className="mono">{fmtQty(pos.qty)}</td>,
+                    change1h: <td key="change1h">{renderChangePill(pos.change1h)}</td>,
+                    change24h: <td key="change24h">{renderChangePill(pos.change24h)}</td>,
+                    change7d: <td key="change7d">{renderChangePill(pos.change7d)}</td>,
+                    price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>,
+                    total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>,
+                    allocation: (
+                      <td key="allocation">
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 40, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.min(alloc, 100)}%`, height: "100%", borderRadius: 3, background: "var(--brand)" }} />
+                          </div>
+                          <span className="mono" style={{ fontSize: 11 }}>{alloc.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                    ),
+                    avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>,
+                    avgSell: <td key="avgSell" className="mono muted">—</td>,
+                    pnl: (
+                      <td key="pnl" style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
+                          {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
+                          {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                        </div>
+                      </td>
+                    ),
+                    pnlPct: (
+                      <td key="pnlPct">
+                        <span className={`mono ${pos.pnlPct >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                          {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                        </span>
+                      </td>
+                    ),
+                    profitAbs: (
+                      <td key="profitAbs" className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
+                        {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    ),
+                    marketCap: <td key="marketCap" className="mono">{formatCompact(pos.marketCap)}</td>,
+                    volume: <td key="volume" className="mono">{formatCompact(pos.volume)}</td>,
+                  };
                   return (
                     <tr key={pos.sym}>
-                      {show("rank") && <td className="mono muted">{i + 1}</td>}
-                      {show("asset") && (
-                        <td>
-                          <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
-                          {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {pos.name}</span>}
-                        </td>
-                      )}
-                      {show("sparkline") && (
-                        <td><Sparkline data={sparkData.get(pos.coinId) || []} positive={pos.change7d >= 0} /></td>
-                      )}
-                      {show("amount") && <td className="mono">{fmtQty(pos.qty)}</td>}
-                      {show("change1h") && <td>{renderChangePill(pos.change1h)}</td>}
-                      {show("change24h") && <td>{renderChangePill(pos.change24h)}</td>}
-                      {show("change7d") && <td>{renderChangePill(pos.change7d)}</td>}
-                      {show("price") && <td className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>}
-                      {show("total") && <td className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>}
-                      {show("allocation") && (
-                        <td>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-                            <div style={{ width: 40, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
-                              <div style={{ width: `${Math.min(alloc, 100)}%`, height: "100%", borderRadius: 3, background: "var(--brand)" }} />
-                            </div>
-                            <span className="mono" style={{ fontSize: 11 }}>{alloc.toFixed(1)}%</span>
-                          </div>
-                        </td>
-                      )}
-                      {show("avg") && <td className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>}
-                      {show("avgSell") && <td className="mono muted">—</td>}
-                      {show("pnl") && (
-                        <td style={{ textAlign: "right" }}>
-                          <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
-                            {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                          </div>
-                          <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
-                            {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
-                          </div>
-                        </td>
-                      )}
-                      {show("pnlPct") && (
-                        <td>
-                          <span className={`mono ${pos.pnlPct >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
-                            {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
-                          </span>
-                        </td>
-                      )}
-                      {show("profitAbs") && (
-                        <td className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
-                          {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </td>
-                      )}
-                      {show("marketCap") && <td className="mono">{formatCompact(pos.marketCap)}</td>}
-                      {show("volume") && <td className="mono">{formatCompact(pos.volume)}</td>}
+                      {colOrder.filter(k => visibleCols.has(k)).map(k => cellMap[k])}
                     </tr>
                   );
                 }) : (
