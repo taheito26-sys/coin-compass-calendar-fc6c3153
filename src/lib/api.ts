@@ -1,12 +1,48 @@
 /**
  * API client for the Cloudflare Worker backend.
  * Falls back to Supabase when the Worker is unavailable.
+ * Tracks which source served each request for visibility.
  */
 import { supabase } from "@/lib/supabaseClient";
 
 // Set this to your deployed Worker URL, e.g. "https://cryptotracker-api.your-account.workers.dev"
 // When empty/null, all reads fall back to Supabase.
 const WORKER_BASE = import.meta.env.VITE_WORKER_API_URL || "";
+
+// ── Data source tracking ────────────────────────────────────────
+
+export type DataSourceResult = "worker" | "supabase";
+
+interface SourceLog {
+  endpoint: string;
+  source: DataSourceResult;
+  ts: number;
+  error?: string;
+}
+
+const _sourceLog: SourceLog[] = [];
+
+/** Returns the last N source log entries for debugging */
+export function getSourceLog(n = 20): SourceLog[] {
+  return _sourceLog.slice(-n);
+}
+
+/** Returns a summary of which source served the last batch of requests */
+export function getLastDataSource(): DataSourceResult {
+  if (_sourceLog.length === 0) return "supabase";
+  // If any recent request was served by worker, report worker
+  const recent = _sourceLog.slice(-5);
+  return recent.some(l => l.source === "worker") ? "worker" : "supabase";
+}
+
+function logSource(endpoint: string, source: DataSourceResult, error?: string) {
+  _sourceLog.push({ endpoint, source, ts: Date.now(), error });
+  // Keep log bounded
+  if (_sourceLog.length > 100) _sourceLog.splice(0, _sourceLog.length - 50);
+  const icon = source === "worker" ? "⚡" : "🔄";
+  const suffix = error ? ` (fallback: ${error})` : "";
+  console.log(`[api] ${icon} ${endpoint} → ${source}${suffix}`);
+}
 
 // ── Helpers ──────────────────────────────────────────────────────
 
@@ -15,7 +51,7 @@ async function getAuthToken(): Promise<string | null> {
   return data?.session?.access_token ?? null;
 }
 
-async function workerFetch<T>(path: string, options?: RequestInit): Promise<T | null> {
+async function workerFetch<T>(path: string, options?: RequestInit): Promise<{ data: T; source: "worker" } | null> {
   if (!WORKER_BASE) return null;
   const token = await getAuthToken();
   const headers: Record<string, string> = {
@@ -28,9 +64,15 @@ async function workerFetch<T>(path: string, options?: RequestInit): Promise<T | 
       headers: { ...headers, ...(options?.headers as Record<string, string> ?? {}) },
       signal: options?.signal ?? AbortSignal.timeout(10_000),
     });
-    if (!res.ok) return null;
-    return res.json();
-  } catch {
+    if (!res.ok) {
+      const errorText = await res.text().catch(() => `HTTP ${res.status}`);
+      throw new Error(`Worker ${res.status}: ${errorText}`);
+    }
+    const data = await res.json() as T;
+    return { data, source: "worker" };
+  } catch (err: any) {
+    // Don't silently swallow — log the failure
+    console.warn(`[api] Worker failed for ${path}:`, err.message);
     return null;
   }
 }
@@ -84,22 +126,26 @@ export interface ApiPricesResponse {
 // ── Data fetching with fallback ─────────────────────────────────
 
 export async function fetchAssets(): Promise<ApiAsset[]> {
-  // Try Worker
-  const workerData = await workerFetch<{ assets: ApiAsset[] }>("/api/assets");
-  if (workerData?.assets) return workerData.assets;
+  const result = await workerFetch<{ assets: ApiAsset[] }>("/api/assets");
+  if (result?.data.assets) {
+    logSource("/api/assets", "worker");
+    return result.data.assets;
+  }
 
-  // Fallback to Supabase
+  logSource("/api/assets", "supabase", result === null && WORKER_BASE ? "worker unreachable" : undefined);
   const { data, error } = await supabase.from("assets").select("id, symbol, name, category, coingecko_id, binance_symbol, precision_qty, precision_price");
   if (error) throw error;
   return (data || []) as ApiAsset[];
 }
 
 export async function fetchTransactions(userId: string): Promise<ApiTransaction[]> {
-  // Try Worker
-  const workerData = await workerFetch<{ transactions: ApiTransaction[] }>("/api/transactions");
-  if (workerData?.transactions) return workerData.transactions;
+  const result = await workerFetch<{ transactions: ApiTransaction[] }>("/api/transactions");
+  if (result?.data.transactions) {
+    logSource("/api/transactions", "worker");
+    return result.data.transactions;
+  }
 
-  // Fallback to Supabase
+  logSource("/api/transactions", "supabase", result === null && WORKER_BASE ? "worker unreachable" : undefined);
   const { data, error } = await supabase
     .from("transactions")
     .select("id, user_id, asset_id, timestamp, type, qty, unit_price, fee_amount, fee_currency, venue, note, tags, source, external_id")
@@ -109,17 +155,17 @@ export async function fetchTransactions(userId: string): Promise<ApiTransaction[
 }
 
 export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEntry>; ts: number; stale: boolean }> {
-  // Try Worker KV prices
-  const workerData = await workerFetch<ApiPricesResponse>("/api/prices");
-  if (workerData?.prices) {
+  const result = await workerFetch<ApiPricesResponse>("/api/prices");
+  if (result?.data.prices) {
+    logSource("/api/prices", "worker");
     return {
-      prices: workerData.prices,
-      ts: workerData.ts ?? Date.now(),
-      stale: workerData.stale ?? false,
+      prices: result.data.prices,
+      ts: result.data.ts ?? Date.now(),
+      stale: result.data.stale ?? false,
     };
   }
 
-  // Fallback: read from Supabase price_cache
+  logSource("/api/prices", "supabase", result === null && WORKER_BASE ? "worker unreachable" : undefined);
   const { data, error } = await supabase
     .from("price_cache")
     .select("asset_id, price, price_change_1h, price_change_24h, price_change_7d, market_cap, volume_24h, timestamp");
@@ -145,12 +191,15 @@ export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEn
 }
 
 export async function fetchTrackingPreference(userId: string, assetId?: string) {
-  const workerData = await workerFetch<{ preference: { tracking_mode: string } | null }>(
+  const result = await workerFetch<{ preference: { tracking_mode: string } | null }>(
     `/api/tracking-preferences${assetId ? `?asset_id=${assetId}` : ""}`
   );
-  if (workerData !== null) return workerData.preference;
+  if (result !== null) {
+    logSource("/api/tracking-preferences", "worker");
+    return result.data.preference;
+  }
 
-  // Fallback
+  logSource("/api/tracking-preferences", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   let query = supabase.from("tracking_preferences").select("*").eq("user_id", userId);
   if (assetId) query = query.eq("asset_id", assetId);
   else query = query.is("asset_id", null);
@@ -159,9 +208,13 @@ export async function fetchTrackingPreference(userId: string, assetId?: string) 
 }
 
 export async function fetchImportedFiles(userId: string) {
-  const workerData = await workerFetch<{ files: any[] }>("/api/imported-files");
-  if (workerData?.files) return workerData.files;
+  const result = await workerFetch<{ files: any[] }>("/api/imported-files");
+  if (result?.data.files) {
+    logSource("/api/imported-files", "worker");
+    return result.data.files;
+  }
 
+  logSource("/api/imported-files", "supabase", result === null && WORKER_BASE ? "worker unreachable" : undefined);
   const { data, error } = await supabase.from("imported_files").select("*").eq("user_id", userId);
   if (error) throw error;
   return data || [];
@@ -201,14 +254,16 @@ export interface CreateTransactionInput {
 }
 
 export async function createTransaction(tx: CreateTransactionInput): Promise<ApiTransaction> {
-  // Try Worker
-  const workerData = await workerFetch<{ transaction: ApiTransaction }>("/api/transactions", {
+  const result = await workerFetch<{ transaction: ApiTransaction }>("/api/transactions", {
     method: "POST",
     body: JSON.stringify(tx),
   });
-  if (workerData?.transaction) return workerData.transaction;
+  if (result?.data.transaction) {
+    logSource("POST /api/transactions", "worker");
+    return result.data.transaction;
+  }
 
-  // Fallback to Supabase
+  logSource("POST /api/transactions", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("Not authenticated");
 
@@ -229,26 +284,30 @@ export async function createTransaction(tx: CreateTransactionInput): Promise<Api
 }
 
 export async function deleteTransaction(txId: string): Promise<void> {
-  // Try Worker
-  const workerResult = await workerFetch<{ ok: boolean }>(`/api/transactions/${txId}`, {
+  const result = await workerFetch<{ ok: boolean }>(`/api/transactions/${txId}`, {
     method: "DELETE",
   });
-  if (workerResult !== null) return;
+  if (result !== null) {
+    logSource("DELETE /api/transactions", "worker");
+    return;
+  }
 
-  // Fallback to Supabase
+  logSource("DELETE /api/transactions", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { error } = await supabase.from("transactions").delete().eq("id", txId);
   if (error) throw error;
 }
 
 export async function updateTransaction(txId: string, updates: Partial<CreateTransactionInput>): Promise<ApiTransaction> {
-  // Try Worker
-  const workerData = await workerFetch<{ transaction: ApiTransaction }>(`/api/transactions/${txId}`, {
+  const result = await workerFetch<{ transaction: ApiTransaction }>(`/api/transactions/${txId}`, {
     method: "PUT",
     body: JSON.stringify(updates),
   });
-  if (workerData?.transaction) return workerData.transaction;
+  if (result?.data.transaction) {
+    logSource("PUT /api/transactions", "worker");
+    return result.data.transaction;
+  }
 
-  // Fallback to Supabase
+  logSource("PUT /api/transactions", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { data, error } = await supabase
     .from("transactions")
     .update(updates)
@@ -268,14 +327,16 @@ export interface CreateImportedFileInput {
 }
 
 export async function createImportedFile(file: CreateImportedFileInput): Promise<any> {
-  // Try Worker
-  const workerData = await workerFetch<{ file: any }>("/api/imported-files", {
+  const result = await workerFetch<{ file: any }>("/api/imported-files", {
     method: "POST",
     body: JSON.stringify(file),
   });
-  if (workerData?.file) return workerData.file;
+  if (result?.data.file) {
+    logSource("POST /api/imported-files", "worker");
+    return result.data.file;
+  }
 
-  // Fallback to Supabase
+  logSource("POST /api/imported-files", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("Not authenticated");
 
@@ -292,14 +353,16 @@ export async function setTrackingPreference(
   trackingMode: string,
   assetId?: string
 ): Promise<any> {
-  // Try Worker
-  const workerData = await workerFetch<{ preference: any }>("/api/tracking-preferences", {
+  const result = await workerFetch<{ preference: any }>("/api/tracking-preferences", {
     method: "PUT",
     body: JSON.stringify({ tracking_mode: trackingMode, asset_id: assetId ?? null }),
   });
-  if (workerData?.preference) return workerData.preference;
+  if (result?.data.preference) {
+    logSource("PUT /api/tracking-preferences", "worker");
+    return result.data.preference;
+  }
 
-  // Fallback to Supabase
+  logSource("PUT /api/tracking-preferences", "supabase", WORKER_BASE ? "worker unreachable" : undefined);
   const { data: { user }, error: userError } = await supabase.auth.getUser();
   if (userError || !user) throw new Error("Not authenticated");
 
