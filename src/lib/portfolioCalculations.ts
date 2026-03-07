@@ -1,4 +1,31 @@
-import type { Transaction, Asset, PriceCache } from './supabaseClient';
+/**
+ * Portfolio calculation helpers.
+ * No external dependencies — works with plain typed data.
+ */
+
+export interface TxInput {
+  id: string;
+  asset_id: string;
+  timestamp: string;
+  type: string;
+  qty: number;
+  unit_price: number;
+  fee_amount: number;
+  venue: string | null;
+  note: string | null;
+  assets: { symbol: string; name: string };
+}
+
+export interface AssetInput {
+  id: string;
+  symbol: string;
+  name: string;
+}
+
+export interface PriceCacheInput {
+  asset_id: string;
+  price: number;
+}
 
 export interface Lot {
   id: string;
@@ -37,7 +64,7 @@ export interface PortfolioSummary {
 }
 
 export function calculateFIFOLots(
-  transactions: (Transaction & { assets: { symbol: string; name: string } })[],
+  transactions: TxInput[],
   assetId: string
 ): { lots: Lot[]; realizedPnL: number } {
   const assetTxs = transactions
@@ -94,7 +121,7 @@ export function calculateFIFOLots(
 }
 
 export function calculateDCAPosition(
-  transactions: (Transaction & { assets: { symbol: string; name: string } })[],
+  transactions: TxInput[],
   assetId: string
 ): { qty: number; costBasis: number; avgCost: number; realizedPnL: number } {
   const assetTxs = transactions
@@ -130,18 +157,13 @@ export function calculateDCAPosition(
 
   const avgCost = totalQty > 0 ? totalCostBasis / totalQty : 0;
 
-  return {
-    qty: totalQty,
-    costBasis: totalCostBasis,
-    avgCost,
-    realizedPnL,
-  };
+  return { qty: totalQty, costBasis: totalCostBasis, avgCost, realizedPnL };
 }
 
 export function calculatePortfolio(
-  transactions: (Transaction & { assets: { symbol: string; name: string } })[],
-  assets: Asset[],
-  priceCaches: PriceCache[],
+  transactions: TxInput[],
+  assets: AssetInput[],
+  priceCaches: PriceCacheInput[],
   trackingMode: 'fifo' | 'dca' = 'fifo'
 ): PortfolioSummary {
   const priceMap = new Map<string, number>();
@@ -149,7 +171,7 @@ export function calculatePortfolio(
     priceMap.set(cache.asset_id, cache.price);
   }
 
-  const assetMap = new Map<string, Asset>();
+  const assetMap = new Map<string, AssetInput>();
   for (const asset of assets) {
     assetMap.set(asset.id, asset);
   }
@@ -178,20 +200,10 @@ export function calculatePortfolio(
 
       if (qty > 0) {
         positions.push({
-          assetId,
-          symbol: asset.symbol,
-          name: asset.name,
-          qty,
-          costBasis,
-          avgCost,
-          currentPrice,
-          marketValue,
-          unrealizedPnL,
-          realizedPnL,
-          trackingMode: 'fifo',
-          lots,
+          assetId, symbol: asset.symbol, name: asset.name,
+          qty, costBasis, avgCost, currentPrice, marketValue,
+          unrealizedPnL, realizedPnL, trackingMode: 'fifo', lots,
         });
-
         totalCost += costBasis;
         if (marketValue !== null) totalValue += marketValue;
         if (unrealizedPnL !== null) totalUnrealizedPnL += unrealizedPnL;
@@ -204,20 +216,10 @@ export function calculatePortfolio(
 
       if (qty > 0) {
         positions.push({
-          assetId,
-          symbol: asset.symbol,
-          name: asset.name,
-          qty,
-          costBasis,
-          avgCost,
-          currentPrice,
-          marketValue,
-          unrealizedPnL,
-          realizedPnL,
-          trackingMode: 'dca',
-          lots: [],
+          assetId, symbol: asset.symbol, name: asset.name,
+          qty, costBasis, avgCost, currentPrice, marketValue,
+          unrealizedPnL, realizedPnL, trackingMode: 'dca', lots: [],
         });
-
         totalCost += costBasis;
         if (marketValue !== null) totalValue += marketValue;
         if (unrealizedPnL !== null) totalUnrealizedPnL += unrealizedPnL;
@@ -226,24 +228,11 @@ export function calculatePortfolio(
     }
   }
 
-  positions.sort((a, b) => {
-    const aValue = a.marketValue || 0;
-    const bValue = b.marketValue || 0;
-    return bValue - aValue;
-  });
-
-  return {
-    totalValue,
-    totalCost,
-    totalUnrealizedPnL,
-    totalRealizedPnL,
-    positions,
-  };
+  positions.sort((a, b) => (b.marketValue || 0) - (a.marketValue || 0));
+  return { totalValue, totalCost, totalUnrealizedPnL, totalRealizedPnL, positions };
 }
 
 export function isPriceStale(timestamp: string, maxAgeMinutes: number = 5): boolean {
   const priceTime = new Date(timestamp).getTime();
-  const now = Date.now();
-  const ageMs = now - priceTime;
-  return ageMs > maxAgeMinutes * 60 * 1000;
+  return Date.now() - priceTime > maxAgeMinutes * 60 * 1000;
 }
