@@ -1,11 +1,7 @@
 import { useCrypto } from "@/lib/cryptoContext";
-import { cryptoDerived, fmtFiat, fmtQty, fmtPx, type DerivedPosition } from "@/lib/cryptoState";
+import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { useSupabasePortfolio } from "@/hooks/useSupabasePortfolio";
 import { useMemo } from "react";
-
-const CATEGORY_COLORS = [
-  "var(--t1)", "var(--t2)", "var(--t3)", "var(--t4)", "var(--t5)",
-  "var(--brand)", "var(--brand2)", "var(--good)", "var(--bad)", "var(--warn)",
-];
 
 const COIN_COLORS = [
   "#f97316", "#3b82f6", "#8b5cf6", "#ef4444", "#22c55e",
@@ -76,10 +72,7 @@ function DonutLegend({ slices }: { slices: DonutSlice[] }) {
     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "6px 24px", alignContent: "center" }}>
       {slices.map((s, i) => (
         <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{
-            width: 8, height: 8, borderRadius: 2, flexShrink: 0,
-            background: s.color,
-          }} />
+          <span style={{ width: 8, height: 8, borderRadius: 2, flexShrink: 0, background: s.color }} />
           <span style={{ fontWeight: 700, fontSize: 12, minWidth: 40 }}>{s.label}</span>
           <span style={{ fontSize: 11, color: "var(--muted)", marginLeft: "auto" }}>{s.pct.toFixed(s.pct < 1 ? 2 : 1)}%</span>
         </div>
@@ -94,14 +87,8 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
       background: color,
       borderRadius: "var(--lt-radius-sm)",
       padding: "12px 8px",
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      justifyContent: "center",
-      gap: 2,
-      minHeight: 80,
-      transition: "transform 0.15s",
-      cursor: "default",
+      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+      gap: 2, minHeight: 80, transition: "transform 0.15s", cursor: "default",
     }}
     onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.04)")}
     onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
@@ -114,48 +101,60 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
 }
 
 export default function DashboardPage() {
+  // Supabase data (primary)
+  const sb = useSupabasePortfolio();
+  // Local fallback
   const { state, refresh } = useCrypto();
-  const d = cryptoDerived(state);
-  const age = d.priceAgeMs < 60000 ? Math.round(d.priceAgeMs / 1000) + "s" : Math.round(d.priceAgeMs / 60000) + "m";
+  const localD = cryptoDerived(state);
+
+  // Use Supabase data if authenticated, otherwise fall back to local
+  const useSupabase = sb.authenticated && !sb.error;
+  const positions = useSupabase ? sb.positions : [];
+  const totalMV = useSupabase ? sb.totalMV : localD.pricedMV;
+  const totalCost = useSupabase ? sb.totalCost : localD.totalCost;
+  const totalPnl = useSupabase ? sb.totalPnl : localD.unreal;
+  const totalPnlPct = useSupabase ? sb.totalPnlPct : (localD.pricedCost > 0 ? (localD.unreal / localD.pricedCost) * 100 : 0);
+  const assetCount = useSupabase ? sb.assetCount : localD.rows.length;
+  const priceAge = useSupabase ? sb.priceAge : (localD.priceAgeMs < 60000 ? Math.round(localD.priceAgeMs / 1000) + "s" : Math.round(localD.priceAgeMs / 60000) + "m");
+  const base = state.base || "USD";
+  const method = state.method || "FIFO";
+
+  // Rows for table/charts - merge both sources
+  const rows = useMemo(() => {
+    if (useSupabase && positions.length > 0) {
+      return positions.map(p => ({
+        sym: p.symbol,
+        qty: p.qty,
+        cost: p.cost,
+        price: p.price,
+        mv: p.mv,
+        unreal: p.pnlAbs,
+      }));
+    }
+    return localD.rows;
+  }, [useSupabase, positions, localD.rows]);
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
-    if (d.pricedMV <= 0) return [];
-    const topCoins = d.rows.filter(r => r.mv !== null && r.mv > 0).slice(0, 12);
+    if (totalMV <= 0) return [];
+    const topCoins = rows.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
     const topTotal = topCoins.reduce((s, r) => s + (r.mv || 0), 0);
-    const rest = d.pricedMV - topTotal;
+    const rest = totalMV - topTotal;
     const slices = topCoins.map((r, i) => ({
       label: r.sym,
       value: r.mv || 0,
-      pct: ((r.mv || 0) / d.pricedMV) * 100,
+      pct: ((r.mv || 0) / totalMV) * 100,
       color: COIN_COLORS[i % COIN_COLORS.length],
     }));
     if (rest > 0.01) {
-      slices.push({ label: "Other", value: rest, pct: (rest / d.pricedMV) * 100, color: "var(--muted2)" });
+      slices.push({ label: "Other", value: rest, pct: (rest / totalMV) * 100, color: "var(--muted2)" });
     }
     return slices;
-  }, [d]);
+  }, [rows, totalMV]);
 
-  // Category allocation
-  const catSlices = useMemo((): DonutSlice[] => {
-    if (d.pricedMV <= 0) return [];
-    const catMap = new Map<string, number>();
-    for (const r of d.rows) {
-      if (r.mv === null || r.mv <= 0) continue;
-      // Find category from holdings or default
-      const cat = "Portfolio"; // simplified - all in one category for local state
-      catMap.set(cat, (catMap.get(cat) || 0) + r.mv);
-    }
-    return [...catMap.entries()].map(([label, value], i) => ({
-      label, value,
-      pct: (value / d.pricedMV) * 100,
-      color: CATEGORY_COLORS[i % CATEGORY_COLORS.length],
-    }));
-  }, [d]);
-
-  // Heatmap - top positions by P&L
+  // Heatmap
   const heatmapItems = useMemo(() => {
-    return d.rows
+    return rows
       .filter(r => r.mv !== null)
       .map(r => {
         const pnlPct = r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0;
@@ -166,7 +165,7 @@ export default function DashboardPage() {
           : `rgba(220,38,38,${0.3 + intensity * 0.5})`;
         return {
           sym: r.sym,
-          value: fmtFiat(r.mv || 0, d.base).split(" ")[0],
+          value: fmtFiat(r.mv || 0, base).split(" ")[0],
           pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%",
           color: bg,
           mv: r.mv || 0,
@@ -174,54 +173,77 @@ export default function DashboardPage() {
       })
       .sort((a, b) => b.mv - a.mv)
       .slice(0, 9);
-  }, [d]);
+  }, [rows, base]);
 
-  // Top coin for center label
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
+
+  const handleRefresh = async () => {
+    await Promise.all([sb.refresh(), refresh(true)]);
+  };
 
   return (
     <>
+      {/* Source indicator */}
+      {sb.loading && (
+        <div className="pill" style={{ marginBottom: 8 }}>Loading Supabase data…</div>
+      )}
+      {!sb.loading && !sb.authenticated && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body muted" style={{ fontSize: 12 }}>
+            ⚠ Not logged in — showing local data only. Sign in to see your Supabase portfolio.
+          </div>
+        </div>
+      )}
+      {sb.error && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body" style={{ fontSize: 12, color: "var(--bad)" }}>
+            Supabase error: {sb.error} — falling back to local data.
+          </div>
+        </div>
+      )}
+
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <button className="btn secondary" onClick={() => refresh(true)} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
-        <span className="pill">Prices: {age} ago</span>
-        <span className="pill">{d.base}</span>
+        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
+        <span className="pill">Prices: {priceAge} ago</span>
+        <span className="pill">{base}</span>
+        {useSupabase && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Supabase ✓</span>}
       </div>
 
       {/* KPI Cards */}
       <div className="kpis">
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{d.base}</span>
+            <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
           </div>
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(d.pricedMV, d.base)}</div>
-          <div className="kpi-sub">{d.rows.length} assets tracked</div>
+          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-sub">{assetCount} assets tracked</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className={`kpi-badge ${d.unreal >= 0 ? "good" : "bad"}`}>{d.unreal >= 0 ? "▲" : "▼"}</span>
+            <span className={`kpi-badge ${totalPnl >= 0 ? "good" : "bad"}`}>{totalPnl >= 0 ? "▲" : "▼"}</span>
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
-          <div className={`kpi-val ${d.unreal >= 0 ? "good" : "bad"}`}>
-            {(d.unreal >= 0 ? "+" : "") + fmtFiat(d.unreal, d.base)}
+          <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
+            {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
           </div>
           <div className="kpi-sub">
-            {d.pricedCost > 0 ? ((d.unreal / d.pricedCost) * 100).toFixed(2) + "%" : "—"}
+            {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "—"}
           </div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtFiat(d.totalCost, d.base)}</div>
-          <div className="kpi-sub">{state.lots.length} lots</div>
+          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
+          <div className="kpi-sub">{useSupabase ? sb.txCount + " transactions" : state.lots.length + " lots"}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
-          <div className="kpi-val" style={{ fontSize: 16 }}>{state.method}</div>
-          <div className="kpi-sub">{d.unpriced.length > 0 ? `⚠ ${d.unpriced.length} unpriced` : "All priced ✓"}</div>
+          <div className="kpi-val" style={{ fontSize: 16 }}>{method}</div>
+          <div className="kpi-sub">{assetCount > 0 ? "All priced ✓" : "No positions"}</div>
         </div>
       </div>
 
-      {/* Coin Allocation + Category Allocation */}
+      {/* Coin Allocation + Heatmap */}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
@@ -231,7 +253,7 @@ export default function DashboardPage() {
                 <DonutChart
                   slices={coinSlices}
                   centerLabel={topCoin?.label || "—"}
-                  centerValue={fmtFiat(topCoin?.value || 0, d.base).split(" ")[0]}
+                  centerValue={fmtFiat(topCoin?.value || 0, base).split(" ")[0]}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
                 />
@@ -249,19 +271,9 @@ export default function DashboardPage() {
           <div className="panel-head"><h2>Heatmap</h2></div>
           <div className="panel-body">
             {heatmapItems.length > 0 ? (
-              <div style={{
-                display: "grid",
-                gridTemplateColumns: `repeat(3, 1fr)`,
-                gap: 6,
-              }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {heatmapItems.map((item, i) => (
-                  <HeatmapBlock
-                    key={i}
-                    sym={item.sym}
-                    value={"$" + item.value}
-                    pct={item.pct}
-                    color={item.color}
-                  />
+                  <HeatmapBlock key={i} sym={item.sym} value={"$" + item.value} pct={item.pct} color={item.color} />
                 ))}
               </div>
             ) : (
@@ -275,7 +287,7 @@ export default function DashboardPage() {
 
       {/* Top Positions Table */}
       <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head"><h2>Top Positions</h2><span className="pill">{d.rows.length} assets</span></div>
+        <div className="panel-head"><h2>Top Positions</h2><span className="pill">{rows.length} assets</span></div>
         <div className="panel-body">
           <div className="tableWrap">
             <table>
@@ -283,17 +295,17 @@ export default function DashboardPage() {
                 <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th></tr>
               </thead>
               <tbody>
-                {d.rows.length ? d.rows.map(r => {
+                {rows.length ? rows.map(r => {
                   const avg = r.qty > 0 ? r.cost / r.qty : 0;
                   return (
                     <tr key={r.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(avg)} {d.base}</td>
-                      <td className="mono">{r.price === null ? "—" : fmtPx(r.price) + " " + d.base}</td>
-                      <td className="mono">{r.mv === null ? "—" : fmtFiat(r.mv, d.base)}</td>
+                      <td className="mono">{fmtPx(avg)} {base}</td>
+                      <td className="mono">{r.price === null ? "—" : fmtPx(r.price) + " " + base}</td>
+                      <td className="mono">{r.mv === null ? "—" : fmtFiat(r.mv, base)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "—" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, d.base)}
+                        {r.unreal === null ? "—" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
                       </td>
                     </tr>
                   );
