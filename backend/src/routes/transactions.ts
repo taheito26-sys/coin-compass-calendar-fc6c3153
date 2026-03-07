@@ -79,16 +79,27 @@ app.put('/:id', async (c) => {
     tags: string[]; source: string;
   }>>();
 
+  // Explicit allowlist — only these fields may be updated
+  const EDITABLE_FIELDS: Record<string, (v: unknown) => unknown> = {
+    timestamp: (v) => String(v),
+    type: (v) => String(v),
+    qty: (v) => Number(v),
+    unit_price: (v) => Number(v),
+    fee_amount: (v) => Number(v),
+    fee_currency: (v) => String(v),
+    venue: (v) => v == null ? null : String(v),
+    note: (v) => v == null ? null : String(v),
+    tags: (v) => v == null ? null : JSON.stringify(v),
+    source: (v) => String(v),
+  };
+
   const sets: string[] = [];
   const vals: unknown[] = [];
 
-  for (const [key, val] of Object.entries(body)) {
-    if (key === 'tags') {
-      sets.push('tags = ?');
-      vals.push(JSON.stringify(val));
-    } else {
+  for (const [key, sanitize] of Object.entries(EDITABLE_FIELDS)) {
+    if (key in body) {
       sets.push(`${key} = ?`);
-      vals.push(val);
+      vals.push(sanitize((body as Record<string, unknown>)[key]));
     }
   }
 

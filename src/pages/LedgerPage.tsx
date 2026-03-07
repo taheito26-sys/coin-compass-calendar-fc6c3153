@@ -5,7 +5,7 @@ import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import { supabase } from "@/integrations/supabase/client";
-import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
+import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -137,26 +137,54 @@ export default function LedgerPage() {
     setEditType(t.type);
   };
 
-  const saveEdit = () => {
+  const saveEdit = async () => {
     if (!editId) return;
+    const newQty = parseFloat(editQty);
+    const newPrice = parseFloat(editPrice);
+
+    // Update local state
     setState(prev => ({
       ...prev,
       txs: prev.txs.map(t => t.id === editId ? {
         ...t,
         asset: editAsset.toUpperCase(),
-        qty: parseFloat(editQty) || t.qty,
-        price: parseFloat(editPrice) || t.price,
+        qty: newQty || t.qty,
+        price: newPrice || t.price,
         type: editType,
-        total: (editType === "buy" || editType === "sell") ? (parseFloat(editQty) || 0) * (parseFloat(editPrice) || 0) : t.total,
+        total: (editType === "buy" || editType === "sell") ? (newQty || 0) * (newPrice || 0) : t.total,
       } : t),
     }));
     setEditId(null);
-    toast("Transaction updated ✓", "good");
+
+    // Persist to backend
+    try {
+      await updateTransaction(editId, {
+        type: editType,
+        qty: newQty || undefined,
+        unit_price: newPrice || undefined,
+      });
+      const log = getSourceLog(1);
+      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+      toast(`Transaction updated ✓ (via ${source})`, "good");
+    } catch (err: any) {
+      console.error("[ledger] Update failed:", err);
+      toast("Updated locally only (backend sync failed)", "good");
+    }
   };
 
-  const deleteTx = (id: string) => {
+  const deleteTx = async (id: string) => {
     setState(prev => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
-    toast("Transaction deleted", "good");
+
+    // Persist to backend
+    try {
+      await deleteTransaction(id);
+      const log = getSourceLog(1);
+      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+      toast(`Transaction deleted ✓ (via ${source})`, "good");
+    } catch (err: any) {
+      console.error("[ledger] Delete failed:", err);
+      toast("Deleted locally only (backend sync failed)", "good");
+    }
   };
 
   // Import handlers
