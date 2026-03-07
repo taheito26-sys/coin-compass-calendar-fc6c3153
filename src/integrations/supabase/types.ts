@@ -14,7 +14,213 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      assets: {
+        Row: {
+          binance_symbol: string | null
+          category: string | null
+          coingecko_id: string | null
+          created_at: string | null
+          id: string
+          name: string
+          precision_price: number | null
+          precision_qty: number | null
+          symbol: string
+        }
+        Insert: {
+          binance_symbol?: string | null
+          category?: string | null
+          coingecko_id?: string | null
+          created_at?: string | null
+          id?: string
+          name: string
+          precision_price?: number | null
+          precision_qty?: number | null
+          symbol: string
+        }
+        Update: {
+          binance_symbol?: string | null
+          category?: string | null
+          coingecko_id?: string | null
+          created_at?: string | null
+          id?: string
+          name?: string
+          precision_price?: number | null
+          precision_qty?: number | null
+          symbol?: string
+        }
+        Relationships: []
+      }
+      imported_files: {
+        Row: {
+          exchange: string
+          export_type: string
+          file_hash: string
+          file_name: string
+          id: string
+          imported_at: string | null
+          row_count: number | null
+          user_id: string
+        }
+        Insert: {
+          exchange: string
+          export_type: string
+          file_hash: string
+          file_name: string
+          id?: string
+          imported_at?: string | null
+          row_count?: number | null
+          user_id: string
+        }
+        Update: {
+          exchange?: string
+          export_type?: string
+          file_hash?: string
+          file_name?: string
+          id?: string
+          imported_at?: string | null
+          row_count?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
+      price_cache: {
+        Row: {
+          asset_id: string
+          market_cap: number | null
+          price: number
+          price_change_1h: number | null
+          price_change_24h: number | null
+          price_change_7d: number | null
+          source: string | null
+          timestamp: string | null
+          volume_24h: number | null
+        }
+        Insert: {
+          asset_id: string
+          market_cap?: number | null
+          price: number
+          price_change_1h?: number | null
+          price_change_24h?: number | null
+          price_change_7d?: number | null
+          source?: string | null
+          timestamp?: string | null
+          volume_24h?: number | null
+        }
+        Update: {
+          asset_id?: string
+          market_cap?: number | null
+          price?: number
+          price_change_1h?: number | null
+          price_change_24h?: number | null
+          price_change_7d?: number | null
+          source?: string | null
+          timestamp?: string | null
+          volume_24h?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_cache_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: true
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tracking_preferences: {
+        Row: {
+          asset_id: string | null
+          id: string
+          tracking_mode: string
+          user_id: string
+        }
+        Insert: {
+          asset_id?: string | null
+          id?: string
+          tracking_mode?: string
+          user_id: string
+        }
+        Update: {
+          asset_id?: string | null
+          id?: string
+          tracking_mode?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracking_preferences_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      transactions: {
+        Row: {
+          asset_id: string
+          created_at: string | null
+          external_id: string | null
+          fee_amount: number
+          fee_currency: string | null
+          id: string
+          note: string | null
+          qty: number
+          source: string | null
+          tags: string[] | null
+          timestamp: string
+          type: string
+          unit_price: number
+          updated_at: string | null
+          user_id: string
+          venue: string | null
+        }
+        Insert: {
+          asset_id: string
+          created_at?: string | null
+          external_id?: string | null
+          fee_amount?: number
+          fee_currency?: string | null
+          id?: string
+          note?: string | null
+          qty: number
+          source?: string | null
+          tags?: string[] | null
+          timestamp: string
+          type: string
+          unit_price?: number
+          updated_at?: string | null
+          user_id: string
+          venue?: string | null
+        }
+        Update: {
+          asset_id?: string
+          created_at?: string | null
+          external_id?: string | null
+          fee_amount?: number
+          fee_currency?: string | null
+          id?: string
+          note?: string | null
+          qty?: number
+          source?: string | null
+          tags?: string[] | null
+          timestamp?: string
+          type?: string
+          unit_price?: number
+          updated_at?: string | null
+          user_id?: string
+          venue?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "transactions_asset_id_fkey"
+            columns: ["asset_id"]
+            isOneToOne: false
+            referencedRelation: "assets"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never
