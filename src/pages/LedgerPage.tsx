@@ -5,6 +5,7 @@ import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import { supabase } from "@/integrations/supabase/client";
+import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -13,51 +14,47 @@ const EXCHANGE_LABELS: Record<string, string> = {
   gate: "Gate.io",
 };
 
-async function getAuthUser() {
-  const { data: { user } } = await supabase.auth.getUser();
-  return user;
-}
-
-async function findOrCreateAsset(symbol: string): Promise<string | null> {
+async function findAssetId(symbol: string): Promise<string | null> {
   const sym = symbol.toUpperCase();
-  const { data } = await (supabase as any).from('assets').select('id').eq('symbol', sym).maybeSingle();
-  if (data) return data.id;
-  // If asset doesn't exist, we can't create it (no INSERT RLS). Return null.
-  return null;
+  try {
+    const assets = await fetchAssets();
+    const match = assets.find(a => a.symbol.toUpperCase() === sym);
+    return match?.id ?? null;
+  } catch {
+    return null;
+  }
 }
 
-async function saveTransactionToSupabase(tx: {
+async function saveTransactionViaApi(tx: {
   type: string; asset: string; qty: number; price: number;
   fee: number; venue: string; note: string; ts: number;
-}) {
-  const user = await getAuthUser();
-  if (!user) return false;
-
-  const assetId = await findOrCreateAsset(tx.asset);
+}): Promise<{ ok: boolean; source: string }> {
+  const assetId = await findAssetId(tx.asset);
   if (!assetId) {
-    console.warn(`Asset ${tx.asset} not found in Supabase assets table`);
-    return false;
+    console.warn(`[ledger] Asset ${tx.asset} not found in assets table`);
+    return { ok: false, source: "none" };
   }
 
-  const { error } = await (supabase as any).from('transactions').insert({
-    user_id: user.id,
-    timestamp: new Date(tx.ts).toISOString(),
-    type: tx.type,
-    asset_id: assetId,
-    qty: tx.qty,
-    unit_price: tx.price || 0,
-    fee_amount: tx.fee || 0,
-    fee_currency: 'USD',
-    venue: tx.venue || null,
-    note: tx.note || null,
-    source: 'manual',
-  });
-
-  if (error) {
-    console.error('Supabase insert error:', error);
-    return false;
+  try {
+    await createTransaction({
+      asset_id: assetId,
+      timestamp: new Date(tx.ts).toISOString(),
+      type: tx.type,
+      qty: tx.qty,
+      unit_price: tx.price || 0,
+      fee_amount: tx.fee || 0,
+      fee_currency: "USD",
+      venue: tx.venue || undefined,
+      note: tx.note || undefined,
+      source: "manual",
+    });
+    const log = getSourceLog(1);
+    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+    return { ok: true, source };
+  } catch (err: any) {
+    console.error("[ledger] Save failed:", err);
+    return { ok: false, source: "error" };
   }
-  return true;
 }
 
 export default function LedgerPage() {
