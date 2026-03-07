@@ -27,3 +27,5 @@ dist-ssr
 backend/.dev.vars
 backend/.wrangler/
 _auth_patch_backup_*/
+
+*.ps1
