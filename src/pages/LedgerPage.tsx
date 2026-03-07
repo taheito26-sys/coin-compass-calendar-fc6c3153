@@ -85,7 +85,7 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // Manual save — writes to both localStorage AND Supabase
+  // Manual save — writes to both localStorage AND Worker
   const save = async () => {
     const a = asset.trim().toUpperCase(), q = parseFloat(qty), p = parseFloat(price), f = parseFloat(fee) || 0;
     if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
@@ -112,7 +112,7 @@ export default function LedgerPage() {
       return newState;
     });
 
-    // Save to backend via API client (Worker-first, Supabase fallback)
+    // Save to backend via Worker API
     setSaving(true);
     const result = await saveTransactionViaApi({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
     setSaving(false);
