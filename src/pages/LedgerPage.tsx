@@ -115,13 +115,17 @@ export default function LedgerPage() {
       return newState;
     });
 
-    // Also save to Supabase
+    // Save to backend via API client (Worker-first, Supabase fallback)
     setSaving(true);
-    const saved = await saveTransactionToSupabase({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
+    const result = await saveTransactionViaApi({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
     setSaving(false);
 
     setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-    toast(saved ? "Transaction saved ✓ (synced to cloud)" : "Transaction saved locally ✓", "good");
+    if (result.ok) {
+      toast(`Transaction saved ✓ (via ${result.source})`, "good");
+    } else {
+      toast("Transaction saved locally only (backend sync failed)", "good");
+    }
   };
 
   // Edit handlers
@@ -217,24 +221,35 @@ export default function LedgerPage() {
       };
     });
 
-    // Also sync each imported row to Supabase
-    const user = await getAuthUser();
-    if (user) {
-      let synced = 0;
-      for (const row of importResult.rows) {
-        const assetSym = extractBase(row.symbol);
-        const ok = await saveTransactionToSupabase({
-          type: row.side, asset: assetSym, qty: row.qty,
-          price: row.unitPrice, fee: row.feeAmount,
-          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-          note: `Import: ${row.externalId}`, ts: row.timestamp,
-        });
-        if (ok) synced++;
-      }
-      toast(`Imported ${importResult.rows.length} trades (${synced} synced to cloud)`, "good");
-    } else {
-      toast(`Imported ${importResult.rows.length} trades from ${EXCHANGE_LABELS[importResult.exchange]}`, "good");
+    // Sync each imported row to backend via API client
+    let synced = 0;
+    for (const row of importResult.rows) {
+      const assetSym = extractBase(row.symbol);
+      const result = await saveTransactionViaApi({
+        type: row.side, asset: assetSym, qty: row.qty,
+        price: row.unitPrice, fee: row.feeAmount,
+        venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+        note: `Import: ${row.externalId}`, ts: row.timestamp,
+      });
+      if (result.ok) synced++;
     }
+
+    // Also record the imported file
+    try {
+      await createImportedFile({
+        file_name: fileName,
+        file_hash: fileHash,
+        exchange: importResult.exchange,
+        export_type: importResult.exportType,
+        row_count: importResult.rows.length,
+      });
+    } catch (err: any) {
+      console.warn("[import] Failed to record imported file:", err.message);
+    }
+
+    const log = getSourceLog(1);
+    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
+    toast(`Imported ${importResult.rows.length} trades (${synced} synced via ${source})`, "good");
     setImportStage("done");
   };
 
