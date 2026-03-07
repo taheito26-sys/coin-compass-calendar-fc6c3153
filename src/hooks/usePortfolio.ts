@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useMemo, useRef } from "react";
-import { supabase } from "@/lib/supabaseClient";
-import { fetchAssets, fetchTransactions, fetchPrices, getLastDataSource, isWorkerAvailable, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
+import { useAuth } from "@clerk/clerk-react";
+import { setAuthTokenProvider, fetchAssets, fetchTransactions, fetchPrices, isWorkerAvailable, ApiAsset, ApiTransaction, ApiPriceEntry } from "@/lib/api";
 
-export interface SupabasePosition {
+export interface Position {
   assetId: string;
   symbol: string;
   name: string;
@@ -21,8 +21,8 @@ export interface SupabasePosition {
   pnlPct: number | null;
 }
 
-export interface SupabasePortfolioData {
-  positions: SupabasePosition[];
+export interface PortfolioData {
+  positions: Position[];
   totalMV: number;
   totalCost: number;
   totalPnl: number;
@@ -33,22 +33,18 @@ export interface SupabasePortfolioData {
   loading: boolean;
   error: string | null;
   authenticated: boolean;
-  dataSource: string;
   workerOnline: boolean;
   refresh: () => Promise<void>;
 }
-
-// ── Position builder (shared logic) ─────────────────────────────
 
 function buildPositions(
   assets: ApiAsset[],
   txs: ApiTransaction[],
   prices: Record<string, ApiPriceEntry>
-): SupabasePosition[] {
+): Position[] {
   const assetMap = new Map<string, ApiAsset>();
   for (const a of assets) assetMap.set(a.id, a);
 
-  // Aggregate transactions into positions
   const posMap = new Map<string, { qty: number; cost: number }>();
   for (const tx of txs) {
     const current = posMap.get(tx.asset_id) || { qty: 0, cost: 0 };
@@ -82,7 +78,7 @@ function buildPositions(
     posMap.set(tx.asset_id, current);
   }
 
-  const result: SupabasePosition[] = [];
+  const result: Position[] = [];
   for (const [assetId, pos] of posMap) {
     if (pos.qty <= 0) continue;
     const asset = assetMap.get(assetId);
@@ -117,51 +113,40 @@ function buildPositions(
   return result;
 }
 
-// ── Hook ─────────────────────────────────────────────────────────
+const PRICE_POLL_MS = 120_000;
 
-const PRICE_POLL_MS = 120_000; // Re-fetch prices every 2 min
-
-export function useSupabasePortfolio(): SupabasePortfolioData {
-  const [positions, setPositions] = useState<SupabasePosition[]>([]);
+export function usePortfolio(): PortfolioData {
+  const { isSignedIn, getToken } = useAuth();
+  const [positions, setPositions] = useState<Position[]>([]);
   const [txCount, setTxCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [authenticated, setAuthenticated] = useState(false);
   const [priceTs, setPriceTs] = useState(0);
-  const [dataSource, setDataSource] = useState("supabase");
   const [workerOnline, setWorkerOnline] = useState(false);
 
-  // Cache assets & txs so price polls don't re-fetch them
   const assetsRef = useRef<ApiAsset[]>([]);
   const txsRef = useRef<ApiTransaction[]>([]);
+
+  // Wire up Clerk token provider
+  useEffect(() => {
+    setAuthTokenProvider(() => getToken());
+  }, [getToken]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        setAuthenticated(false);
-        setPositions([]);
-        setTxCount(0);
-        setLoading(false);
-        return;
-      }
-      setAuthenticated(true);
-
       const [assets, txs, priceData, online] = await Promise.all([
         fetchAssets(),
-        fetchTransactions(user.id),
+        fetchTransactions(),
         fetchPrices(),
         isWorkerAvailable(),
       ]);
 
       assetsRef.current = assets;
       txsRef.current = txs;
-
       setWorkerOnline(online);
-      setDataSource(getLastDataSource());
       setTxCount(txs.length);
       setPriceTs(priceData.ts);
 
@@ -175,12 +160,10 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     }
   }, []);
 
-  // Lightweight price-only refresh (no auth/tx re-fetch)
   const refreshPrices = useCallback(async () => {
     if (assetsRef.current.length === 0) return;
     try {
       const priceData = await fetchPrices();
-      setDataSource(getLastDataSource());
       setPriceTs(priceData.ts);
       const result = buildPositions(assetsRef.current, txsRef.current, priceData.prices);
       setPositions(result);
@@ -193,7 +176,6 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     loadData();
   }, [loadData]);
 
-  // Auto-poll prices
   useEffect(() => {
     const id = window.setInterval(refreshPrices, PRICE_POLL_MS);
     return () => clearInterval(id);
@@ -221,8 +203,7 @@ export function useSupabasePortfolio(): SupabasePortfolioData {
     txCount,
     loading,
     error,
-    authenticated,
-    dataSource,
+    authenticated: !!isSignedIn,
     workerOnline,
     refresh: loadData,
   };

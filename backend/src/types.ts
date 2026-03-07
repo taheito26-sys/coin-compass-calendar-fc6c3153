@@ -2,7 +2,7 @@
 export interface Env {
   DB: D1Database;
   PRICE_KV: KVNamespace;
-  SUPABASE_JWT_SECRET: string;
+  CLERK_JWKS_URL?: string;
   ALLOWED_ORIGINS?: string;
 }
 

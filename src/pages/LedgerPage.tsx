@@ -4,8 +4,7 @@ import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
-import { supabase } from "@/integrations/supabase/client";
-import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
+import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets } from "@/lib/api";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -48,9 +47,7 @@ async function saveTransactionViaApi(tx: {
       note: tx.note || undefined,
       source: "manual",
     });
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    return { ok: true, source };
+    return { ok: true, source: "worker" };
   } catch (err: any) {
     console.error("[ledger] Save failed:", err);
     return { ok: false, source: "error" };
@@ -88,7 +85,7 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // Manual save — writes to both localStorage AND Supabase
+  // Manual save — writes to both localStorage AND Worker
   const save = async () => {
     const a = asset.trim().toUpperCase(), q = parseFloat(qty), p = parseFloat(price), f = parseFloat(fee) || 0;
     if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
@@ -115,7 +112,7 @@ export default function LedgerPage() {
       return newState;
     });
 
-    // Save to backend via API client (Worker-first, Supabase fallback)
+    // Save to backend via Worker API
     setSaving(true);
     const result = await saveTransactionViaApi({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
     setSaving(false);
@@ -163,9 +160,7 @@ export default function LedgerPage() {
         qty: newQty || undefined,
         unit_price: newPrice || undefined,
       });
-      const log = getSourceLog(1);
-      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-      toast(`Transaction updated ✓ (via ${source})`, "good");
+      toast("Transaction updated ✓", "good");
     } catch (err: any) {
       console.error("[ledger] Update failed:", err);
       toast("Updated locally only (backend sync failed)", "good");
@@ -178,9 +173,7 @@ export default function LedgerPage() {
     // Persist to backend
     try {
       await deleteTransaction(id);
-      const log = getSourceLog(1);
-      const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-      toast(`Transaction deleted ✓ (via ${source})`, "good");
+      toast("Transaction deleted ✓", "good");
     } catch (err: any) {
       console.error("[ledger] Delete failed:", err);
       toast("Deleted locally only (backend sync failed)", "good");
@@ -275,9 +268,7 @@ export default function LedgerPage() {
       console.warn("[import] Failed to record imported file:", err.message);
     }
 
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    toast(`Imported ${importResult.rows.length} trades (${synced} synced via ${source})`, "good");
+    toast(`Imported ${importResult.rows.length} trades (${synced} synced)`, "good");
     setImportStage("done");
   };
 

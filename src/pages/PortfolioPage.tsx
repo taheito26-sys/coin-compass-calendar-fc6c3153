@@ -1,6 +1,6 @@
 import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { useSupabasePortfolio } from "@/hooks/useSupabasePortfolio";
+import { usePortfolio } from "@/hooks/usePortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
@@ -71,7 +71,7 @@ function loadColOrder(): string[] {
 }
 
 export default function PortfolioPage() {
-  const sb = useSupabasePortfolio();
+  const portfolio = usePortfolio();
   const { state, refresh } = useCrypto();
   const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
   const localD = cryptoDerived(state);
@@ -82,7 +82,7 @@ export default function PortfolioPage() {
   const [showColConfig, setShowColConfig] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
 
-  const useSupabase = sb.authenticated && !sb.error;
+  const useWorker = portfolio.authenticated && !portfolio.error;
   const base = state.base || "USD";
 
   // Persist visible columns and order
@@ -126,11 +126,11 @@ export default function PortfolioPage() {
         volume: live?.total_volume ?? 0,
       };
     };
-    if (useSupabase && sb.positions.length > 0) {
-      return sb.positions.map(p => buildPos(p.symbol, p.name, p.qty, p.cost));
+    if (useWorker && portfolio.positions.length > 0) {
+      return portfolio.positions.map(p => buildPos(p.symbol, p.name, p.qty, p.cost));
     }
     return localD.rows.map(r => buildPos(r.sym, r.sym, r.qty, r.cost));
-  }, [useSupabase, sb.positions, localD.rows, liveCoinsList, getPrice]);
+  }, [useWorker, portfolio.positions, localD.rows, liveCoinsList, getPrice]);
 
   // Fetch real 7-day sparkline data
   const sparkCoinIds = useMemo(() => positions.map(p => p.coinId), [positions]);
@@ -169,7 +169,7 @@ export default function PortfolioPage() {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([sb.refresh(), refresh(true)]);
+    await Promise.all([portfolio.refresh(), refresh(true)]);
   };
 
   const totalCost = positions.reduce((s, p) => s + p.cost, 0);
@@ -187,10 +187,10 @@ export default function PortfolioPage() {
 
   return (
     <>
-      {!sb.loading && !sb.authenticated && (
+      {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not logged in — showing local data only.
+            ⚠ Not signed in — showing local data only.
           </div>
         </div>
       )}
@@ -220,7 +220,7 @@ export default function PortfolioPage() {
         <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
           ⚙ Columns
         </button>
-        {useSupabase && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Supabase ✓</span>}
+        {useWorker && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker ✓</span>}
         <span className="pill">Live prices · Top 500</span>
       </div>
 

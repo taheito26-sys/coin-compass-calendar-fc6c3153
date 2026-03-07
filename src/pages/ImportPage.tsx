@@ -3,7 +3,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult, NormalizedRow } from "@/lib/importers";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { createTransaction, createImportedFile, fetchAssets, getSourceLog } from "@/lib/api";
+import { createTransaction, createImportedFile, fetchAssets } from "@/lib/api";
 
 type Stage = "upload" | "preview" | "done";
 
@@ -142,7 +142,7 @@ export default function ImportPage() {
       return { ...prev, txs: newTxs, lots: newLots, holdings: newHoldings, importedFiles: newImported };
     });
 
-    // Sync to backend via API client (Worker-first, Supabase fallback)
+    // Sync to backend via Worker API
     let synced = 0;
     const assets = await fetchAssets().catch(() => [] as any[]);
     for (const row of result.rows) {
@@ -185,9 +185,7 @@ export default function ImportPage() {
       console.warn("[import] Failed to record imported file:", err.message);
     }
 
-    const log = getSourceLog(1);
-    const source = log.length > 0 ? log[log.length - 1].source : "unknown";
-    toast(`Imported ${result.rows.length} trades (${synced} synced via ${source})`, "good");
+    toast(`Imported ${result.rows.length} trades (${synced} synced)`, "good");
     setStage("done");
   };
 

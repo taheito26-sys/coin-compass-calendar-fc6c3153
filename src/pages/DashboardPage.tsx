@@ -1,6 +1,6 @@
 import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { useSupabasePortfolio } from "@/hooks/useSupabasePortfolio";
+import { usePortfolio } from "@/hooks/usePortfolio";
 import { useMemo } from "react";
 
 const COIN_COLORS = [
@@ -101,27 +101,24 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
 }
 
 export default function DashboardPage() {
-  // Supabase data (primary)
-  const sb = useSupabasePortfolio();
-  // Local fallback
+  const portfolio = usePortfolio();
   const { state, refresh } = useCrypto();
   const localD = cryptoDerived(state);
 
-  // Use Supabase data if authenticated, otherwise fall back to local
-  const useSupabase = sb.authenticated && !sb.error;
-  const positions = useSupabase ? sb.positions : [];
-  const totalMV = useSupabase ? sb.totalMV : localD.pricedMV;
-  const totalCost = useSupabase ? sb.totalCost : localD.totalCost;
-  const totalPnl = useSupabase ? sb.totalPnl : localD.unreal;
-  const totalPnlPct = useSupabase ? sb.totalPnlPct : (localD.pricedCost > 0 ? (localD.unreal / localD.pricedCost) * 100 : 0);
-  const assetCount = useSupabase ? sb.assetCount : localD.rows.length;
-  const priceAge = useSupabase ? sb.priceAge : (localD.priceAgeMs < 60000 ? Math.round(localD.priceAgeMs / 1000) + "s" : Math.round(localD.priceAgeMs / 60000) + "m");
+  const useWorker = portfolio.authenticated && !portfolio.error;
+  const positions = useWorker ? portfolio.positions : [];
+  const totalMV = useWorker ? portfolio.totalMV : localD.pricedMV;
+  const totalCost = useWorker ? portfolio.totalCost : localD.totalCost;
+  const totalPnl = useWorker ? portfolio.totalPnl : localD.unreal;
+  const totalPnlPct = useWorker ? portfolio.totalPnlPct : (localD.pricedCost > 0 ? (localD.unreal / localD.pricedCost) * 100 : 0);
+  const assetCount = useWorker ? portfolio.assetCount : localD.rows.length;
+  const priceAge = useWorker ? portfolio.priceAge : (localD.priceAgeMs < 60000 ? Math.round(localD.priceAgeMs / 1000) + "s" : Math.round(localD.priceAgeMs / 60000) + "m");
   const base = state.base || "USD";
   const method = state.method || "FIFO";
 
   // Rows for table/charts - merge both sources
   const rows = useMemo(() => {
-    if (useSupabase && positions.length > 0) {
+    if (useWorker && positions.length > 0) {
       return positions.map(p => ({
         sym: p.symbol,
         qty: p.qty,
@@ -132,7 +129,7 @@ export default function DashboardPage() {
       }));
     }
     return localD.rows;
-  }, [useSupabase, positions, localD.rows]);
+  }, [useWorker, positions, localD.rows]);
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
@@ -178,26 +175,26 @@ export default function DashboardPage() {
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
 
   const handleRefresh = async () => {
-    await Promise.all([sb.refresh(), refresh(true)]);
+    await Promise.all([portfolio.refresh(), refresh(true)]);
   };
 
   return (
     <>
       {/* Source indicator */}
-      {sb.loading && (
-        <div className="pill" style={{ marginBottom: 8 }}>Loading Supabase data…</div>
+      {portfolio.loading && (
+        <div className="pill" style={{ marginBottom: 8 }}>Loading data…</div>
       )}
-      {!sb.loading && !sb.authenticated && (
+      {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not logged in — showing local data only. Sign in to see your Supabase portfolio.
+            ⚠ Not signed in — showing local data only. Sign in to sync your portfolio.
           </div>
         </div>
       )}
-      {sb.error && (
+      {portfolio.error && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body" style={{ fontSize: 12, color: "var(--bad)" }}>
-            Supabase error: {sb.error} — falling back to local data.
+            API error: {portfolio.error}
           </div>
         </div>
       )}
@@ -206,23 +203,14 @@ export default function DashboardPage() {
         <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
         <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
-        {useSupabase && (
-          <span className="pill" style={{
-            background: sb.dataSource === "worker" ? "hsl(var(--primary) / 0.15)" : "hsl(var(--muted) / 0.15)",
-            color: sb.dataSource === "worker" ? "hsl(var(--primary))" : "hsl(var(--muted-foreground))",
-            fontWeight: 700,
-          }}>
-            {sb.dataSource === "worker" ? "⚡ Worker" : "🔄 Supabase"} ✓
-          </span>
-        )}
-        {sb.workerOnline && (
+        {portfolio.workerOnline && (
           <span className="pill" style={{
             background: "hsl(142 76% 36% / 0.15)",
             color: "hsl(142 76% 36%)",
             fontWeight: 700,
             fontSize: 10,
           }}>
-            Worker Online
+            ⚡ Worker Online
           </span>
         )}
       </div>
@@ -252,7 +240,7 @@ export default function DashboardPage() {
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
           <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
-          <div className="kpi-sub">{useSupabase ? sb.txCount + " transactions" : state.lots.length + " lots"}</div>
+          <div className="kpi-sub">{useWorker ? portfolio.txCount + " transactions" : state.lots.length + " lots"}</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
