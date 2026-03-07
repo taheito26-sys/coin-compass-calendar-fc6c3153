@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useCallback, useEffect } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, forwardRef } from "react";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
 
 interface CryptoCtx {
@@ -20,7 +20,7 @@ const fallbackCtx: CryptoCtx = {
 const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
-export function CryptoProvider({ children }: { children: React.ReactNode }) {
+export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.ReactNode }>(function CryptoProvider({ children }, _ref) {
   const [state, setStateRaw] = useState<CryptoState>(loadState);
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
 
@@ -65,4 +65,7 @@ export function CryptoProvider({ children }: { children: React.ReactNode }) {
       {children}
     </Ctx.Provider>
   );
-}
+});
+
+CryptoProvider.displayName = "CryptoProvider";
+

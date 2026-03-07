@@ -77,6 +77,11 @@ export const CRYPTO_ID_MAP: Record<string, string> = {
   PEPE:"pepe", SHIB:"shiba-inu"
 };
 
+const VALID_LAYOUTS = new Set(["flux", "cipher", "vector", "aurora", "carbon", "prism", "noir"]);
+const VALID_THEMES = new Set(["t1", "t2", "t3", "t4", "t5"]);
+const VALID_METHODS = new Set(["FIFO", "DCA"]);
+const VALID_BASES = new Set(["USD", "EUR", "GBP", "QAR"]);
+
 export function defaultState(): CryptoState {
   return {
     base: "USD", method: "FIFO",
@@ -96,8 +101,8 @@ function sanitizeLoadedState(parsed: any): CryptoState {
   return {
     ...base,
     ...parsed,
-    base: typeof parsed.base === "string" && parsed.base ? parsed.base : base.base,
-    method: typeof parsed.method === "string" && parsed.method ? parsed.method : base.method,
+    base: VALID_BASES.has(String(parsed.base || "").toUpperCase()) ? String(parsed.base).toUpperCase() : base.base,
+    method: VALID_METHODS.has(String(parsed.method || "").toUpperCase()) ? String(parsed.method).toUpperCase() : base.method,
     txs: Array.isArray(parsed.txs) ? parsed.txs : base.txs,
     lots: Array.isArray(parsed.lots) ? parsed.lots : base.lots,
     watch: Array.isArray(parsed.watch) && parsed.watch.length
@@ -111,8 +116,8 @@ function sanitizeLoadedState(parsed: any): CryptoState {
     importedFiles: Array.isArray(parsed.importedFiles) ? parsed.importedFiles : base.importedFiles,
     prices: parsed.prices && typeof parsed.prices === "object" ? parsed.prices : base.prices,
     pricesTs: Number.isFinite(Number(parsed.pricesTs)) ? Number(parsed.pricesTs) : base.pricesTs,
-    layout: typeof parsed.layout === "string" && parsed.layout ? parsed.layout : base.layout,
-    theme: typeof parsed.theme === "string" && parsed.theme ? parsed.theme : base.theme,
+    layout: VALID_LAYOUTS.has(String(parsed.layout || "")) ? String(parsed.layout) : base.layout,
+    theme: VALID_THEMES.has(String(parsed.theme || "")) ? String(parsed.theme) : base.theme,
   };
 }
 
