@@ -1,4 +1,7 @@
-import { supabase } from '@/integrations/supabase/client';
+import { supabase as typedSupabase } from '@/integrations/supabase/client';
+
+// Cast to any to allow querying tables not yet in the generated types
+const supabase = typedSupabase as any;
 export { supabase };
 
 export interface Asset {
