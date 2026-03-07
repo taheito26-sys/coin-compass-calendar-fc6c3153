@@ -71,11 +71,12 @@ function ClerkAuthGate({ children }: { children: React.ReactNode }) {
 function AppShell() {
   const [page, setPage] = useState("dashboard");
   const { toastMsg } = useCrypto();
-  const { signOut, isSignedIn } = useAuth();
+  const clerkAvailable = !!import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const auth = clerkAvailable ? useAuth() : { signOut: async () => {}, isSignedIn: false };
   const [title, sub] = PAGE_TITLES[page] || ["CryptoTracker", ""];
 
   const handleLogout = async () => {
-    await signOut();
+    await auth.signOut();
   };
 
   return (
