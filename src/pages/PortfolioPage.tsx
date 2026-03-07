@@ -169,7 +169,7 @@ export default function PortfolioPage() {
   };
 
   const handleRefresh = async () => {
-    await Promise.all([sb.refresh(), refresh(true)]);
+    await Promise.all([portfolio.refresh(), refresh(true)]);
   };
 
   const totalCost = positions.reduce((s, p) => s + p.cost, 0);
@@ -187,10 +187,10 @@ export default function PortfolioPage() {
 
   return (
     <>
-      {!sb.loading && !sb.authenticated && (
+      {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not logged in — showing local data only.
+            ⚠ Not signed in — showing local data only.
           </div>
         </div>
       )}
@@ -220,7 +220,7 @@ export default function PortfolioPage() {
         <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
           ⚙ Columns
         </button>
-        {useSupabase && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Supabase ✓</span>}
+        {useWorker && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker ✓</span>}
         <span className="pill">Live prices · Top 500</span>
       </div>
 
