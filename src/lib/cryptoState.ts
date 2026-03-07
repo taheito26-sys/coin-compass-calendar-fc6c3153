@@ -89,10 +89,37 @@ export function defaultState(): CryptoState {
   };
 }
 
+function sanitizeLoadedState(parsed: any): CryptoState {
+  const base = defaultState();
+  if (!parsed || typeof parsed !== "object") return base;
+
+  return {
+    ...base,
+    ...parsed,
+    base: typeof parsed.base === "string" && parsed.base ? parsed.base : base.base,
+    method: typeof parsed.method === "string" && parsed.method ? parsed.method : base.method,
+    txs: Array.isArray(parsed.txs) ? parsed.txs : base.txs,
+    lots: Array.isArray(parsed.lots) ? parsed.lots : base.lots,
+    watch: Array.isArray(parsed.watch) && parsed.watch.length
+      ? parsed.watch.filter((v: any) => typeof v === "string" && v.trim())
+      : base.watch,
+    alerts: Array.isArray(parsed.alerts) ? parsed.alerts : base.alerts,
+    connections: Array.isArray(parsed.connections) ? parsed.connections : base.connections,
+    accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : base.accounts,
+    holdings: Array.isArray(parsed.holdings) ? parsed.holdings : base.holdings,
+    calendarEntries: Array.isArray(parsed.calendarEntries) ? parsed.calendarEntries : base.calendarEntries,
+    importedFiles: Array.isArray(parsed.importedFiles) ? parsed.importedFiles : base.importedFiles,
+    prices: parsed.prices && typeof parsed.prices === "object" ? parsed.prices : base.prices,
+    pricesTs: Number.isFinite(Number(parsed.pricesTs)) ? Number(parsed.pricesTs) : base.pricesTs,
+    layout: typeof parsed.layout === "string" && parsed.layout ? parsed.layout : base.layout,
+    theme: typeof parsed.theme === "string" && parsed.theme ? parsed.theme : base.theme,
+  };
+}
+
 export function loadState(): CryptoState {
   try {
     const raw = localStorage.getItem(SK);
-    if (raw) return { ...defaultState(), ...JSON.parse(raw) };
+    if (raw) return sanitizeLoadedState(JSON.parse(raw));
   } catch {}
   return defaultState();
 }
