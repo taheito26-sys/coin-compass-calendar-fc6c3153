@@ -1,6 +1,23 @@
 // Worker API base URL — prefer VITE_WORKER_API_URL, fallback to known production Worker
 const DEFAULT_WORKER_BASE = "https://cryptotracker-api.taheito26.workers.dev";
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || DEFAULT_WORKER_BASE || "").replace(/\/$/, "");
+
+function resolveWorkerBase(raw: string | undefined): string {
+  const candidate = (raw || "").trim();
+  if (!candidate) return DEFAULT_WORKER_BASE;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return candidate.replace(/\/$/, "");
+    }
+  } catch {
+    // fall through to default
+  }
+
+  return DEFAULT_WORKER_BASE;
+}
+
+const WORKER_BASE = resolveWorkerBase(import.meta.env.VITE_WORKER_API_URL);
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
 
