@@ -160,8 +160,10 @@ export async function deleteTransaction(transactionId: string): Promise<void> {
 
 export interface BatchCreateResult {
   created: number;
+  skippedDuplicates: number;
   errors: number;
-  errorDetails: string[];
+  errorDetails: Array<{ index: number; reason: string }>;
+  transactions: ApiTransaction[];
 }
 
 export async function batchCreateTransactions(
@@ -170,7 +172,7 @@ export async function batchCreateTransactions(
   const response = await apiFetch<BatchCreateResult>("/api/transactions/batch", {
     method: "POST",
     body: JSON.stringify({ transactions }),
-    signal: AbortSignal.timeout(60000), // longer timeout for batch
+    signal: AbortSignal.timeout(60000),
   });
   return response;
 }
