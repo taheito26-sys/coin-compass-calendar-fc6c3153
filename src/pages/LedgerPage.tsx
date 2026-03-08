@@ -8,7 +8,9 @@ import {
   createTransaction,
   updateTransaction,
   deleteTransaction,
+  batchCreateTransactions,
   createImportedFile,
+  fetchImportedFiles,
   isWorkerConfigured,
 } from "@/lib/api";
 import { getAssetCatalog, resolveAssetId, resolveAssetSymbol } from "@/lib/assetResolver";
@@ -27,8 +29,18 @@ function isBackendId(id: string): boolean {
   return UUID_RE.test(id) || HEX32_RE.test(id);
 }
 
+/** Import result counts shown to the user */
+interface ImportCounts {
+  parsed: number;
+  accepted: number;
+  rejected: number;
+  persisted: number;
+  skippedDuplicate: number;
+  failed: number;
+}
+
 export default function LedgerPage() {
-  const { state, setState, toast } = useCrypto();
+  const { state, setState, rehydrateFromBackend, toast } = useCrypto();
 
   // Manual entry state
   const [type, setType] = useState("buy");
@@ -41,8 +53,10 @@ export default function LedgerPage() {
   const [saving, setSaving] = useState(false);
 
   // Import state
-  const [importStage, setImportStage] = useState<"upload" | "preview" | "done">("upload");
+  const [importStage, setImportStage] = useState<"upload" | "preview" | "committing" | "done" | "error">("upload");
   const [importResult, setImportResult] = useState<ParseResult | null>(null);
+  const [importCounts, setImportCounts] = useState<ImportCounts | null>(null);
+  const [importErrorMsg, setImportErrorMsg] = useState("");
   const [fileName, setFileName] = useState("");
   const [fileHash, setFileHash] = useState("");
   const [importLoading, setImportLoading] = useState(false);
@@ -95,25 +109,8 @@ export default function LedgerPage() {
           source: "manual",
         });
 
-        const total = (type === "buy" || type === "sell") ? q * p : 0;
-        setState((prev) => ({
-          ...prev,
-          txs: [{
-            id: created.id,
-            ts,
-            type,
-            asset: normalizedAsset,
-            qty: q,
-            price: p,
-            total,
-            fee: f,
-            feeAsset: state.base,
-            accountId: "acc_main",
-            note,
-            lots: "",
-          }, ...prev.txs],
-        }));
-
+        // Refresh from backend to get canonical state
+        await rehydrateFromBackend();
         toast("Transaction saved ✓", "good");
       } else {
         const total = (type === "buy" || type === "sell") ? q * p : 0;
@@ -134,7 +131,6 @@ export default function LedgerPage() {
             lots: "",
           }, ...prev.txs],
         }));
-
         toast("Saved locally only (Worker API not configured)", "bad");
       }
 
@@ -174,7 +170,6 @@ export default function LedgerPage() {
     const nextType = editType || existing.type;
     const nextQty = Number.isFinite(parseFloat(editQty)) ? parseFloat(editQty) : existing.qty;
     const nextPrice = Number.isFinite(parseFloat(editPrice)) ? parseFloat(editPrice) : existing.price;
-    const nextTotal = (nextType === "buy" || nextType === "sell") ? nextQty * nextPrice : 0;
 
     try {
       if (isWorkerConfigured() && isBackendId(editId)) {
@@ -192,20 +187,11 @@ export default function LedgerPage() {
           unit_price: nextPrice,
         });
 
-        setState((prev) => ({
-          ...prev,
-          txs: prev.txs.map((t) => t.id === editId ? {
-            ...t,
-            asset: normalizedAsset,
-            qty: nextQty,
-            price: nextPrice,
-            type: nextType,
-            total: nextTotal,
-          } : t),
-        }));
-
+        // Refresh from backend to recompute derived state
+        await rehydrateFromBackend();
         toast("Transaction updated ✓", "good");
       } else {
+        const nextTotal = (nextType === "buy" || nextType === "sell") ? nextQty * nextPrice : 0;
         setState((prev) => ({
           ...prev,
           txs: prev.txs.map((t) => t.id === editId ? {
@@ -217,7 +203,6 @@ export default function LedgerPage() {
             total: nextTotal,
           } : t),
         }));
-
         toast("Updated local-only transaction (not synced)", "bad");
       }
 
@@ -232,10 +217,13 @@ export default function LedgerPage() {
     try {
       if (isWorkerConfigured() && isBackendId(id)) {
         await deleteTransaction(id);
+        // Refresh from backend to recompute derived state
+        await rehydrateFromBackend();
+        toast("Transaction deleted ✓", "good");
+      } else {
+        setState((prev) => ({ ...prev, txs: prev.txs.filter((t) => t.id !== id) }));
+        toast("Deleted local-only transaction", "good");
       }
-
-      setState((prev) => ({ ...prev, txs: prev.txs.filter((t) => t.id !== id) }));
-      toast(isBackendId(id) ? "Transaction deleted ✓" : "Deleted local-only transaction", "good");
     } catch (err: any) {
       console.error("[ledger] Delete failed:", err);
       toast(err?.message || "Failed to delete transaction", "bad");
@@ -249,11 +237,28 @@ export default function LedgerPage() {
     try {
       const text = await file.text();
       const hash = await hashFile(text);
+
+      // Check local imported files list
       if (importedFiles.some((f: any) => f.hash === hash)) {
         setImportError("This file has already been imported (duplicate detected).");
         setImportLoading(false);
         return;
       }
+
+      // Also check backend imported files
+      if (isWorkerConfigured()) {
+        try {
+          const backendFiles = await fetchImportedFiles();
+          if (backendFiles.some((f: any) => f.file_hash === hash)) {
+            setImportError("This file has already been imported (duplicate detected in backend).");
+            setImportLoading(false);
+            return;
+          }
+        } catch {
+          // If we can't check backend, proceed with local check only
+        }
+      }
+
       const parsed = await importCSV(text, file.name);
       setFileName(file.name);
       setFileHash(hash);
@@ -269,130 +274,151 @@ export default function LedgerPage() {
     setImportLoading(false);
   }, [importedFiles]);
 
+  /**
+   * BACKEND-FIRST import commit.
+   * 1. Resolve asset IDs
+   * 2. Build batch payload with external_ids for idempotency
+   * 3. Persist to backend via batch API
+   * 4. Record imported file metadata in backend
+   * 5. Only THEN refresh UI from backend response
+   * 6. Show explicit counts
+   */
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
 
-    const createdTxs: typeof state.txs = [];
-    const missingSymbols = new Set<string>();
-    let synced = 0;
-
-    if (isWorkerConfigured()) {
-      try {
-        const assets = await getAssetCatalog();
-
-        for (const row of importResult.rows) {
-          const { assetId, symbol } = resolveAssetId(row.symbol, assets);
-          if (!assetId) {
-            missingSymbols.add(symbol);
-            continue;
-          }
-
-          try {
-            const created = await createTransaction({
-              asset_id: assetId,
-              timestamp: new Date(row.timestamp).toISOString(),
-              type: row.side,
-              qty: row.qty,
-              unit_price: row.unitPrice,
-              fee_amount: row.feeAmount,
-              fee_currency: row.feeAsset || state.base,
-              venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-              note: `Import: ${row.externalId}`,
-              source: "csv-import",
-              external_id: row.externalId || undefined,
-            });
-
-            createdTxs.push({
-              id: created.id,
-              ts: row.timestamp,
-              type: row.side,
-              asset: symbol,
-              qty: row.qty,
-              price: row.unitPrice,
-              total: row.grossValue,
-              fee: row.feeAmount,
-              feeAsset: row.feeAsset || state.base,
-              accountId: "acc_main",
-              note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
-              lots: "",
-            });
-            synced++;
-          } catch (err: any) {
-            console.warn("[import] Failed row:", err?.message || err);
-          }
-        }
-      } catch (err: any) {
-        toast(err?.message || "Import sync failed", "bad");
-        return;
-      }
-    } else {
-      for (const row of importResult.rows) {
-        const symbol = resolveAssetSymbol(row.symbol);
-        createdTxs.push({
-          id: `local_${uid()}`,
-          ts: row.timestamp,
-          type: row.side,
-          asset: symbol,
-          qty: row.qty,
-          price: row.unitPrice,
-          total: row.grossValue,
-          fee: row.feeAmount,
-          feeAsset: row.feeAsset || state.base,
-          accountId: "acc_main",
-          note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
-          lots: "",
-        });
-      }
-      synced = createdTxs.length;
-    }
-
-    if (createdTxs.length === 0) {
-      const missing = [...missingSymbols].slice(0, 6).join(", ");
-      toast(missing ? `No rows imported. Missing assets: ${missing}` : "No rows imported.", "bad");
+    if (!isWorkerConfigured()) {
+      toast("Backend not configured — cannot persist import durably", "bad");
       return;
     }
 
-    setState((prev) => ({
-      ...prev,
-      txs: [...prev.txs, ...createdTxs],
-      importedFiles: [...(prev.importedFiles || []), {
-        name: fileName,
-        hash: fileHash,
-        importedAt: Date.now(),
-        exchange: importResult.exchange,
-        exportType: importResult.exportType,
-        rowCount: importResult.rows.length,
-      }],
-    }));
+    setImportStage("committing");
+    setImportErrorMsg("");
 
-    if (isWorkerConfigured()) {
+    const counts: ImportCounts = {
+      parsed: importResult.rows.length,
+      accepted: 0,
+      rejected: 0,
+      persisted: 0,
+      skippedDuplicate: 0,
+      failed: 0,
+    };
+
+    try {
+      const assets = await getAssetCatalog();
+      const missingSymbols = new Set<string>();
+
+      // Build batch payload
+      const batchPayload: Array<{
+        asset_id: string;
+        timestamp: string;
+        type: string;
+        qty: number;
+        unit_price: number;
+        fee_amount: number;
+        fee_currency: string;
+        venue: string;
+        note: string;
+        source: string;
+        external_id: string;
+      }> = [];
+
+      for (const row of importResult.rows) {
+        const { assetId, symbol } = resolveAssetId(row.symbol, assets);
+        if (!assetId) {
+          missingSymbols.add(symbol);
+          counts.rejected++;
+          continue;
+        }
+
+        // Deterministic external_id for idempotency: exchange:externalId or exchange:timestamp:symbol:side:qty:price
+        const externalId = row.externalId
+          ? `${row.exchange}:${row.externalId}`
+          : `${row.exchange}:${row.timestamp}:${symbol}:${row.side}:${row.qty}:${row.unitPrice}`;
+
+        batchPayload.push({
+          asset_id: assetId,
+          timestamp: new Date(row.timestamp).toISOString(),
+          type: row.side,
+          qty: row.qty,
+          unit_price: row.unitPrice,
+          fee_amount: row.feeAmount,
+          fee_currency: row.feeAsset || state.base,
+          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+          note: `Import: ${row.externalId || ""}`,
+          source: "csv-import",
+          external_id: externalId,
+        });
+      }
+
+      counts.accepted = batchPayload.length;
+
+      if (batchPayload.length === 0) {
+        const missing = [...missingSymbols].slice(0, 6).join(", ");
+        setImportErrorMsg(missing ? `No rows accepted. Missing assets: ${missing}` : "No rows accepted.");
+        setImportStage("error");
+        setImportCounts(counts);
+        return;
+      }
+
+      // Persist to backend in batches of 500
+      for (let i = 0; i < batchPayload.length; i += 500) {
+        const batch = batchPayload.slice(i, i + 500);
+        const result = await batchCreateTransactions(batch);
+        counts.persisted += result.created;
+        counts.skippedDuplicate += result.skippedDuplicates;
+        counts.failed += result.errors;
+      }
+
+      // Record imported file metadata in backend
       try {
         await createImportedFile({
           file_name: fileName,
           file_hash: fileHash,
           exchange: importResult.exchange,
           export_type: importResult.exportType,
-          row_count: importResult.rows.length,
+          row_count: counts.persisted,
         });
       } catch (err: any) {
-        console.warn("[import] Failed to record imported file:", err.message);
+        // 409 = already recorded, fine
+        if (!err.message?.includes("409")) {
+          console.warn("[import] Failed to record imported file:", err.message);
+        }
       }
+
+      // NOW refresh UI from backend (canonical source of truth)
+      await rehydrateFromBackend();
+
+      setImportCounts(counts);
+
+      if (counts.failed > 0) {
+        setImportErrorMsg(`${counts.failed} row(s) failed to persist. ${counts.persisted} persisted successfully.`);
+        setImportStage(counts.persisted > 0 ? "done" : "error");
+      } else {
+        setImportStage("done");
+      }
+
+      const missingText = missingSymbols.size > 0
+        ? ` · ${missingSymbols.size} rejected (missing asset)`
+        : "";
+
+      toast(
+        `Imported ${counts.persisted} trades (${counts.skippedDuplicate} duplicates skipped)${missingText}`,
+        counts.failed > 0 || missingSymbols.size > 0 ? "bad" : "good",
+      );
+    } catch (err: any) {
+      console.error("[import] Backend persistence failed:", err);
+      setImportErrorMsg(`Backend save failed: ${err.message || "Unknown error"}. No data was committed to your portfolio.`);
+      setImportStage("error");
+      setImportCounts(counts);
+      toast("Import failed — backend persistence error", "bad");
     }
-
-    const missingText = missingSymbols.size > 0
-      ? ` · ${missingSymbols.size} skipped (missing asset mapping)`
-      : "";
-
-    toast(
-      `${isWorkerConfigured() ? "Imported" : "Imported local-only"} ${createdTxs.length}/${importResult.rows.length} trades (${synced} synced)${missingText}`,
-      missingSymbols.size > 0 ? "bad" : "good",
-    );
-    setImportStage("done");
   };
 
   const resetImport = () => {
     setImportStage("upload");
     setImportResult(null);
+    setImportCounts(null);
+    setImportErrorMsg("");
     setFileName("");
     setFileHash("");
     setImportError("");
@@ -477,15 +503,65 @@ export default function LedgerPage() {
                 </div>
               </>
             )}
-            {importStage === "done" && importResult && (
+            {importStage === "committing" && (
+              <div style={{ textAlign: "center", padding: 24 }}>
+                <div style={{ fontSize: 14, marginBottom: 8 }}>Persisting to backend…</div>
+                <div className="muted" style={{ fontSize: 12 }}>Do not close this page.</div>
+              </div>
+            )}
+            {importStage === "done" && importCounts && (
               <>
-                <p><strong>{importResult.rowCount}</strong> trades from <strong>{EXCHANGE_LABELS[importResult.exchange]}</strong> committed ✓</p>
+                <div className="import-summary" style={{ marginBottom: 8, flexWrap: "wrap" }}>
+                  <div className="import-stat"><div className="import-stat-val">{importCounts.parsed}</div><div className="import-stat-lbl">Parsed</div></div>
+                  <div className="import-stat"><div className="import-stat-val">{importCounts.accepted}</div><div className="import-stat-lbl">Accepted</div></div>
+                  <div className="import-stat"><div className="import-stat-val good">{importCounts.persisted}</div><div className="import-stat-lbl">Persisted</div></div>
+                  {importCounts.skippedDuplicate > 0 && (
+                    <div className="import-stat"><div className="import-stat-val" style={{ color: "var(--muted)" }}>{importCounts.skippedDuplicate}</div><div className="import-stat-lbl">Duplicates</div></div>
+                  )}
+                  {importCounts.rejected > 0 && (
+                    <div className="import-stat"><div className="import-stat-val" style={{ color: "var(--bad)" }}>{importCounts.rejected}</div><div className="import-stat-lbl">Rejected</div></div>
+                  )}
+                  {importCounts.failed > 0 && (
+                    <div className="import-stat"><div className="import-stat-val" style={{ color: "var(--bad)" }}>{importCounts.failed}</div><div className="import-stat-lbl">Failed</div></div>
+                  )}
+                </div>
+                {importErrorMsg && <div className="import-error" style={{ marginBottom: 8 }}>{importErrorMsg}</div>}
                 <button className="btn" onClick={resetImport} style={{ marginTop: 8 }}>Import Another</button>
+              </>
+            )}
+            {importStage === "error" && (
+              <>
+                <div className="import-error" style={{ marginBottom: 12 }}>
+                  <strong>Import failed</strong><br/>
+                  {importErrorMsg || "Unknown error"}
+                </div>
+                {importCounts && (
+                  <div className="import-summary" style={{ marginBottom: 8 }}>
+                    <div className="import-stat"><div className="import-stat-val">{importCounts.parsed}</div><div className="import-stat-lbl">Parsed</div></div>
+                    <div className="import-stat"><div className="import-stat-val">{importCounts.accepted}</div><div className="import-stat-lbl">Accepted</div></div>
+                    <div className="import-stat"><div className="import-stat-val good">{importCounts.persisted}</div><div className="import-stat-lbl">Persisted</div></div>
+                    <div className="import-stat"><div className="import-stat-val" style={{ color: "var(--bad)" }}>{importCounts.failed}</div><div className="import-stat-lbl">Failed</div></div>
+                  </div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn secondary" onClick={resetImport}>Cancel</button>
+                  <button className="btn" onClick={commitImport}>Retry Import</button>
+                </div>
               </>
             )}
           </div>
         </div>
       </div>
+
+      {/* Sync status banner */}
+      {state.syncStatus === "error" && (
+        <div className="panel" style={{ borderColor: "var(--bad)", marginBottom: 12 }}>
+          <div className="panel-body" style={{ color: "var(--bad)", fontSize: 13 }}>
+            ⚠ Backend sync error: {state.syncError || "Unknown"}. Data shown may be stale.
+            <button className="btn secondary" onClick={rehydrateFromBackend} style={{ marginLeft: 8, fontSize: 11 }}>Retry</button>
+          </div>
+        </div>
+      )}
 
       {/* Transaction Ledger */}
       <div className="panel">
