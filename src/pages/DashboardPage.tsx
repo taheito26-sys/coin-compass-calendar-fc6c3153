@@ -267,7 +267,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             {heatmapItems.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {heatmapItems.map((item, i) => (
-                  <HeatmapBlock key={i} sym={item.sym} value={"$" + item.value} pct={item.pct} color={item.color} />
+                  <HeatmapBlock key={i} sym={item.sym} value={item.value} pct={item.pct} color={item.color} />
                 ))}
               </div>
             ) : (
