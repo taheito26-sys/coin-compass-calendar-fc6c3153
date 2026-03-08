@@ -166,16 +166,26 @@ export function usePortfolio(): PortfolioData {
         return;
       }
 
-      const [assets, txs, priceData, online] = await Promise.all([
+      // Check if worker URL is configured before attempting API calls
+      const online = await isWorkerAvailable();
+      if (!online) {
+        setWorkerOnline(false);
+        setPositions([]);
+        setTxCount(0);
+        setPriceTs(0);
+        setLoading(false);
+        return;
+      }
+
+      const [assets, txs, priceData] = await Promise.all([
         fetchAssets(),
         fetchTransactions(),
         fetchPrices(),
-        isWorkerAvailable(),
       ]);
 
       assetsRef.current = assets;
       txsRef.current = txs;
-      setWorkerOnline(online);
+      setWorkerOnline(true);
       setTxCount(txs.length);
       setPriceTs(priceData.ts);
       setPositions(buildPositions(assets, txs, priceData.prices));

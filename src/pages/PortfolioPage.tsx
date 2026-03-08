@@ -82,7 +82,9 @@ export default function PortfolioPage() {
   const [showColConfig, setShowColConfig] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
 
-  const useWorker = portfolio.authenticated && !portfolio.error;
+  // Prefer worker data only when it actually has positions; fall back to local
+  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
+  const useWorker = workerReady && portfolio.positions.length > 0;
   const base = state.base || "USD";
 
   // Persist visible columns and order
@@ -126,7 +128,7 @@ export default function PortfolioPage() {
         volume: live?.total_volume ?? 0,
       };
     };
-    if (useWorker && portfolio.positions.length > 0) {
+    if (useWorker) {
       return portfolio.positions.map(p => buildPos(p.symbol, p.name, p.qty, p.cost));
     }
     return localD.rows.map(r => buildPos(r.sym, r.sym, r.qty, r.cost));
