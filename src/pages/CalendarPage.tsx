@@ -209,7 +209,7 @@ export default function CalendarPage() {
                   {data && (
                     <>
                       <div className={`cal-profit ${data.pnl >= 0 ? "good" : "bad"}`}>
-                        {(data.pnl >= 0 ? "+" : "") + fmtFiat(data.pnl, state.base).split(" ")[0]}
+                        {(data.pnl >= 0 ? "+" : "") + fmtFiat(data.pnl, state.base)}
                       </div>
                       <div className="cal-count">{data.trades}t</div>
                     </>

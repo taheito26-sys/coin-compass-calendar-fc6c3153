@@ -54,7 +54,7 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Current Price</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>{currentPrice !== null ? "$" + fmtPx(currentPrice) : "—"}</div>
+              <div className="kpi-val" style={{ fontSize: 16 }}>{currentPrice !== null ? fmtPx(currentPrice) : "—"}</div>
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Market Value</div>

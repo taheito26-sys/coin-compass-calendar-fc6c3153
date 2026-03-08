@@ -1,5 +1,5 @@
 import { useCrypto } from "@/lib/cryptoContext";
-import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useMemo } from "react";
@@ -141,7 +141,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           : `rgba(220,38,38,${0.3 + intensity * 0.5})`;
         return {
           sym: r.sym,
-          value: fmtFiat(r.mv || 0, base).split(" ")[0],
+          value: fmtTotal(r.mv || 0),
           pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%",
           color: bg,
           mv: r.mv || 0,
@@ -203,7 +203,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
           </div>
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalMV)}</div>
           <div className="kpi-sub">{assetCount} assets tracked</div>
         </div>
         <div className="kpi-card">
@@ -212,7 +212,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
-            {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
+            {(totalPnl >= 0 ? "+" : "") + fmtTotal(totalPnl)}
           </div>
           <div className="kpi-sub">
             {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "-"}
@@ -221,13 +221,13 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         <div className="kpi-card">
           <div className="kpi-lbl">REALIZED P&L</div>
           <div className={`kpi-val ${realizedPnl >= 0 ? "good" : "bad"}`}>
-            {(realizedPnl >= 0 ? "+" : "") + fmtFiat(realizedPnl, base)}
+            {(realizedPnl >= 0 ? "+" : "") + fmtTotal(realizedPnl)}
           </div>
           <div className="kpi-sub">From closed trades</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalCost)}</div>
           <div className="kpi-sub">{txCount} transactions</div>
         </div>
         <div className="kpi-card">
@@ -247,7 +247,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                 <DonutChart
                   slices={coinSlices}
                   centerLabel={topCoin?.label || "-"}
-                  centerValue={fmtFiat(topCoin?.value || 0, base).split(" ")[0]}
+                  centerValue={fmtTotal(topCoin?.value || 0)}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
                 />
@@ -267,7 +267,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             {heatmapItems.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {heatmapItems.map((item, i) => (
-                  <HeatmapBlock key={i} sym={item.sym} value={"$" + item.value} pct={item.pct} color={item.color} />
+                  <HeatmapBlock key={i} sym={item.sym} value={item.value} pct={item.pct} color={item.color} />
                 ))}
               </div>
             ) : (
@@ -295,14 +295,14 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                     <tr key={g.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{g.sym}</td>
                       <td className="mono good" style={{ textAlign: "right", fontWeight: 700 }}>▲ {g.pnlPct.toFixed(2)}%</td>
-                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtFiat(g.pnlAbs, base)}</td>
+                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtTotal(g.pnlAbs)}</td>
                     </tr>
                   ))}
                   {topLosers.map(l => (
                     <tr key={l.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{l.sym}</td>
                       <td className="mono bad" style={{ textAlign: "right", fontWeight: 700 }}>▼ {Math.abs(l.pnlPct).toFixed(2)}%</td>
-                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtFiat(l.pnlAbs, base)}</td>
+                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtTotal(l.pnlAbs)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -329,7 +329,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                   {watchlistData.map(w => (
                     <tr key={w.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{w.sym}</td>
-                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? "$" + fmtPx(w.price) : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? fmtPx(w.price) : "—"}</td>
                       <td style={{ textAlign: "right" }}>
                         {w.change24h !== null ? (
                           <span className={`mono ${w.change24h >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
@@ -379,11 +379,11 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                     <tr key={r.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(r.avg)} {base}</td>
-                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
-                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
+                      <td className="mono">{fmtPx(r.avg)}</td>
+                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price)}</td>
+                      <td className="mono">{r.mv === null ? "-" : fmtTotal(r.mv)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtTotal(r.unreal)}
                       </td>
                     </tr>
                   )) : (

@@ -1,4 +1,4 @@
-import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
@@ -62,10 +62,10 @@ interface DisplayRow {
 }
 
 function formatCompact(n: number): string {
-  if (n >= 1e12) return "$" + (n / 1e12).toFixed(1) + "T";
-  if (n >= 1e9) return "$" + (n / 1e9).toFixed(0) + "B";
-  if (n >= 1e6) return "$" + (n / 1e6).toFixed(0) + "M";
-  return "$" + n.toLocaleString();
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + "T";
+  if (n >= 1e9) return (n / 1e9).toFixed(0) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + "M";
+  return n.toLocaleString();
 }
 
 function renderChangePill(val: number) {
@@ -202,8 +202,8 @@ export default function PortfolioPage() {
       change1h: <td key="change1h">{renderChangePill(pos.change1h)}</td>,
       change24h: <td key="change24h">{renderChangePill(pos.change24h)}</td>,
       change7d: <td key="change7d">{renderChangePill(pos.change7d)}</td>,
-      price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>,
-      total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>,
+      price: <td key="price" className="mono">{pos.price !== null ? fmtPx(pos.price) : "—"}</td>,
+      total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtTotal(pos.total)}</td>,
       allocation: (
         <td key="allocation">
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
@@ -214,12 +214,12 @@ export default function PortfolioPage() {
           </div>
         </td>
       ),
-      avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>,
+      avg: <td key="avg" className="mono">{pos.avg > 0 ? fmtPx(pos.avg) : "—"}</td>,
       avgSell: <td key="avgSell" className="mono muted">—</td>,
       pnl: (
         <td key="pnl" style={{ textAlign: "right" }}>
           <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
-            {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {(pos.pnlAbs >= 0 ? "+" : "") + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </div>
           <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
             {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
@@ -235,7 +235,7 @@ export default function PortfolioPage() {
       ),
       profitAbs: (
         <td key="profitAbs" className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
-          {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {(pos.pnlAbs >= 0 ? "+" : "-") + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </td>
       ),
       realizedPnl: (
@@ -269,10 +269,10 @@ export default function PortfolioPage() {
       change1h: <td key="change1h" />,
       change24h: <td key="change24h" />,
       change7d: <td key="change7d" />,
-      price: <td key="price" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>${fmtPx(lot.unitCost)}</td>,
-      total: <td key="total" className="mono" style={{ fontSize: 11 }}>{fmtFiat(lotCost, base)}</td>,
+      price: <td key="price" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{fmtPx(lot.unitCost)}</td>,
+      total: <td key="total" className="mono" style={{ fontSize: 11 }}>{fmtTotal(lotCost)}</td>,
       allocation: <td key="allocation" />,
-      avg: <td key="avg" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>${fmtPx(lot.unitCost)}</td>,
+      avg: <td key="avg" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{fmtPx(lot.unitCost)}</td>,
       avgSell: <td key="avgSell" />,
       pnl: (
         <td key="pnl" style={{ textAlign: "right" }}>
@@ -294,7 +294,7 @@ export default function PortfolioPage() {
       ),
       profitAbs: (
         <td key="profitAbs" className="mono" style={{ fontSize: 11, color: lotPnl !== null ? (lotPnl >= 0 ? "var(--good)" : "var(--bad)") : "var(--muted)" }}>
-          {lotPnl !== null ? (lotPnl >= 0 ? "+" : "-") + "$" + Math.abs(lotPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+          {lotPnl !== null ? (lotPnl >= 0 ? "+" : "-") + Math.abs(lotPnl).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "—"}
         </td>
       ),
       realizedPnl: <td key="realizedPnl" />,
@@ -317,8 +317,8 @@ export default function PortfolioPage() {
       }}>
         <div><span className="muted">Date</span> <span className="mono">{dateStr}</span></div>
         <div><span className="muted">Qty</span> <span className="mono">{fmtQty(lot.qtyRem)}</span></div>
-        <div><span className="muted">Unit Cost</span> <span className="mono">${fmtPx(lot.unitCost)}</span></div>
-        <div><span className="muted">Cost</span> <span className="mono">{fmtFiat(lotCost, base)}</span></div>
+        <div><span className="muted">Unit Cost</span> <span className="mono">{fmtPx(lot.unitCost)}</span></div>
+        <div><span className="muted">Cost</span> <span className="mono">{fmtTotal(lotCost)}</span></div>
         {lotPnl !== null && (
           <div style={{ gridColumn: "1 / -1" }}>
             <span className="muted">P/L </span>
@@ -355,7 +355,7 @@ export default function PortfolioPage() {
             {isLot && <span className="muted" style={{ fontSize: 10 }}>{pos.lots.length} lots</span>}
           </div>
           <div style={{ textAlign: "right" }}>
-            <div className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</div>
+            <div className="mono" style={{ fontWeight: 700 }}>{fmtTotal(pos.total)}</div>
             <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
               {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
             </div>
@@ -364,8 +364,8 @@ export default function PortfolioPage() {
         {/* Details grid */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 11 }}>
           <div><span className="muted">Qty </span><span className="mono">{fmtQty(pos.qty)}</span></div>
-          <div><span className="muted">Price </span><span className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</span></div>
-          <div><span className="muted">Avg </span><span className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</span></div>
+          <div><span className="muted">Price </span><span className="mono">{pos.price !== null ? fmtPx(pos.price) : "—"}</span></div>
+          <div><span className="muted">Avg </span><span className="mono">{pos.avg > 0 ? fmtPx(pos.avg) : "—"}</span></div>
           <div><span className="muted">Cost </span><span className="mono">{fmtFiat(pos.cost, base)}</span></div>
           <div><span className="muted">Alloc </span><span className="mono">{alloc.toFixed(1)}%</span></div>
           <div>
@@ -406,19 +406,19 @@ export default function PortfolioPage() {
       <div className="kpis" style={{ marginBottom: 10 }}>
         <div className="kpi-card">
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalMV)}</div>
           <div className="kpi-sub">{filteredRows.length} assets</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
-            {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
+            {(totalPnl >= 0 ? "+" : "") + fmtTotal(totalPnl)}
           </div>
           <div className="kpi-sub">{totalPnlPct.toFixed(2)}%</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalCost)}</div>
         </div>
       </div>
 

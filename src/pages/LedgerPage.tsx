@@ -537,7 +537,7 @@ export default function LedgerPage() {
                         <td className={`mono ${t.type === "sell" ? "bad" : t.type === "buy" ? "good" : ""}`} style={{ fontWeight: 900 }}>{t.type.toUpperCase()}</td>
                         <td className="mono" style={{ fontWeight: 900 }}>{t.asset}</td>
                         <td className="mono">{fmtQty(t.qty)}</td>
-                        <td className="mono">{t.type === "buy" || t.type === "sell" ? "$" + fmtPx(t.price) : "—"}</td>
+                        <td className="mono">{t.type === "buy" || t.type === "sell" ? fmtPx(t.price) : "—"}</td>
                         <td className="mono muted">{t.fee > 0 ? fmtFiat(t.fee, state.base) : "—"}</td>
                         <td className="mono muted">{(t as any).venue || "—"}</td>
                         <td className="mono muted" style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note || "—"}</td>

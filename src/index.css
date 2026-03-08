@@ -1159,8 +1159,8 @@ table { table-layout: auto; }
 
 @media(max-width:900px){
   .app{display:block;height:auto;min-height:100vh;} .sidebar{display:none;} .mobileNav{display:block;}
-  .mainWrap{height:auto;max-height:none;}
-  .scroll{padding-bottom:calc(150px + env(safe-area-inset-bottom));overflow-x:hidden;} .kpis{grid-template-columns:1fr 1fr;} .kpis-5{grid-template-columns:1fr 1fr;}
+  .mainWrap{height:auto;max-height:none;overflow:visible;}
+  .scroll{padding-bottom:calc(150px + env(safe-area-inset-bottom));overflow-x:hidden;overflow-y:auto;} .kpis{grid-template-columns:1fr 1fr;} .kpis-5{grid-template-columns:1fr 1fr;}
   .chart-grid,.lt-grid{grid-template-columns:1fr 1fr;}
   .dashboard-charts-grid{grid-template-columns:1fr !important;}
   .ledger-top-grid{grid-template-columns:1fr !important;}

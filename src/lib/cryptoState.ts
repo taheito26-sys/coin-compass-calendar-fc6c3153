@@ -142,9 +142,14 @@ export function cnum(v: any, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-export function fmtFiat(n: number, cur?: string): string {
+export function fmtFiat(n: number, _cur?: string): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (cur || "USD");
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function fmtTotal(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 export function fmtQty(n: number): string {
