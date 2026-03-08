@@ -197,7 +197,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* KPI Cards */}
-      <div className="kpis" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+      <div className="kpis kpis-5">
         <div className="kpi-card">
           <div className="kpi-head">
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
