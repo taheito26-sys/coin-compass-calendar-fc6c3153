@@ -1,4 +1,4 @@
-import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
