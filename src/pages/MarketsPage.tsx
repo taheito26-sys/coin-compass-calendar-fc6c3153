@@ -245,7 +245,7 @@ export default function MarketsPage() {
 
       {!loading && view === "bubbles" && (
         <div className="panel" style={{ overflow: "hidden" }}>
-          <div ref={containerRef} style={{ width: "100%", height: 500, position: "relative", background: "var(--bg)" }}>
+          <div ref={containerRef} className="markets-canvas-wrap" style={{ width: "100%", height: 500, position: "relative", background: "var(--bg)" }}>
             <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }} />
           </div>
         </div>

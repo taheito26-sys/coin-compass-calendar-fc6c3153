@@ -197,7 +197,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* KPI Cards */}
-      <div className="kpis" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
+      <div className="kpis kpis-5">
         <div className="kpi-card">
           <div className="kpi-head">
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
@@ -238,7 +238,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* Charts Row: Coin Allocation + Heatmap */}
-      <div className="dashboard-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div className="dashboard-charts-grid">
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
           <div className="panel-body" style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
@@ -280,7 +280,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* Gainers/Losers + Watchlist Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div className="dashboard-charts-grid">
         {/* Top Gainers/Losers */}
         <div className="panel">
           <div className="panel-head"><h2>Top Movers</h2></div>
