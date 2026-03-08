@@ -2,7 +2,8 @@
  * migration.ts
  *
  * One-time migration of legacy localStorage business data to backend D1.
- * Safe and idempotent — checks migration marker before running.
+ * Uses external_id-based deduplication so retries are safe.
+ * Does NOT gate on "backend has zero transactions" — always checks legacy data.
  */
 
 import type { CryptoTx, ImportedFile } from "./cryptoState";
@@ -18,6 +19,7 @@ import { getAssetCatalog, resolveAssetId, resolveAssetSymbol } from "@/lib/asset
 export interface MigrationResult {
   migrated: boolean;
   txsMigrated: number;
+  txsSkippedDuplicate: number;
   txsFailed: number;
   filesMigrated: number;
   errors: string[];
@@ -26,6 +28,7 @@ export interface MigrationResult {
 /**
  * Attempt to migrate legacy localStorage data to backend.
  * Returns null if no migration needed.
+ * Safe to retry — uses external_id dedup on backend.
  */
 export async function runMigration(): Promise<MigrationResult | null> {
   if (!isWorkerConfigured()) return null;
@@ -36,6 +39,7 @@ export async function runMigration(): Promise<MigrationResult | null> {
   const result: MigrationResult = {
     migrated: false,
     txsMigrated: 0,
+    txsSkippedDuplicate: 0,
     txsFailed: 0,
     filesMigrated: 0,
     errors: [],
@@ -44,7 +48,7 @@ export async function runMigration(): Promise<MigrationResult | null> {
   try {
     const assets = await getAssetCatalog(true);
 
-    // Build transaction inputs from legacy txs
+    // Build transaction inputs with deterministic external_ids for dedup
     const txInputs: CreateTransactionInput[] = [];
     for (const tx of legacy.txs) {
       const symbol = resolveAssetSymbol(tx.asset || "");
@@ -68,6 +72,9 @@ export async function runMigration(): Promise<MigrationResult | null> {
         continue;
       }
 
+      // Deterministic external_id for idempotent migration
+      const externalId = `migration:${tx.id || `${ts}:${symbol}:${tx.type}:${tx.qty}:${tx.price}`}`;
+
       txInputs.push({
         asset_id: assetId,
         timestamp: new Date(ts).toISOString(),
@@ -79,6 +86,7 @@ export async function runMigration(): Promise<MigrationResult | null> {
         venue: undefined,
         note: tx.note || "Migrated from local storage",
         source: "migration",
+        external_id: externalId,
       });
     }
 
@@ -90,9 +98,10 @@ export async function runMigration(): Promise<MigrationResult | null> {
         try {
           const batchResult = await batchCreateTransactions(batch);
           result.txsMigrated += batchResult.created;
+          result.txsSkippedDuplicate += batchResult.skippedDuplicates;
           result.txsFailed += batchResult.errors;
           if (batchResult.errorDetails.length > 0) {
-            result.errors.push(...batchResult.errorDetails);
+            result.errors.push(...batchResult.errorDetails.map(e => `Row ${e.index}: ${e.reason}`));
           }
         } catch (err: any) {
           result.errors.push(`Batch failed: ${err.message}`);
@@ -101,7 +110,7 @@ export async function runMigration(): Promise<MigrationResult | null> {
       }
     }
 
-    // Migrate imported files
+    // Migrate imported files (409 = duplicate = fine)
     for (const file of legacy.importedFiles) {
       try {
         await createImportedFile({
@@ -113,7 +122,6 @@ export async function runMigration(): Promise<MigrationResult | null> {
         });
         result.filesMigrated++;
       } catch (err: any) {
-        // 409 = duplicate, which is fine
         if (err.message?.includes("409") || err.message?.includes("duplicate")) {
           result.filesMigrated++;
         } else {
@@ -122,7 +130,7 @@ export async function runMigration(): Promise<MigrationResult | null> {
       }
     }
 
-    // Mark migration complete even if some items failed
+    // Mark migration complete
     markMigrationComplete();
     result.migrated = true;
 
