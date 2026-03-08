@@ -940,7 +940,8 @@ tbody tr { transition: background var(--lt-tr); }
 
 /* â”€â”€ RESPONSIVE â”€â”€ */
 /* No internal horizontal scroll - tables wrap on mobile */
-.tableWrap { overflow-x: visible; }
+/* Tables need horizontal scroll for wide content */
+.tableWrap { overflow-x: auto; -webkit-overflow-scrolling: touch; max-width: 100%; }
 table { table-layout: auto; }
 
 @media(max-width:900px){
