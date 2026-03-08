@@ -303,6 +303,7 @@ export default function PortfolioPage() {
               <tbody>
                 {sorted.length > 0 ? sorted.map((pos, i) => {
                   const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
+                  const handleRowClick = () => setDrilldownSym(pos.sym);
                   const cellMap: Record<string, React.ReactNode> = {
                     rank: <td key="rank" className="mono muted">{i + 1}</td>,
                     asset: (
