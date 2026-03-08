@@ -10,13 +10,17 @@ import CalendarPage from "@/pages/CalendarPage";
 import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import VaultPage from "@/pages/VaultPage";
+import AlertsPage from "@/pages/AlertsPage";
+import ImportPage from "@/pages/ImportPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
-  assets: ["Assets", "Positions, P&L, Lots"],
-  calendar: ["Calendar", "Daily P&L, Per Coin"],
-  ledger: ["Ledger", "Journal, Import, Manual Entry"],
+  assets: ["Assets", "Positions, P&amp;L, Lots"],
+  calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
+  ledger: ["Ledger", "Journal, Manual Entry"],
+  import: ["Import", "CSV, Exchange Imports"],
   markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
+  alerts: ["Alerts", "Price Alerts, Notifications"],
   vault: ["Vault", "Snapshots, Backups, Export"],
   settings: ["Settings", "Layout, Themes, Data"],
 };
@@ -135,11 +139,13 @@ function AppShell({
           <Topbar title={title} sub={sub} onNav={setPage} />
 
           <div className="scroll">
-            {page === "dashboard" && <DashboardPage />}
+            {page === "dashboard" && <DashboardPage onNav={setPage} />}
             {page === "assets" && <PortfolioPage />}
             {page === "calendar" && <CalendarPage />}
             {page === "ledger" && <LedgerPage />}
+            {page === "import" && <ImportPage />}
             {page === "markets" && <MarketsPage />}
+            {page === "alerts" && <AlertsPage />}
             {page === "vault" && <VaultPage />}
             {page === "settings" && <SettingsPage />}
           </div>

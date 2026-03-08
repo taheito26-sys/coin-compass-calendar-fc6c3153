@@ -5,12 +5,17 @@ const pages = [
   { id: "assets", label: "Assets", sub: "Positions · P&L", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
   { id: "calendar", label: "Calendar", sub: "Daily P&L", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" },
   { id: "ledger", label: "Ledger", sub: "Journal · Import", icon: "M7 4h10M7 8h10M7 12h10M7 16h10M7 20h10" },
+  { id: "import", label: "Import", sub: "CSV · Exchange", icon: "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" },
   { id: "markets", label: "Markets", sub: "Live Prices", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
+  { id: "alerts", label: "Alerts", sub: "Price Alerts", icon: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" },
   { id: "vault", label: "Vault", sub: "Snapshots · Backup", icon: "M12 2L3 7v10l9 5 9-5V7l-9-5ZM3 7l9 5M12 12l9-5M12 12v10" },
   { id: "settings", label: "Settings", sub: "Layout · Themes", icon: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a7.9 7.9 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8 8 0 0 0-1.7-1L13 3h-4l-.9 2.9a8 8 0 0 0-1.7 1l-2.4-1-2 3.5L4 13a8 8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a8 8 0 0 0 1.7 1L9 21h4l.9-2.9a8 8 0 0 0 1.7-1l2.4 1 2-3.5-2-1.6Z" },
 ];
 
 export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav: (p: string) => void; onLogout?: () => void }) {
+  const { state } = useCrypto();
+  const alertCount = (state.alerts || []).filter(a => a.active).length;
+
   return (
     <aside className="sidebar">
       <div className="brand">
@@ -19,14 +24,25 @@ export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav
         </div>
         <div>
           <div className="brand-name">CryptoTracker</div>
-          <div className="brand-ver">v1 · Portfolio</div>
+          <div className="brand-ver">v2 · Portfolio</div>
         </div>
       </div>
       <nav className="nav">
         {pages.map(p => (
           <button key={p.id} className={`navBtn${page === p.id ? " active" : ""}`} onClick={() => onNav(p.id)}>
             <svg viewBox="0 0 24 24" fill="none"><path d={p.icon} stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-            <div><div>{p.label}</div><small>{p.sub}</small></div>
+            <div>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                {p.label}
+                {p.id === "alerts" && alertCount > 0 && (
+                  <span style={{
+                    fontSize: 8, fontWeight: 900, background: "var(--brand)", color: "#fff",
+                    borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
+                  }}>{alertCount}</span>
+                )}
+              </div>
+              <small>{p.sub}</small>
+            </div>
           </button>
         ))}
       </nav>

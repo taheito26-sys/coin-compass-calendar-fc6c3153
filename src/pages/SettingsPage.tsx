@@ -14,6 +14,30 @@ const LAYOUTS = [
 const THEMES = ["t1", "t2", "t3", "t4", "t5"];
 const METHODS = ["FIFO", "DCA"];
 const CURRENCIES = ["USD", "EUR", "GBP", "QAR"];
+const TIMEZONES = [
+  { id: "local", name: "Local (Browser)" },
+  { id: "UTC", name: "UTC" },
+  { id: "America/New_York", name: "US Eastern" },
+  { id: "America/Chicago", name: "US Central" },
+  { id: "America/Los_Angeles", name: "US Pacific" },
+  { id: "Europe/London", name: "London" },
+  { id: "Europe/Berlin", name: "Berlin" },
+  { id: "Asia/Tokyo", name: "Tokyo" },
+  { id: "Asia/Shanghai", name: "Shanghai" },
+  { id: "Asia/Dubai", name: "Dubai" },
+  { id: "Asia/Qatar", name: "Qatar" },
+];
+const NUMBER_FORMATS = [
+  { id: "default", name: "1,234.56 (US/UK)" },
+  { id: "eu", name: "1.234,56 (EU)" },
+  { id: "compact", name: "1.23K (Compact)" },
+];
+const REFRESH_INTERVALS = [
+  { id: "60", name: "1 minute" },
+  { id: "120", name: "2 minutes" },
+  { id: "300", name: "5 minutes" },
+  { id: "600", name: "10 minutes" },
+];
 
 const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
@@ -76,6 +100,77 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         </div>
       </div>
 
+      {/* Display Preferences */}
+      <div className="panel" style={{ marginTop: 10 }}>
+        <div className="panel-head"><h2>Display Preferences</h2></div>
+        <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+          <div className="form-field">
+            <label className="form-label">Timezone</label>
+            <select
+              className="inp"
+              value={(state as any).timezone || "local"}
+              onChange={e => { setState(p => ({ ...p, timezone: e.target.value } as any)); toast("Timezone updated", "good"); }}
+            >
+              {TIMEZONES.map(tz => (
+                <option key={tz.id} value={tz.id}>{tz.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Number Format</label>
+            <select
+              className="inp"
+              value={(state as any).numberFormat || "default"}
+              onChange={e => { setState(p => ({ ...p, numberFormat: e.target.value } as any)); toast("Number format updated", "good"); }}
+            >
+              {NUMBER_FORMATS.map(nf => (
+                <option key={nf.id} value={nf.id}>{nf.name}</option>
+              ))}
+            </select>
+          </div>
+          <div className="form-field">
+            <label className="form-label">Data Refresh Interval</label>
+            <select
+              className="inp"
+              value={(state as any).refreshInterval || "120"}
+              onChange={e => { setState(p => ({ ...p, refreshInterval: e.target.value } as any)); toast("Refresh interval updated", "good"); }}
+            >
+              {REFRESH_INTERVALS.map(ri => (
+                <option key={ri.id} value={ri.id}>{ri.name}</option>
+              ))}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      {/* Notifications */}
+      <div className="panel" style={{ marginTop: 10 }}>
+        <div className="panel-head"><h2>Notifications</h2></div>
+        <div className="panel-body">
+          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifyAlerts: !(p as any).notifyAlerts } as any))}>
+            <span className="tog-lbl">Price alert notifications</span>
+            <div className="tog-switch">
+              <input type="checkbox" checked={(state as any).notifyAlerts ?? true} readOnly />
+              <span className="tog-track" />
+            </div>
+          </div>
+          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifyImports: !(p as any).notifyImports } as any))}>
+            <span className="tog-lbl">Import completion notifications</span>
+            <div className="tog-switch">
+              <input type="checkbox" checked={(state as any).notifyImports ?? true} readOnly />
+              <span className="tog-track" />
+            </div>
+          </div>
+          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifySync: !(p as any).notifySync } as any))}>
+            <span className="tog-lbl">Sync status notifications</span>
+            <div className="tog-switch">
+              <input type="checkbox" checked={(state as any).notifySync ?? false} readOnly />
+              <span className="tog-track" />
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Data Management */}
       <div className="panel" style={{ marginTop: 10 }}>
         <div className="panel-head"><h2>Data Management</h2></div>
@@ -126,4 +221,3 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
 SettingsPage.displayName = "SettingsPage";
 
 export default SettingsPage;
-

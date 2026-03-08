@@ -2,6 +2,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { mergePositionSources } from "@/lib/mergePositions";
+import { useLivePrices } from "@/hooks/useLivePrices";
 import { useMemo } from "react";
 
 const COIN_COLORS = [
@@ -101,10 +102,11 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
   );
 }
 
-export default function DashboardPage() {
+export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
   const portfolio = usePortfolio();
   const { state, refresh } = useCrypto();
   const localD = cryptoDerived(state);
+  const { getPrice } = useLivePrices();
 
   // Merged local-first dataset
   const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
@@ -124,6 +126,13 @@ export default function DashboardPage() {
   const assetCount = rows.length;
   const base = state.base || "USD";
   const method = state.method || "FIFO";
+
+  // Realized P&L from sell transactions
+  const realizedPnl = useMemo(() => {
+    return state.txs
+      .filter(t => t.type === "sell" && typeof (t as any).realized === "number")
+      .reduce((sum, t) => sum + ((t as any).realized || 0), 0);
+  }, [state.txs]);
 
   const priceAge = useMemo(() => {
     if (hasWorkerData) return portfolio.priceAge;
@@ -174,6 +183,43 @@ export default function DashboardPage() {
       .slice(0, 9);
   }, [rows, base]);
 
+  // Watchlist with live prices
+  const watchlistData = useMemo(() => {
+    return state.watch.map(sym => {
+      const live = getPrice(sym);
+      return {
+        sym,
+        price: live?.current_price ?? null,
+        change24h: live?.price_change_percentage_24h_in_currency ?? null,
+        change7d: live?.price_change_percentage_7d_in_currency ?? null,
+      };
+    });
+  }, [state.watch, getPrice]);
+
+  // Recent activity from transactions
+  const recentTxs = useMemo(() => {
+    return state.txs
+      .slice()
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 8);
+  }, [state.txs]);
+
+  // Top gainers/losers
+  const { topGainers, topLosers } = useMemo(() => {
+    const withPnl = rows
+      .filter(r => r.unreal !== null && r.cost > 0)
+      .map(r => ({
+        sym: r.sym,
+        pnlPct: r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0,
+        pnlAbs: r.unreal || 0,
+      }));
+    const sorted = [...withPnl].sort((a, b) => b.pnlPct - a.pnlPct);
+    return {
+      topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3),
+      topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
+    };
+  }, [rows]);
+
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
 
   const handleRefresh = async () => {
@@ -207,7 +253,7 @@ export default function DashboardPage() {
       )}
 
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>Refresh</button>
+        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
         <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
         {portfolio.workerOnline && (
@@ -216,12 +262,12 @@ export default function DashboardPage() {
             color: "hsl(142 76% 36%)",
             fontWeight: 700,
             fontSize: 10,
-          }}>Worker Online</span>
+          }}>⚡ Worker Online</span>
         )}
       </div>
 
       {/* KPI Cards */}
-      <div className="kpis">
+      <div className="kpis" style={{ gridTemplateColumns: "repeat(5, minmax(0, 1fr))" }}>
         <div className="kpi-card">
           <div className="kpi-head">
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
@@ -243,6 +289,13 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="kpi-card">
+          <div className="kpi-lbl">REALIZED P&L</div>
+          <div className={`kpi-val ${realizedPnl >= 0 ? "good" : "bad"}`}>
+            {(realizedPnl >= 0 ? "+" : "") + fmtFiat(realizedPnl, base)}
+          </div>
+          <div className="kpi-sub">From closed trades</div>
+        </div>
+        <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
           <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
           <div className="kpi-sub">{txCount} {hasWorkerData ? "transactions" : "lots"}</div>
@@ -254,7 +307,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Coin Allocation + Heatmap */}
+      {/* Charts Row: Coin Allocation + Heatmap */}
       <div className="dashboard-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
@@ -296,40 +349,161 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Top Positions Table */}
-      <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head"><h2>Top Positions</h2><span className="pill">{rows.length} assets</span></div>
-        <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th><th>Source</th></tr>
-              </thead>
-              <tbody>
-                {rows.length ? rows.map(r => {
-                  const avg = r.qty > 0 ? r.cost / r.qty : 0;
-                  return (
-                    <tr key={r.sym}>
-                      <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
-                      <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(avg)} {base}</td>
-                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
-                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
-                      <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+      {/* Gainers/Losers + Watchlist Row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+        {/* Top Gainers/Losers */}
+        <div className="panel">
+          <div className="panel-head"><h2>Top Movers</h2></div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {(topGainers.length > 0 || topLosers.length > 0) ? (
+              <table>
+                <thead>
+                  <tr><th>Asset</th><th style={{ textAlign: "right" }}>P&L %</th><th style={{ textAlign: "right" }}>P&L</th></tr>
+                </thead>
+                <tbody>
+                  {topGainers.map(g => (
+                    <tr key={g.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{g.sym}</td>
+                      <td className="mono good" style={{ textAlign: "right", fontWeight: 700 }}>▲ {g.pnlPct.toFixed(2)}%</td>
+                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtFiat(g.pnlAbs, base)}</td>
+                    </tr>
+                  ))}
+                  {topLosers.map(l => (
+                    <tr key={l.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{l.sym}</td>
+                      <td className="mono bad" style={{ textAlign: "right", fontWeight: 700 }}>▼ {Math.abs(l.pnlPct).toFixed(2)}%</td>
+                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtFiat(l.pnlAbs, base)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>No movers yet.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Watchlist */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Watchlist</h2>
+            <span className="pill">{watchlistData.length} coins</span>
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {watchlistData.length > 0 ? (
+              <table>
+                <thead>
+                  <tr><th>Coin</th><th style={{ textAlign: "right" }}>Price</th><th style={{ textAlign: "right" }}>24h</th><th style={{ textAlign: "right" }}>7d</th></tr>
+                </thead>
+                <tbody>
+                  {watchlistData.map(w => (
+                    <tr key={w.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{w.sym}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? "$" + fmtPx(w.price) : "—"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {w.change24h !== null ? (
+                          <span className={`mono ${w.change24h >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                            {w.change24h >= 0 ? "▲" : "▼"} {Math.abs(w.change24h).toFixed(2)}%
+                          </span>
+                        ) : "—"}
                       </td>
-                      <td>
-                        <span className="pill" style={{ fontSize: 9 }}>
-                          {r.source === "local" ? "Local" : r.source === "worker" ? "Synced" : "Merged"}
-                        </span>
+                      <td style={{ textAlign: "right" }}>
+                        {w.change7d !== null ? (
+                          <span className={`mono ${w.change7d >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                            {w.change7d >= 0 ? "▲" : "▼"} {Math.abs(w.change7d).toFixed(2)}%
+                          </span>
+                        ) : "—"}
                       </td>
                     </tr>
-                  );
-                }) : (
-                  <tr><td colSpan={7} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
-                )}
-              </tbody>
-            </table>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
+                Add coins to your watchlist in Markets.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row: Top Positions + Recent Activity */}
+      <div className="dash-bottom" style={{ marginTop: 10 }}>
+        {/* Top Positions Table */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Top Positions</h2>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span className="pill">{rows.length} assets</span>
+              {onNav && <button className="btn tiny secondary" onClick={() => onNav("assets")}>View All →</button>}
+            </div>
+          </div>
+          <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th><th>Source</th></tr>
+                </thead>
+                <tbody>
+                  {rows.length ? rows.slice(0, 10).map(r => {
+                    const avg = r.qty > 0 ? r.cost / r.qty : 0;
+                    return (
+                      <tr key={r.sym}>
+                        <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
+                        <td className="mono">{fmtQty(r.qty)}</td>
+                        <td className="mono">{fmtPx(avg)} {base}</td>
+                        <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
+                        <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
+                        <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
+                          {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+                        </td>
+                        <td>
+                          <span className="pill" style={{ fontSize: 9 }}>
+                            {r.source === "local" ? "Local" : r.source === "worker" ? "Synced" : "Merged"}
+                          </span>
+                        </td>
+                      </tr>
+                    );
+                  }) : (
+                    <tr><td colSpan={7} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Recent Activity</h2>
+            {onNav && <button className="btn tiny secondary" onClick={() => onNav("ledger")}>Ledger →</button>}
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {recentTxs.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {recentTxs.map(tx => (
+                  <div key={tx.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", borderBottom: "1px solid var(--line)",
+                    fontSize: 11,
+                  }}>
+                    <span className={`pill ${tx.type === "buy" ? "good" : tx.type === "sell" ? "bad" : ""}`} style={{ fontSize: 9, minWidth: 36, textAlign: "center" }}>
+                      {tx.type.toUpperCase()}
+                    </span>
+                    <span className="mono" style={{ fontWeight: 900, minWidth: 40 }}>{tx.asset}</span>
+                    <span className="mono muted" style={{ flex: 1 }}>{fmtQty(tx.qty)}</span>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
+                      {new Date(tx.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
+                No recent activity.
+              </div>
+            )}
           </div>
         </div>
       </div>
