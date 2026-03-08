@@ -212,7 +212,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
-            {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
+            {(totalPnl >= 0 ? "+" : "") + fmtTotal(totalPnl)}
           </div>
           <div className="kpi-sub">
             {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "-"}
