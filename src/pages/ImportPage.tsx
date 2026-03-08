@@ -1,9 +1,10 @@
 import { useState, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { importCSV, hashFile } from "@/lib/importers";
-import type { ParseResult, NormalizedRow } from "@/lib/importers";
+import type { ParseResult } from "@/lib/importers";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { createTransaction, createImportedFile, fetchAssets } from "@/lib/api";
+import { createTransaction, createImportedFile, isWorkerConfigured } from "@/lib/api";
+import { getAssetCatalog, resolveAssetId, resolveAssetSymbol } from "@/lib/assetResolver";
 
 type Stage = "upload" | "preview" | "done";
 
@@ -33,7 +34,6 @@ export default function ImportPage() {
       const text = await file.text();
       const hash = await hashFile(text);
 
-      // Check if file already imported
       if (importedFiles.some((f: any) => f.hash === hash)) {
         setError("This file has already been imported (duplicate detected by file hash).");
         setLoading(false);
@@ -66,126 +66,120 @@ export default function ImportPage() {
   const commit = async () => {
     if (!result || result.rows.length === 0) return;
 
-    // Save to local state (unchanged)
-    setState(prev => {
-      const newTxs = [...prev.txs];
-      const newLots = [...prev.lots];
-      const newHoldings = [...prev.holdings];
+    const newTxs: typeof state.txs = [];
+    let synced = 0;
+    const missingSymbols = new Set<string>();
 
+    if (isWorkerConfigured()) {
+      try {
+        const assets = await getAssetCatalog();
+
+        for (const row of result.rows) {
+          const { assetId, symbol } = resolveAssetId(row.symbol, assets);
+          if (!assetId) {
+            missingSymbols.add(symbol);
+            continue;
+          }
+
+          try {
+            const created = await createTransaction({
+              asset_id: assetId,
+              timestamp: new Date(row.timestamp).toISOString(),
+              type: row.side,
+              qty: row.qty,
+              unit_price: row.unitPrice,
+              fee_amount: row.feeAmount,
+              fee_currency: row.feeAsset || state.base,
+              venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+              note: `Import: ${row.externalId}`,
+              source: "csv-import",
+              external_id: row.externalId || undefined,
+            });
+
+            newTxs.push({
+              id: created.id,
+              ts: row.timestamp,
+              type: row.side,
+              asset: symbol,
+              qty: row.qty,
+              price: row.unitPrice,
+              total: row.grossValue,
+              fee: row.feeAmount,
+              feeAsset: row.feeAsset || state.base,
+              accountId: "acc_main",
+              note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
+              lots: "",
+            });
+            synced++;
+          } catch (err: any) {
+            console.warn("[import] Failed row:", err?.message || err);
+          }
+        }
+      } catch (err: any) {
+        toast(err?.message || "Import sync failed", "bad");
+        return;
+      }
+    } else {
       for (const row of result.rows) {
-        const txId = uid();
-        const asset = extractBase(row.symbol);
-
-        const tx = {
-          id: txId,
+        newTxs.push({
+          id: `local_${uid()}`,
           ts: row.timestamp,
           type: row.side,
-          asset,
+          asset: resolveAssetSymbol(row.symbol),
           qty: row.qty,
           price: row.unitPrice,
           total: row.grossValue,
           fee: row.feeAmount,
-          feeAsset: row.feeAsset || prev.base,
+          feeAsset: row.feeAsset || state.base,
           accountId: "acc_main",
           note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
           lots: "",
-        };
-        newTxs.push(tx);
-
-        if (row.side === "buy") {
-          const unitCost = row.qty > 0 ? (row.grossValue + row.feeAmount) / row.qty : 0;
-          newLots.push({
-            id: "lot_" + uid().slice(0, 10),
-            ts: row.timestamp,
-            asset,
-            qty: row.qty,
-            qtyRem: row.qty,
-            unitCost,
-            cost: unitCost * row.qty,
-            accountId: "acc_main",
-            tag: "buy",
-            note: `Import: ${EXCHANGE_LABELS[row.exchange]}`,
-          });
-          newHoldings.push({
-            id: uid(),
-            asset,
-            buyPrice: row.unitPrice,
-            quantity: row.qty,
-            date: row.timestamp,
-            exchange: EXCHANGE_LABELS[row.exchange],
-            note: `Imported from ${fileName}`,
-          });
-        } else if (row.side === "sell") {
-          const lots = newLots.filter(l => l.asset.toUpperCase() === asset && (l.qtyRem || 0) > 0).sort((a, b) => a.ts - b.ts);
-          let rem = row.qty, cost = 0;
-          for (const l of lots) {
-            if (rem <= 0) break;
-            const take = Math.min(l.qtyRem, rem);
-            l.qtyRem -= take;
-            rem -= take;
-            cost += take * l.unitCost;
-          }
-          (tx as any).realized = row.grossValue - row.feeAmount - cost;
-          (tx as any).cost = cost;
-        }
+        });
       }
+      synced = newTxs.length;
+    }
 
-      const newImported = [...(prev.importedFiles || []), {
+    if (newTxs.length === 0) {
+      const missing = [...missingSymbols].slice(0, 6).join(", ");
+      toast(missing ? `No rows imported. Missing assets: ${missing}` : "No rows imported.", "bad");
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      txs: [...prev.txs, ...newTxs],
+      importedFiles: [...(prev.importedFiles || []), {
         name: fileName,
         hash: fileHash,
         importedAt: Date.now(),
         exchange: result.exchange,
         exportType: result.exportType,
         rowCount: result.rows.length,
-      }];
+      }],
+    }));
 
-      return { ...prev, txs: newTxs, lots: newLots, holdings: newHoldings, importedFiles: newImported };
-    });
-
-    // Sync to backend via Worker API
-    let synced = 0;
-    const assets = await fetchAssets().catch(() => [] as any[]);
-    for (const row of result.rows) {
-      const assetSym = extractBase(row.symbol);
-      const match = assets.find((a: any) => a.symbol.toUpperCase() === assetSym.toUpperCase());
-      if (!match) {
-        console.warn(`[import] Asset ${assetSym} not found, skipping sync`);
-        continue;
-      }
+    if (isWorkerConfigured()) {
       try {
-        await createTransaction({
-          asset_id: match.id,
-          timestamp: new Date(row.timestamp).toISOString(),
-          type: row.side,
-          qty: row.qty,
-          unit_price: row.unitPrice,
-          fee_amount: row.feeAmount,
-          fee_currency: row.feeAsset || "USD",
-          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-          note: `Import: ${row.externalId}`,
-          source: "csv-import",
-          external_id: row.externalId || undefined,
+        await createImportedFile({
+          file_name: fileName,
+          file_hash: fileHash,
+          exchange: result.exchange,
+          export_type: result.exportType,
+          row_count: result.rows.length,
         });
-        synced++;
       } catch (err: any) {
-        console.warn(`[import] Failed to sync row:`, err.message);
+        console.warn("[import] Failed to record imported file:", err.message);
       }
     }
 
-    // Record imported file metadata
-    try {
-      await createImportedFile({
-        file_name: fileName,
-        file_hash: fileHash,
-        exchange: result.exchange,
-        export_type: result.exportType,
-        row_count: result.rows.length,
-      });
-    } catch (err: any) {
-      console.warn("[import] Failed to record imported file:", err.message);
-    }
+    const missingText = missingSymbols.size > 0
+      ? ` · ${missingSymbols.size} skipped (missing asset mapping)`
+      : "";
 
-    toast(`Imported ${result.rows.length} trades (${synced} synced)`, "good");
+    toast(
+      `${isWorkerConfigured() ? "Imported" : "Imported local-only"} ${newTxs.length}/${result.rows.length} trades (${synced} synced)${missingText}`,
+      missingSymbols.size > 0 ? "bad" : "good",
+    );
     setStage("done");
   };
 
@@ -355,17 +349,4 @@ export default function ImportPage() {
       )}
     </>
   );
-}
-
-// Best-effort symbol → base asset extraction
-// BTCUSDT → BTC, ETHBTC → ETH, SOL-USDT → SOL
-function extractBase(symbol: string): string {
-  const clean = symbol.replace(/[_\-/]/g, "");
-  const stables = ["USDT", "USDC", "BUSD", "TUSD", "DAI", "FDUSD", "EUR", "GBP", "USD", "QAR", "BTC", "ETH", "BNB"];
-  for (const q of stables) {
-    if (clean.endsWith(q) && clean.length > q.length) {
-      return clean.slice(0, -q.length);
-    }
-  }
-  return clean;
 }
