@@ -1,7 +1,16 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, forwardRef } from "react";
+import { useAuth } from "@clerk/react";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
-import { fetchImportedFiles, fetchTransactions, isWorkerConfigured } from "@/lib/api";
+import {
+  fetchImportedFiles,
+  fetchTransactions,
+  fetchUserPreferences,
+  saveUserPreferences,
+  isWorkerConfigured,
+  setAuthTokenProvider,
+} from "@/lib/api";
 import { getAssetCatalog, resolveAssetSymbol } from "@/lib/assetResolver";
+import { runMigration } from "@/lib/migration";
 
 interface CryptoCtx {
   state: CryptoState;
@@ -22,14 +31,43 @@ const fallbackCtx: CryptoCtx = {
 const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
+/** Keys that should be synced to backend user_preferences */
+const SYNCABLE_PREF_KEYS = ["base", "method", "layout", "theme"] as const;
+
 export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.ReactNode }>(function CryptoProvider({ children }, _ref) {
   const [state, setStateRaw] = useState<CryptoState>(loadState);
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
   const hydratedRef = useRef(false);
+  const authWiredRef = useRef(false);
+
+  // Wire Clerk auth token provider
+  let clerkAuth: ReturnType<typeof useAuth> | null = null;
+  try {
+    clerkAuth = useAuth();
+  } catch {
+    // If Clerk not available, auth wiring is skipped
+  }
+
+  // Set up auth token provider whenever Clerk state changes
+  useEffect(() => {
+    if (!clerkAuth) return;
+    const { isSignedIn, getToken } = clerkAuth;
+
+    setAuthTokenProvider(async () => {
+      if (!isSignedIn) return null;
+      try {
+        return await getToken();
+      } catch {
+        return null;
+      }
+    });
+    authWiredRef.current = true;
+  }, [clerkAuth?.isSignedIn, clerkAuth?.getToken]);
 
   const setState = useCallback((updater: (prev: CryptoState) => CryptoState) => {
     setStateRaw((prev) => {
       const next = updater(prev);
+      // Only save UI preferences to localStorage
       saveState(next);
       return next;
     });
@@ -50,23 +88,37 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     setTimeout(() => setToast(null), 3000);
   }, []);
 
-  // Hydrate canonical tx list from backend so tx IDs stay reconciled across reloads.
+  /**
+   * Backend-first data hydration.
+   * On authentication, fetch all business data from D1 (the canonical source of truth).
+   * Also handles one-time migration from legacy localStorage data.
+   */
   useEffect(() => {
-    if (hydratedRef.current || !isWorkerConfigured()) return;
+    if (hydratedRef.current) return;
+    if (!isWorkerConfigured()) return;
+    if (!clerkAuth?.isSignedIn) return;
+    if (!authWiredRef.current) return;
+
     hydratedRef.current = true;
 
     let cancelled = false;
 
     (async () => {
+      // Update sync status
+      setStateRaw((prev) => ({ ...prev, syncStatus: "loading" as const }));
+
       try {
-        const [assets, transactions, importedFiles] = await Promise.all([
-          getAssetCatalog(),
+        // Fetch all canonical data from backend in parallel
+        const [assets, transactions, importedFiles, userPrefs] = await Promise.all([
+          getAssetCatalog(true),
           fetchTransactions(),
           fetchImportedFiles().catch(() => []),
+          fetchUserPreferences().catch(() => ({} as Record<string, string>)),
         ]);
 
         if (cancelled) return;
 
+        // Map backend transactions to CryptoTx format
         const assetById = new Map(assets.map((a) => [a.id, a]));
         const canonicalTxs = transactions
           .map((tx) => {
@@ -107,24 +159,117 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
           rowCount: Number(file.row_count || 0),
         }));
 
+        // Apply backend preferences (override localStorage values)
+        const prefUpdates: Partial<CryptoState> = {};
+        if (userPrefs.base) prefUpdates.base = userPrefs.base;
+        if (userPrefs.method) prefUpdates.method = userPrefs.method;
+        if (userPrefs.layout) prefUpdates.layout = userPrefs.layout;
+        if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
+
         setStateRaw((prev) => {
           const next = {
             ...prev,
+            ...prefUpdates,
             txs: canonicalTxs,
             importedFiles: canonicalImported,
+            syncStatus: "synced" as const,
+            syncError: undefined,
           };
-          saveState(next);
+          saveState(next); // saves UI prefs only
           return next;
         });
+
+        // If backend has no transactions but localStorage has legacy data, run migration
+        if (canonicalTxs.length === 0) {
+          const migrationResult = await runMigration();
+          if (migrationResult?.migrated && migrationResult.txsMigrated > 0) {
+            // Re-fetch after migration
+            const newTxs = await fetchTransactions();
+            const newCanonical = newTxs
+              .map((tx) => {
+                const asset = assetById.get(tx.asset_id);
+                const symbol = resolveAssetSymbol(asset?.symbol || asset?.binance_symbol || "");
+                if (!symbol) return null;
+                const ts = Date.parse(tx.timestamp);
+                if (!Number.isFinite(ts)) return null;
+                const qty = Number(tx.qty || 0);
+                const price = Number(tx.unit_price || 0);
+                return {
+                  id: tx.id, ts, type: tx.type, asset: symbol, qty, price,
+                  total: qty * price, fee: Number(tx.fee_amount || 0),
+                  feeAsset: tx.fee_currency || "USD", accountId: "acc_main",
+                  note: tx.note || "", lots: "",
+                };
+              })
+              .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
+
+            if (!cancelled) {
+              setStateRaw((prev) => ({
+                ...prev,
+                txs: newCanonical,
+                syncStatus: "synced" as const,
+              }));
+            }
+
+            console.info(`[migration] Migrated ${migrationResult.txsMigrated} txs, ${migrationResult.filesMigrated} files`);
+            if (migrationResult.errors.length > 0) {
+              console.warn("[migration] Errors:", migrationResult.errors);
+            }
+          }
+        }
       } catch (err) {
-        console.warn("[crypto-context] backend hydration skipped:", err);
+        console.error("[crypto-context] Backend hydration failed:", err);
+        if (!cancelled) {
+          setStateRaw((prev) => ({
+            ...prev,
+            syncStatus: "error" as const,
+            syncError: err instanceof Error ? err.message : "Backend unreachable",
+          }));
+        }
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [clerkAuth?.isSignedIn, clerkAuth?.getToken]);
+
+  // Sync preferences to backend when they change
+  const prevPrefsRef = useRef<string>("");
+  useEffect(() => {
+    if (!clerkAuth?.isSignedIn || !isWorkerConfigured()) return;
+    if (state.syncStatus !== "synced") return; // Don't sync until initial hydration is done
+
+    const currentPrefs = JSON.stringify({
+      base: state.base,
+      method: state.method,
+      layout: state.layout,
+      theme: state.theme,
+    });
+
+    if (prevPrefsRef.current === currentPrefs) return;
+    if (prevPrefsRef.current === "") {
+      // First render after hydration, just record current state
+      prevPrefsRef.current = currentPrefs;
+      return;
+    }
+
+    prevPrefsRef.current = currentPrefs;
+
+    // Debounced save to backend
+    const timer = setTimeout(() => {
+      saveUserPreferences({
+        base: state.base,
+        method: state.method,
+        layout: state.layout,
+        theme: state.theme,
+      }).catch((err) => {
+        console.warn("[crypto-context] Failed to sync preferences:", err);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [state.base, state.method, state.layout, state.theme, state.syncStatus, clerkAuth?.isSignedIn]);
 
   // Apply layout/theme to body
   useEffect(() => {
