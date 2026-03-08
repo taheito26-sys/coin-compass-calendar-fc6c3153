@@ -6,7 +6,7 @@ import { useIsMobile } from "@/hooks/use-mobile";
 import AssetDrilldown from "@/components/AssetDrilldown";
 import { Sparkline } from "@/components/portfolio/Sparkline";
 import { AssetFilter } from "@/components/portfolio/AssetFilter";
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo, useEffect, Fragment } from "react";
 import type { DerivedLot } from "@/lib/derivePortfolio";
 
 /* ── View mode ── */
