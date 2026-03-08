@@ -269,10 +269,10 @@ export default function PortfolioPage() {
       change1h: <td key="change1h" />,
       change24h: <td key="change24h" />,
       change7d: <td key="change7d" />,
-      price: <td key="price" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>${fmtPx(lot.unitCost)}</td>,
-      total: <td key="total" className="mono" style={{ fontSize: 11 }}>{fmtFiat(lotCost, base)}</td>,
+      price: <td key="price" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{fmtPx(lot.unitCost)}</td>,
+      total: <td key="total" className="mono" style={{ fontSize: 11 }}>{fmtTotal(lotCost)}</td>,
       allocation: <td key="allocation" />,
-      avg: <td key="avg" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>${fmtPx(lot.unitCost)}</td>,
+      avg: <td key="avg" className="mono" style={{ fontSize: 11, color: "var(--muted)" }}>{fmtPx(lot.unitCost)}</td>,
       avgSell: <td key="avgSell" />,
       pnl: (
         <td key="pnl" style={{ textAlign: "right" }}>
