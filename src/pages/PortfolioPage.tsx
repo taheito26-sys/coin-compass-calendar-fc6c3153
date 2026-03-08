@@ -214,7 +214,7 @@ export default function PortfolioPage() {
           </div>
         </td>
       ),
-      avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>,
+      avg: <td key="avg" className="mono">{pos.avg > 0 ? fmtPx(pos.avg) : "—"}</td>,
       avgSell: <td key="avgSell" className="mono muted">—</td>,
       pnl: (
         <td key="pnl" style={{ textAlign: "right" }}>
