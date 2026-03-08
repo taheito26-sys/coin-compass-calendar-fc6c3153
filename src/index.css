@@ -696,8 +696,8 @@ body {
 [data-layout="cipher"] .card:hover { border-color: var(--brand) !important; box-shadow: 0 0 12px var(--glow) !important; }
 
 /* â”€â”€ APP SHELL â”€â”€ */
-.app { display: flex; height: 100vh; overflow: hidden; }
-.mainWrap { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+.app { display: flex; height: 100vh; background: var(--bg); color: var(--text); font-family: var(--app-font, var(--lt-font, 'Inter', sans-serif)); font-size: var(--ui-fs, 11px); line-height: 1.5; transition: color var(--lt-tr), background var(--lt-tr); overflow: hidden; }
+.mainWrap { flex: 1; min-width: 0; display: flex; flex-direction: column; height: 100vh; max-height: 100vh; overflow: hidden; }
 
 /* â”€â”€ SIDEBAR â”€â”€ */
 .sidebar {
