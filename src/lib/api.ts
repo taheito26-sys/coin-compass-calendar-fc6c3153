@@ -58,6 +58,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
   return response.json() as Promise<T>;
 }
 
+// ─── Types ─────────────────────────────────────────────────
+
 export interface ApiAsset {
   id: string;
   symbol: string;
@@ -102,46 +104,18 @@ export interface ApiPricesResponse {
   stale?: boolean;
 }
 
+// ─── Asset operations ──────────────────────────────────────
+
 export async function fetchAssets(): Promise<ApiAsset[]> {
   const response = await apiFetch<{ assets: ApiAsset[] }>("/api/assets");
   return response.assets;
 }
 
+// ─── Transaction operations ────────────────────────────────
+
 export async function fetchTransactions(): Promise<ApiTransaction[]> {
   const response = await apiFetch<{ transactions: ApiTransaction[] }>("/api/transactions");
   return response.transactions;
-}
-
-export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEntry>; ts: number; stale: boolean }> {
-  const response = await apiFetch<ApiPricesResponse>("/api/prices");
-  return {
-    prices: response.prices ?? {},
-    ts: response.ts ?? Date.now(),
-    stale: response.stale ?? false,
-  };
-}
-
-export async function fetchTrackingPreference(assetId?: string): Promise<{ tracking_mode: string } | null> {
-  const query = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
-  const response = await apiFetch<{ preference: { tracking_mode: string } | null }>(`/api/tracking-preferences${query}`);
-  return response.preference;
-}
-
-export async function fetchImportedFiles(): Promise<any[]> {
-  const response = await apiFetch<{ files: any[] }>("/api/imported-files");
-  return response.files;
-}
-
-export async function isWorkerAvailable(): Promise<boolean> {
-  if (!WORKER_BASE) return false;
-  try {
-    const response = await fetch(`${WORKER_BASE}/api/status`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 export interface CreateTransactionInput {
@@ -166,11 +140,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
   });
   return response.transaction;
 }
-export async function deleteTransaction(transactionId: string): Promise<void> {
-  await apiFetch<{ ok: boolean }>(`/api/transactions/${transactionId}`, {
-    method: "DELETE",
-  });
-}
+
 export async function updateTransaction(
   transactionId: string,
   updates: Partial<CreateTransactionInput>,
@@ -181,6 +151,67 @@ export async function updateTransaction(
   });
   return response.transaction;
 }
+
+export async function deleteTransaction(transactionId: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/api/transactions/${transactionId}`, {
+    method: "DELETE",
+  });
+}
+
+export interface BatchCreateResult {
+  created: number;
+  errors: number;
+  errorDetails: string[];
+}
+
+export async function batchCreateTransactions(
+  transactions: CreateTransactionInput[],
+): Promise<BatchCreateResult> {
+  const response = await apiFetch<BatchCreateResult>("/api/transactions/batch", {
+    method: "POST",
+    body: JSON.stringify({ transactions }),
+    signal: AbortSignal.timeout(60000), // longer timeout for batch
+  });
+  return response;
+}
+
+// ─── Price operations ──────────────────────────────────────
+
+export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEntry>; ts: number; stale: boolean }> {
+  const response = await apiFetch<ApiPricesResponse>("/api/prices");
+  return {
+    prices: response.prices ?? {},
+    ts: response.ts ?? Date.now(),
+    stale: response.stale ?? false,
+  };
+}
+
+// ─── Tracking preferences ──────────────────────────────────
+
+export async function fetchTrackingPreference(assetId?: string): Promise<{ tracking_mode: string } | null> {
+  const query = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
+  const response = await apiFetch<{ preference: { tracking_mode: string } | null }>(`/api/tracking-preferences${query}`);
+  return response.preference;
+}
+
+export async function setTrackingPreference(trackingMode: string, assetId?: string): Promise<any> {
+  const response = await apiFetch<{ preference: any }>("/api/tracking-preferences", {
+    method: "PUT",
+    body: JSON.stringify({
+      tracking_mode: trackingMode,
+      asset_id: assetId ?? null,
+    }),
+  });
+  return response.preference;
+}
+
+// ─── Imported files ────────────────────────────────────────
+
+export async function fetchImportedFiles(): Promise<any[]> {
+  const response = await apiFetch<{ files: any[] }>("/api/imported-files");
+  return response.files;
+}
+
 export interface CreateImportedFileInput {
   file_name: string;
   file_hash: string;
@@ -196,13 +227,31 @@ export async function createImportedFile(input: CreateImportedFileInput): Promis
   });
   return response.file;
 }
-export async function setTrackingPreference(trackingMode: string, assetId?: string): Promise<any> {
-  const response = await apiFetch<{ preference: any }>("/api/tracking-preferences", {
+
+// ─── User preferences ─────────────────────────────────────
+
+export async function fetchUserPreferences(): Promise<Record<string, string>> {
+  const response = await apiFetch<{ preferences: Record<string, string> }>("/api/preferences");
+  return response.preferences;
+}
+
+export async function saveUserPreferences(prefs: Record<string, string>): Promise<void> {
+  await apiFetch<{ ok: boolean }>("/api/preferences", {
     method: "PUT",
-    body: JSON.stringify({
-      tracking_mode: trackingMode,
-      asset_id: assetId ?? null,
-    }),
+    body: JSON.stringify(prefs),
   });
-  return response.preference;
+}
+
+// ─── Health check ──────────────────────────────────────────
+
+export async function isWorkerAvailable(): Promise<boolean> {
+  if (!WORKER_BASE) return false;
+  try {
+    const response = await fetch(`${WORKER_BASE}/api/status`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
