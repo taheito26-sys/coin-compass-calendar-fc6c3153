@@ -3,18 +3,36 @@ const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "").replace(/\/$/, "
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
 
+export function isWorkerConfigured(): boolean {
+  return Boolean(WORKER_BASE);
+}
+
 export function setAuthTokenProvider(provider: () => Promise<string | null>) {
   tokenProvider = provider;
 }
 
 async function getAuthToken(): Promise<string | null> {
-  if (!tokenProvider) return null;
-  return tokenProvider();
+  if (tokenProvider) return tokenProvider();
+
+  if (typeof window !== "undefined") {
+    const maybeClerk = (window as Window & {
+      Clerk?: { session?: { getToken?: () => Promise<string | null> } };
+    }).Clerk;
+    if (maybeClerk?.session?.getToken) {
+      try {
+        return await maybeClerk.session.getToken();
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  if (!WORKER_BASE) {
-    throw new Error("VITE_WORKER_API_URL is not configured.");
+  if (!isWorkerConfigured()) {
+    throw new Error("Worker API is not configured (missing VITE_WORKER_API_URL)");
   }
 
   const token = await getAuthToken();

@@ -8,8 +8,8 @@
 
 import { useMemo } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { useLivePrices } from "@/hooks/useLivePrices";
 import { derivePortfolio, type PortfolioSummary, type DerivedPosition } from "@/lib/derivePortfolio";
+import { usePortfolioPriceGetter } from "@/hooks/usePortfolioPriceGetter";
 
 export type { PortfolioSummary, DerivedPosition };
 
@@ -19,19 +19,7 @@ export function useUnifiedPortfolio(): PortfolioSummary & {
   getPosition: (sym: string) => DerivedPosition | undefined;
 } {
   const { state } = useCrypto();
-  const { getPrice: getLivePrice } = useLivePrices();
-
-  // Build a unified price lookup: live prices first, fallback to local cached prices
-  const priceGetter = useMemo(() => {
-    return (sym: string): number | null => {
-      const live = getLivePrice(sym);
-      if (live?.current_price != null) return live.current_price;
-      // Fallback to locally cached prices
-      const cached = state.prices[sym.toUpperCase()];
-      if (Number.isFinite(cached)) return cached;
-      return null;
-    };
-  }, [getLivePrice, state.prices]);
+  const priceGetter = usePortfolioPriceGetter();
 
   const summary = useMemo(() => {
     return derivePortfolio(state.txs, priceGetter);

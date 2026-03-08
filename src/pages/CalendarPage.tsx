@@ -1,6 +1,9 @@
 import { useState, useMemo } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { fmtFiat, cryptoPriceOf } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty } from "@/lib/cryptoState";
+import { derivePortfolio, deriveRealizedByTx } from "@/lib/derivePortfolio";
+import { usePortfolioPriceGetter } from "@/hooks/usePortfolioPriceGetter";
+import { resolveAssetSymbol } from "@/lib/assetResolver";
 
 const MONTHS = ["January","February","March","April","May","June","July","August","September","October","November","December"];
 const DAYS = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
@@ -13,25 +16,26 @@ export default function CalendarPage() {
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
   const [selectedCoins, setSelectedCoins] = useState<string[]>([]);
   const [showCoinFilter, setShowCoinFilter] = useState(false);
+  const priceGetter = usePortfolioPriceGetter();
 
   const daysInM = new Date(year, month + 1, 0).getDate();
   const firstDay = new Date(year, month, 1).getDay();
 
-  // Get unique coins from transactions
   const allCoins = useMemo(() => {
     const coins = new Set<string>();
-    state.txs.forEach(tx => coins.add(tx.asset.toUpperCase()));
-    state.holdings.forEach(h => coins.add(h.asset.toUpperCase()));
+    state.txs.forEach((tx) => {
+      const sym = resolveAssetSymbol(tx.asset);
+      if (sym) coins.add(sym);
+    });
     return [...coins].sort();
-  }, [state.txs, state.holdings]);
+  }, [state.txs]);
 
   const toggleCoin = (coin: string) => {
-    setSelectedCoins(prev =>
-      prev.includes(coin) ? prev.filter(c => c !== coin) : [...prev, coin]
+    setSelectedCoins((prev) =>
+      prev.includes(coin) ? prev.filter((c) => c !== coin) : [...prev, coin],
     );
   };
 
-  // Build daily data from holdings + txs, with optional coin filter
   const dailyData = useMemo(() => {
     const data: Record<number, {
       pnl: number;
@@ -40,78 +44,85 @@ export default function CalendarPage() {
       details: { asset: string; qty: number; pnl: number; type: string }[];
     }> = {};
 
-    for (let d = 1; d <= daysInM; d++) {
-      const dayStart = new Date(year, month, d).getTime();
-      const dayEnd = new Date(year, month, d + 1).getTime();
+    const monthStart = new Date(year, month, 1).getTime();
+    const monthEnd = new Date(year, month + 1, 1).getTime();
+    const selected = new Set(selectedCoins.map((c) => c.toUpperCase()));
 
-      // Holdings bought on this day
-      const dayHoldings = state.holdings.filter(h => {
-        if (h.date >= dayStart && h.date < dayEnd) {
-          if (selectedCoins.length > 0) return selectedCoins.includes(h.asset.toUpperCase());
-          return true;
-        }
-        return false;
+    const relevantTxs = state.txs
+      .map((tx) => ({ ...tx, asset: resolveAssetSymbol(tx.asset) }))
+      .filter((tx) => tx.ts < monthEnd)
+      .filter((tx) => selected.size === 0 || selected.has(tx.asset.toUpperCase()))
+      .sort((a, b) => a.ts - b.ts);
+
+    const realizedByTx = deriveRealizedByTx(relevantTxs);
+
+    for (const tx of relevantTxs) {
+      if (tx.ts < monthStart) continue;
+
+      const d = new Date(tx.ts).getDate();
+      if (!data[d]) {
+        data[d] = { pnl: 0, value: 0, trades: 0, details: [] };
+      }
+
+      let pnl = 0;
+      if (tx.type === "sell") {
+        pnl = realizedByTx.get(tx.id) ?? 0;
+      } else if (tx.type === "buy") {
+        const currentPrice = priceGetter(tx.asset);
+        pnl = currentPrice !== null ? (currentPrice - tx.price) * Math.abs(tx.qty) : 0;
+      } else if (tx.type === "fee") {
+        pnl = -Math.abs(tx.fee || tx.qty * tx.price || 0);
+      }
+
+      data[d].pnl += pnl;
+      data[d].trades += 1;
+      data[d].details.push({
+        asset: tx.asset,
+        qty: Math.abs(tx.qty),
+        pnl,
+        type: tx.type,
       });
-
-      let totalPnl = 0;
-      const details: { asset: string; qty: number; pnl: number; type: string }[] = [];
-
-      for (const h of dayHoldings) {
-        const currentPrice = cryptoPriceOf(state, h.asset);
-        const pnl = currentPrice !== null ? (currentPrice - h.buyPrice) * h.quantity : 0;
-        totalPnl += pnl;
-        details.push({ asset: h.asset, qty: h.quantity, pnl, type: "holding" });
-      }
-
-      // Transactions on this day
-      const dayTxs = state.txs.filter(tx => {
-        const ts = new Date(tx.ts);
-        if (ts.getTime() >= dayStart && ts.getTime() < dayEnd) {
-          if (selectedCoins.length > 0) return selectedCoins.includes(tx.asset.toUpperCase());
-          return true;
-        }
-        return false;
-      });
-
-      for (const tx of dayTxs) {
-        if (tx.type === "sell" && typeof tx.realized === "number") {
-          totalPnl += tx.realized;
-          details.push({ asset: tx.asset, qty: tx.qty, pnl: tx.realized, type: "sell" });
-        } else if (tx.type === "buy") {
-          const currentPrice = cryptoPriceOf(state, tx.asset);
-          const pnl = currentPrice !== null ? (currentPrice - tx.price) * tx.qty : 0;
-          // Don't double count if already in holdings
-          if (!dayHoldings.some(h => h.asset.toUpperCase() === tx.asset.toUpperCase() && Math.abs(h.quantity - tx.qty) < 0.0001)) {
-            totalPnl += pnl;
-            details.push({ asset: tx.asset, qty: tx.qty, pnl, type: "buy" });
-          }
-        }
-      }
-
-      const totalEntries = details.length;
-      if (totalEntries > 0) {
-        // Calculate rough portfolio value for the day
-        let dayValue = 0;
-        for (const h of state.holdings) {
-          if (h.date <= dayEnd) {
-            if (selectedCoins.length > 0 && !selectedCoins.includes(h.asset.toUpperCase())) continue;
-            const px = cryptoPriceOf(state, h.asset);
-            if (px !== null) dayValue += px * h.quantity;
-          }
-        }
-        data[d] = { pnl: totalPnl, value: dayValue, trades: totalEntries, details };
-      }
     }
+
+    for (let d = 1; d <= daysInM; d++) {
+      if (!data[d]) continue;
+      const dayEnd = new Date(year, month, d + 1).getTime();
+      const txsUntilEnd = relevantTxs.filter((tx) => tx.ts < dayEnd);
+      if (txsUntilEnd.length === 0) continue;
+      data[d].value = derivePortfolio(txsUntilEnd, priceGetter).totalMV;
+    }
+
     return data;
-  }, [state, year, month, daysInM, selectedCoins]);
+  }, [state.txs, year, month, daysInM, selectedCoins, priceGetter]);
 
   const totalP = Object.values(dailyData).reduce((s, d) => s + d.pnl, 0);
   const tradeDays = Object.keys(dailyData).length;
   const totalTrades = Object.values(dailyData).reduce((s, d) => s + d.trades, 0);
   const selData = selectedDay ? dailyData[selectedDay] : null;
 
-  const prev = () => { let m = month - 1, y = year; if (m < 0) { m = 11; y--; } setMonth(m); setYear(y); setSelectedDay(null); };
-  const next = () => { let m = month + 1, y = year; if (m > 11) { m = 0; y++; } setMonth(m); setYear(y); setSelectedDay(null); };
+  const prev = () => {
+    let m = month - 1;
+    let y = year;
+    if (m < 0) {
+      m = 11;
+      y--;
+    }
+    setMonth(m);
+    setYear(y);
+    setSelectedDay(null);
+  };
+
+  const next = () => {
+    let m = month + 1;
+    let y = year;
+    if (m > 11) {
+      m = 0;
+      y++;
+    }
+    setMonth(m);
+    setYear(y);
+    setSelectedDay(null);
+  };
 
   return (
     <>
@@ -242,7 +253,7 @@ export default function CalendarPage() {
                       <td className={`mono ${d.type === "sell" ? "bad" : d.type === "buy" ? "good" : "muted"}`} style={{ fontWeight: 700 }}>
                         {d.type.toUpperCase()}
                       </td>
-                      <td className="mono">{d.qty}</td>
+                      <td className="mono">{fmtQty(d.qty)}</td>
                       <td className={`mono ${d.pnl >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700 }}>
                         {(d.pnl >= 0 ? "+" : "") + fmtFiat(d.pnl, state.base)}
                       </td>

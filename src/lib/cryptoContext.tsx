@@ -1,5 +1,7 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, forwardRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, forwardRef } from "react";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
+import { fetchImportedFiles, fetchTransactions, isWorkerConfigured } from "@/lib/api";
+import { getAssetCatalog, resolveAssetSymbol } from "@/lib/assetResolver";
 
 interface CryptoCtx {
   state: CryptoState;
@@ -23,9 +25,10 @@ export const useCrypto = () => useContext(Ctx);
 export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.ReactNode }>(function CryptoProvider({ children }, _ref) {
   const [state, setStateRaw] = useState<CryptoState>(loadState);
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
+  const hydratedRef = useRef(false);
 
   const setState = useCallback((updater: (prev: CryptoState) => CryptoState) => {
-    setStateRaw(prev => {
+    setStateRaw((prev) => {
       const next = updater(prev);
       saveState(next);
       return next;
@@ -47,12 +50,86 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  // Hydrate canonical tx list from backend so tx IDs stay reconciled across reloads.
+  useEffect(() => {
+    if (hydratedRef.current || !isWorkerConfigured()) return;
+    hydratedRef.current = true;
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const [assets, transactions, importedFiles] = await Promise.all([
+          getAssetCatalog(),
+          fetchTransactions(),
+          fetchImportedFiles().catch(() => []),
+        ]);
+
+        if (cancelled) return;
+
+        const assetById = new Map(assets.map((a) => [a.id, a]));
+        const canonicalTxs = transactions
+          .map((tx) => {
+            const asset = assetById.get(tx.asset_id);
+            const symbol = resolveAssetSymbol(asset?.symbol || asset?.binance_symbol || "");
+            if (!symbol) return null;
+
+            const ts = Date.parse(tx.timestamp);
+            if (!Number.isFinite(ts)) return null;
+
+            const qty = Number(tx.qty || 0);
+            const price = Number(tx.unit_price || 0);
+            const fee = Number(tx.fee_amount || 0);
+
+            return {
+              id: tx.id,
+              ts,
+              type: tx.type,
+              asset: symbol,
+              qty,
+              price,
+              total: qty * price,
+              fee,
+              feeAsset: tx.fee_currency || "USD",
+              accountId: "acc_main",
+              note: tx.note || "",
+              lots: "",
+            };
+          })
+          .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
+
+        const canonicalImported = importedFiles.map((file: any) => ({
+          name: file.file_name,
+          hash: file.file_hash,
+          importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
+          exchange: file.exchange,
+          exportType: file.export_type,
+          rowCount: Number(file.row_count || 0),
+        }));
+
+        setStateRaw((prev) => {
+          const next = {
+            ...prev,
+            txs: canonicalTxs,
+            importedFiles: canonicalImported,
+          };
+          saveState(next);
+          return next;
+        });
+      } catch (err) {
+        console.warn("[crypto-context] backend hydration skipped:", err);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Apply layout/theme to body
   useEffect(() => {
     document.body.setAttribute("data-layout", state.layout);
     document.body.setAttribute("data-theme", state.theme);
-    // Let the CSS layout font take effect by not overriding --app-font
-    // unless the layout doesn't set --lt-font
     const layoutFonts: Record<string, string> = {
       flux: "'Inter', sans-serif",
       cipher: "'JetBrains Mono', monospace",
@@ -66,9 +143,6 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     document.documentElement.style.setProperty("--app-font", layoutFonts[state.layout] || "'Inter', sans-serif");
   }, [state.layout, state.theme]);
 
-  // Skip auto refresh on mount — useLivePrices handles polling
-  // This avoids duplicate CoinGecko calls causing 429s
-
   return (
     <Ctx.Provider value={{ state, setState, refresh, toast, toastMsg }}>
       {children}
@@ -77,4 +151,3 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
 });
 
 CryptoProvider.displayName = "CryptoProvider";
-
