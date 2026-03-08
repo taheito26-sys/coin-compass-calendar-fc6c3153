@@ -247,7 +247,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                 <DonutChart
                   slices={coinSlices}
                   centerLabel={topCoin?.label || "-"}
-                  centerValue={fmtFiat(topCoin?.value || 0, base).split(" ")[0]}
+                  centerValue={fmtTotal(topCoin?.value || 0)}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
                 />
