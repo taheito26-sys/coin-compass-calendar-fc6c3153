@@ -141,7 +141,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           : `rgba(220,38,38,${0.3 + intensity * 0.5})`;
         return {
           sym: r.sym,
-          value: fmtFiat(r.mv || 0, base).split(" ")[0],
+          value: fmtTotal(r.mv || 0),
           pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%",
           color: bg,
           mv: r.mv || 0,
