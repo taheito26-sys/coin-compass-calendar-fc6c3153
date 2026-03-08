@@ -221,7 +221,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         <div className="kpi-card">
           <div className="kpi-lbl">REALIZED P&L</div>
           <div className={`kpi-val ${realizedPnl >= 0 ? "good" : "bad"}`}>
-            {(realizedPnl >= 0 ? "+" : "") + fmtFiat(realizedPnl, base)}
+            {(realizedPnl >= 0 ? "+" : "") + fmtTotal(realizedPnl)}
           </div>
           <div className="kpi-sub">From closed trades</div>
         </div>
