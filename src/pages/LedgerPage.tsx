@@ -195,11 +195,9 @@ export default function LedgerPage() {
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
 
-    // Save to local state
+    // Save to local state — ONLY txs (lots/holdings derived automatically)
     setState(prev => {
       const newTxs = [...prev.txs];
-      const newLots = [...prev.lots];
-      const newHoldings = [...prev.holdings];
       for (const row of importResult.rows) {
         const txId = uid();
         const assetSym = extractBase(row.symbol);
@@ -210,19 +208,9 @@ export default function LedgerPage() {
           accountId: "acc_main", note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`, lots: "",
         };
         newTxs.push(tx);
-        if (row.side === "buy") {
-          const unitCost = row.qty > 0 ? (row.grossValue + row.feeAmount) / row.qty : 0;
-          newLots.push({ id: "lot_" + uid().slice(0, 10), ts: row.timestamp, asset: assetSym, qty: row.qty, qtyRem: row.qty, unitCost, cost: unitCost * row.qty, accountId: "acc_main", tag: "buy", note: `Import: ${EXCHANGE_LABELS[row.exchange]}` });
-          newHoldings.push({ id: uid(), asset: assetSym, buyPrice: row.unitPrice, quantity: row.qty, date: row.timestamp, exchange: EXCHANGE_LABELS[row.exchange], note: `Imported from ${fileName}` });
-        } else if (row.side === "sell") {
-          const lots = newLots.filter(l => l.asset.toUpperCase() === assetSym && (l.qtyRem || 0) > 0).sort((a, b) => a.ts - b.ts);
-          let rem = row.qty, cost = 0;
-          for (const l of lots) { if (rem <= 0) break; const take = Math.min(l.qtyRem, rem); l.qtyRem -= take; rem -= take; cost += take * l.unitCost; }
-          (tx as any).realized = row.grossValue - row.feeAmount - cost; (tx as any).cost = cost;
-        }
       }
       return {
-        ...prev, txs: newTxs, lots: newLots, holdings: newHoldings,
+        ...prev, txs: newTxs,
         importedFiles: [...(prev.importedFiles || []), { name: fileName, hash: fileHash, importedAt: Date.now(), exchange: importResult.exchange, exportType: importResult.exportType, rowCount: importResult.rows.length }],
       };
     });
