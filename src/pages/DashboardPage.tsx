@@ -238,7 +238,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* Charts Row: Coin Allocation + Heatmap */}
-      <div className="dashboard-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div className="dashboard-charts-grid">
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
           <div className="panel-body" style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
