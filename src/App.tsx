@@ -129,7 +129,7 @@ function AppShell({
             {userLabel ? (
               <span style={{ fontSize: 12, color: "var(--muted, #a1a1aa)" }}>{userLabel}</span>
             ) : null}
-            <UserButton afterSignOutUrl="/" />
+            <UserButton />
           </div>
 
           <Topbar title={title} sub={sub} onNav={setPage} />
