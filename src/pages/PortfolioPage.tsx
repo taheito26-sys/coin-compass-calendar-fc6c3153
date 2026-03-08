@@ -219,7 +219,7 @@ export default function PortfolioPage() {
       pnl: (
         <td key="pnl" style={{ textAlign: "right" }}>
           <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
-            {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {(pos.pnlAbs >= 0 ? "+" : "") + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
           </div>
           <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
             {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
