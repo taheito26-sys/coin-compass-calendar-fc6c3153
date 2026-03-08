@@ -1,12 +1,5 @@
-/**
- * derivePortfolio.ts
- *
- * Single source of truth for portfolio derivation.
- * Takes raw transactions + a price lookup → produces positions, lots, and totals.
- * Every page (Dashboard, Assets, Calendar, Drilldown) should use this.
- */
-
 import type { CryptoTx } from "./cryptoState";
+import { normalizeSymbol } from "./symbolAliases";
 
 export interface DerivedLot {
   id: string;
@@ -42,42 +35,51 @@ export interface PortfolioSummary {
   txCount: number;
 }
 
-/**
- * Derive full portfolio state from raw transactions.
- * Uses FIFO lot matching for sells.
- *
- * @param txs - All transactions, in any order (will be sorted internally)
- * @param getPrice - Function returning current price for a symbol, or null
- */
-export function derivePortfolio(
-  txs: CryptoTx[],
-  getPrice: (sym: string) => number | null,
-): PortfolioSummary {
-  // Sort chronologically for FIFO
-  const sorted = [...txs].sort((a, b) => a.ts - b.ts);
+interface FifoState {
+  lotsMap: Map<string, DerivedLot[]>;
+  realizedByAsset: Map<string, number>;
+  realizedByTxId: Map<string, number>;
+  txCountByAsset: Map<string, number>;
+}
 
-  // Per-asset lot tracking
+const IN_TYPES = new Set(["buy", "reward", "transfer_in", "deposit"]);
+const OUT_TYPES = new Set(["sell", "transfer_out", "withdrawal", "fee"]);
+
+function runFifo(txs: CryptoTx[]): FifoState {
+  const sorted = [...txs].sort((a, b) => a.ts - b.ts);
   const lotsMap = new Map<string, DerivedLot[]>();
-  const realizedMap = new Map<string, number>();
-  const txCountMap = new Map<string, number>();
+  const realizedByAsset = new Map<string, number>();
+  const realizedByTxId = new Map<string, number>();
+  const txCountByAsset = new Map<string, number>();
 
   let lotCounter = 0;
 
   for (const tx of sorted) {
-    const sym = tx.asset.toUpperCase();
+    const sym = normalizeSymbol(tx.asset || "");
     if (!sym) continue;
 
-    txCountMap.set(sym, (txCountMap.get(sym) || 0) + 1);
+    txCountByAsset.set(sym, (txCountByAsset.get(sym) || 0) + 1);
 
     if (!lotsMap.has(sym)) lotsMap.set(sym, []);
     const lots = lotsMap.get(sym)!;
 
-    const q = Math.abs(tx.qty);
-    if (q <= 0) continue;
+    const type = String(tx.type || "").toLowerCase();
+    const rawQty = Number(tx.qty || 0);
+    const q = Math.abs(rawQty);
 
-    if (tx.type === "buy" || tx.type === "reward" || tx.type === "transfer_in") {
-      const totalCost = tx.type === "buy" ? q * tx.price + (tx.fee || 0) : 0;
+    if (!(q > 0)) continue;
+
+    const isAdjustment = type === "adjustment";
+    const isIn = IN_TYPES.has(type) || (isAdjustment && rawQty >= 0);
+    const isOut = OUT_TYPES.has(type) || (isAdjustment && rawQty < 0);
+
+    if (isIn) {
+      const buyLike = type === "buy";
+      const price = Number(tx.price || 0);
+      const fee = Number(tx.fee || 0);
+      const totalCost = buyLike ? (q * price) + fee : q * Math.max(price, 0);
       const unitCost = q > 0 ? totalCost / q : 0;
+
       lots.push({
         id: `lot_${++lotCounter}`,
         ts: tx.ts,
@@ -85,33 +87,53 @@ export function derivePortfolio(
         qty: q,
         qtyRem: q,
         unitCost,
-        tag: tx.type,
+        tag: type,
       });
-    } else if (tx.type === "sell" || tx.type === "transfer_out") {
+
+      continue;
+    }
+
+    if (isOut) {
       let rem = q;
       let costConsumed = 0;
-      // FIFO: consume oldest lots first
+
       for (const lot of lots) {
         if (rem <= 0) break;
         if (lot.qtyRem <= 0) continue;
+
         const take = Math.min(lot.qtyRem, rem);
         costConsumed += take * lot.unitCost;
         lot.qtyRem -= take;
         rem -= take;
       }
-      if (tx.type === "sell") {
-        const proceeds = q * tx.price - (tx.fee || 0);
+
+      if (type === "sell") {
+        const proceeds = (q * Number(tx.price || 0)) - Number(tx.fee || 0);
         const realized = proceeds - costConsumed;
-        realizedMap.set(sym, (realizedMap.get(sym) || 0) + realized);
+        realizedByTxId.set(tx.id, realized);
+        realizedByAsset.set(sym, (realizedByAsset.get(sym) || 0) + realized);
       }
     }
   }
 
-  // Build positions from remaining lots
+  return { lotsMap, realizedByAsset, realizedByTxId, txCountByAsset };
+}
+
+export function deriveRealizedByTx(txs: CryptoTx[]): Map<string, number> {
+  return runFifo(txs).realizedByTxId;
+}
+
+export function derivePortfolio(
+  txs: CryptoTx[],
+  getPrice: (sym: string) => number | null,
+): PortfolioSummary {
+  const sorted = [...txs].sort((a, b) => a.ts - b.ts);
+  const { lotsMap, realizedByAsset, txCountByAsset } = runFifo(sorted);
+
   const positions: DerivedPosition[] = [];
 
   for (const [sym, lots] of lotsMap) {
-    const openLots = lots.filter(l => l.qtyRem > 1e-10);
+    const openLots = lots.filter((l) => l.qtyRem > 1e-10);
     const totalQty = openLots.reduce((s, l) => s + l.qtyRem, 0);
     const totalCost = openLots.reduce((s, l) => s + l.qtyRem * l.unitCost, 0);
 
@@ -131,12 +153,11 @@ export function derivePortfolio(
       unreal,
       avg,
       lots: openLots,
-      realizedPnl: realizedMap.get(sym) || 0,
-      txCount: txCountMap.get(sym) || 0,
+      realizedPnl: realizedByAsset.get(sym) || 0,
+      txCount: txCountByAsset.get(sym) || 0,
     });
   }
 
-  // Sort by market value descending (nulls last)
   positions.sort((a, b) => (b.mv ?? 0) - (a.mv ?? 0));
 
   const totalMV = positions.reduce((s, p) => s + (p.mv ?? 0), 0);
@@ -144,7 +165,6 @@ export function derivePortfolio(
   const totalPnl = totalMV - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
   const realizedPnl = positions.reduce((s, p) => s + p.realizedPnl, 0);
-  const txCount = sorted.length;
 
   return {
     positions,
@@ -154,6 +174,6 @@ export function derivePortfolio(
     totalPnlPct,
     realizedPnl,
     assetCount: positions.length,
-    txCount,
+    txCount: sorted.length,
   };
 }
