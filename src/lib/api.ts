@@ -1,5 +1,6 @@
-// Worker API base URL — set via VITE_WORKER_API_URL env secret (baked at build time)
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "").replace(/\/$/, "");
+// Worker API base URL — prefer VITE_WORKER_API_URL, fallback to known production Worker
+const DEFAULT_WORKER_BASE = "https://cryptotracker-api.taheito26.workers.dev";
+const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || DEFAULT_WORKER_BASE || "").replace(/\/$/, "");
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
 
