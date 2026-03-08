@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
