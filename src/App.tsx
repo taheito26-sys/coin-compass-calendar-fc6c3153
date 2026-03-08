@@ -141,7 +141,6 @@ function AppShell({
             {page === "assets" && <PortfolioPage />}
             {page === "calendar" && <CalendarPage />}
             {page === "ledger" && <LedgerPage />}
-            {page === "import" && <ImportPage />}
             {page === "markets" && <MarketsPage />}
             {page === "alerts" && <AlertsPage />}
             {page === "vault" && <VaultPage />}
