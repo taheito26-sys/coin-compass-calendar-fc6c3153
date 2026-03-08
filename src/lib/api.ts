@@ -1,4 +1,4 @@
-// Worker API base URL — set via VITE_WORKER_API_URL secret
+// Worker API base URL — set via VITE_WORKER_API_URL env secret (baked at build time)
 const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "").replace(/\/$/, "");
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
