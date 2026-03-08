@@ -418,7 +418,7 @@ export default function PortfolioPage() {
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalCost)}</div>
         </div>
       </div>
 
