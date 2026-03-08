@@ -4,7 +4,14 @@ import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
-import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets } from "@/lib/api";
+import {
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  createImportedFile,
+  isWorkerConfigured,
+} from "@/lib/api";
+import { getAssetCatalog, resolveAssetId, resolveAssetSymbol } from "@/lib/assetResolver";
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -13,45 +20,11 @@ const EXCHANGE_LABELS: Record<string, string> = {
   gate: "Gate.io",
 };
 
-async function findAssetId(symbol: string): Promise<string | null> {
-  const sym = symbol.toUpperCase();
-  try {
-    const assets = await fetchAssets();
-    const match = assets.find(a => a.symbol.toUpperCase() === sym);
-    return match?.id ?? null;
-  } catch {
-    return null;
-  }
-}
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const HEX32_RE = /^[0-9a-f]{32}$/i;
 
-async function saveTransactionViaApi(tx: {
-  type: string; asset: string; qty: number; price: number;
-  fee: number; venue: string; note: string; ts: number;
-}): Promise<{ ok: boolean; source: string }> {
-  const assetId = await findAssetId(tx.asset);
-  if (!assetId) {
-    console.warn(`[ledger] Asset ${tx.asset} not found in assets table`);
-    return { ok: false, source: "none" };
-  }
-
-  try {
-    await createTransaction({
-      asset_id: assetId,
-      timestamp: new Date(tx.ts).toISOString(),
-      type: tx.type,
-      qty: tx.qty,
-      unit_price: tx.price || 0,
-      fee_amount: tx.fee || 0,
-      fee_currency: "USD",
-      venue: tx.venue || undefined,
-      note: tx.note || undefined,
-      source: "manual",
-    });
-    return { ok: true, source: "worker" };
-  } catch (err: any) {
-    console.error("[ledger] Save failed:", err);
-    return { ok: false, source: "error" };
-  }
+function isBackendId(id: string): boolean {
+  return UUID_RE.test(id) || HEX32_RE.test(id);
 }
 
 export default function LedgerPage() {
@@ -85,28 +58,97 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // Manual save — writes transaction to state.txs (single source of truth)
-  // Lots, holdings, and portfolio are derived automatically by derivePortfolio
   const save = async () => {
-    const a = asset.trim().toUpperCase(), q = parseFloat(qty), p = parseFloat(price), f = parseFloat(fee) || 0;
-    if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
-    const total = (type === "buy" || type === "sell") ? q * p : 0;
+    const normalizedAsset = resolveAssetSymbol(asset);
+    const q = parseFloat(qty);
+    const p = parseFloat(price) || 0;
+    const f = parseFloat(fee) || 0;
+
+    if (!normalizedAsset || !(q > 0)) {
+      toast("Asset and qty required", "bad");
+      return;
+    }
+
     const ts = Date.now();
-    const tx = { id: uid(), ts, type, asset: a, qty: q, price: p, total, fee: f, feeAsset: state.base, accountId: "acc_main", note, lots: "" };
-
-    // Save to local state — ONLY txs, everything else is derived
-    setState(prev => ({ ...prev, txs: [tx, ...prev.txs] }));
-
-    // Save to backend via Worker API
     setSaving(true);
-    const result = await saveTransactionViaApi({ type, asset: a, qty: q, price: p, fee: f, venue, note, ts });
-    setSaving(false);
 
-    setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-    if (result.ok) {
-      toast(`Transaction saved ✓ (via ${result.source})`, "good");
-    } else {
-      toast("Transaction saved locally only (backend sync failed)", "good");
+    try {
+      if (isWorkerConfigured()) {
+        const assets = await getAssetCatalog();
+        const { assetId } = resolveAssetId(normalizedAsset, assets);
+
+        if (!assetId) {
+          toast(`Asset mapping failed for ${normalizedAsset}. Add this asset before saving.`, "bad");
+          return;
+        }
+
+        const created = await createTransaction({
+          asset_id: assetId,
+          timestamp: new Date(ts).toISOString(),
+          type,
+          qty: q,
+          unit_price: p,
+          fee_amount: f,
+          fee_currency: state.base,
+          venue: venue || undefined,
+          note: note || undefined,
+          source: "manual",
+        });
+
+        const total = (type === "buy" || type === "sell") ? q * p : 0;
+        setState((prev) => ({
+          ...prev,
+          txs: [{
+            id: created.id,
+            ts,
+            type,
+            asset: normalizedAsset,
+            qty: q,
+            price: p,
+            total,
+            fee: f,
+            feeAsset: state.base,
+            accountId: "acc_main",
+            note,
+            lots: "",
+          }, ...prev.txs],
+        }));
+
+        toast("Transaction saved ✓", "good");
+      } else {
+        const total = (type === "buy" || type === "sell") ? q * p : 0;
+        setState((prev) => ({
+          ...prev,
+          txs: [{
+            id: `local_${uid()}`,
+            ts,
+            type,
+            asset: normalizedAsset,
+            qty: q,
+            price: p,
+            total,
+            fee: f,
+            feeAsset: state.base,
+            accountId: "acc_main",
+            note,
+            lots: "",
+          }, ...prev.txs],
+        }));
+
+        toast("Saved locally only (Worker API not configured)", "bad");
+      }
+
+      setAsset("");
+      setQty("");
+      setPrice("");
+      setFee("0");
+      setVenue("");
+      setNote("");
+    } catch (err: any) {
+      console.error("[ledger] Save failed:", err);
+      toast(err?.message || "Failed to save transaction", "bad");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -121,47 +163,82 @@ export default function LedgerPage() {
 
   const saveEdit = async () => {
     if (!editId) return;
-    const newQty = parseFloat(editQty);
-    const newPrice = parseFloat(editPrice);
 
-    // Update local state
-    setState(prev => ({
-      ...prev,
-      txs: prev.txs.map(t => t.id === editId ? {
-        ...t,
-        asset: editAsset.toUpperCase(),
-        qty: newQty || t.qty,
-        price: newPrice || t.price,
-        type: editType,
-        total: (editType === "buy" || editType === "sell") ? (newQty || 0) * (newPrice || 0) : t.total,
-      } : t),
-    }));
-    setEditId(null);
+    const existing = state.txs.find((t) => t.id === editId);
+    if (!existing) {
+      setEditId(null);
+      return;
+    }
 
-    // Persist to backend
+    const normalizedAsset = resolveAssetSymbol(editAsset || existing.asset);
+    const nextType = editType || existing.type;
+    const nextQty = Number.isFinite(parseFloat(editQty)) ? parseFloat(editQty) : existing.qty;
+    const nextPrice = Number.isFinite(parseFloat(editPrice)) ? parseFloat(editPrice) : existing.price;
+    const nextTotal = (nextType === "buy" || nextType === "sell") ? nextQty * nextPrice : 0;
+
     try {
-      await updateTransaction(editId, {
-        type: editType,
-        qty: newQty || undefined,
-        unit_price: newPrice || undefined,
-      });
-      toast("Transaction updated ✓", "good");
+      if (isWorkerConfigured() && isBackendId(editId)) {
+        const assets = await getAssetCatalog();
+        const { assetId } = resolveAssetId(normalizedAsset, assets);
+        if (!assetId) {
+          toast(`Asset mapping failed for ${normalizedAsset}. Update aborted.`, "bad");
+          return;
+        }
+
+        await updateTransaction(editId, {
+          asset_id: assetId,
+          type: nextType,
+          qty: nextQty,
+          unit_price: nextPrice,
+        });
+
+        setState((prev) => ({
+          ...prev,
+          txs: prev.txs.map((t) => t.id === editId ? {
+            ...t,
+            asset: normalizedAsset,
+            qty: nextQty,
+            price: nextPrice,
+            type: nextType,
+            total: nextTotal,
+          } : t),
+        }));
+
+        toast("Transaction updated ✓", "good");
+      } else {
+        setState((prev) => ({
+          ...prev,
+          txs: prev.txs.map((t) => t.id === editId ? {
+            ...t,
+            asset: normalizedAsset,
+            qty: nextQty,
+            price: nextPrice,
+            type: nextType,
+            total: nextTotal,
+          } : t),
+        }));
+
+        toast("Updated local-only transaction (not synced)", "bad");
+      }
+
+      setEditId(null);
     } catch (err: any) {
       console.error("[ledger] Update failed:", err);
-      toast("Updated locally only (backend sync failed)", "good");
+      toast(err?.message || "Failed to update transaction", "bad");
     }
   };
 
   const deleteTx = async (id: string) => {
-    setState(prev => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
-
-    // Persist to backend
     try {
-      await deleteTransaction(id);
-      toast("Transaction deleted ✓", "good");
+      if (isWorkerConfigured() && isBackendId(id)) {
+        await deleteTransaction(id);
+      }
+
+      setState((prev) => ({ ...prev, txs: prev.txs.filter((t) => t.id !== id) }));
+      toast(isBackendId(id) ? "Transaction deleted ✓" : "Deleted local-only transaction", "good");
     } catch (err: any) {
       console.error("[ledger] Delete failed:", err);
-      toast("Deleted locally only (backend sync failed)", "good");
+      toast(err?.message || "Failed to delete transaction", "bad");
     }
   };
 
@@ -195,53 +272,121 @@ export default function LedgerPage() {
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
 
-    // Save to local state — ONLY txs (lots/holdings derived automatically)
-    setState(prev => {
-      const newTxs = [...prev.txs];
-      for (const row of importResult.rows) {
-        const txId = uid();
-        const assetSym = extractBase(row.symbol);
-        const tx = {
-          id: txId, ts: row.timestamp, type: row.side, asset: assetSym,
-          qty: row.qty, price: row.unitPrice, total: row.grossValue,
-          fee: row.feeAmount, feeAsset: row.feeAsset || prev.base,
-          accountId: "acc_main", note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`, lots: "",
-        };
-        newTxs.push(tx);
-      }
-      return {
-        ...prev, txs: newTxs,
-        importedFiles: [...(prev.importedFiles || []), { name: fileName, hash: fileHash, importedAt: Date.now(), exchange: importResult.exchange, exportType: importResult.exportType, rowCount: importResult.rows.length }],
-      };
-    });
-
-    // Sync each imported row to backend via API client
+    const createdTxs: typeof state.txs = [];
+    const missingSymbols = new Set<string>();
     let synced = 0;
-    for (const row of importResult.rows) {
-      const assetSym = extractBase(row.symbol);
-      const result = await saveTransactionViaApi({
-        type: row.side, asset: assetSym, qty: row.qty,
-        price: row.unitPrice, fee: row.feeAmount,
-        venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-        note: `Import: ${row.externalId}`, ts: row.timestamp,
-      });
-      if (result.ok) synced++;
+
+    if (isWorkerConfigured()) {
+      try {
+        const assets = await getAssetCatalog();
+
+        for (const row of importResult.rows) {
+          const { assetId, symbol } = resolveAssetId(row.symbol, assets);
+          if (!assetId) {
+            missingSymbols.add(symbol);
+            continue;
+          }
+
+          try {
+            const created = await createTransaction({
+              asset_id: assetId,
+              timestamp: new Date(row.timestamp).toISOString(),
+              type: row.side,
+              qty: row.qty,
+              unit_price: row.unitPrice,
+              fee_amount: row.feeAmount,
+              fee_currency: row.feeAsset || state.base,
+              venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+              note: `Import: ${row.externalId}`,
+              source: "csv-import",
+              external_id: row.externalId || undefined,
+            });
+
+            createdTxs.push({
+              id: created.id,
+              ts: row.timestamp,
+              type: row.side,
+              asset: symbol,
+              qty: row.qty,
+              price: row.unitPrice,
+              total: row.grossValue,
+              fee: row.feeAmount,
+              feeAsset: row.feeAsset || state.base,
+              accountId: "acc_main",
+              note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
+              lots: "",
+            });
+            synced++;
+          } catch (err: any) {
+            console.warn("[import] Failed row:", err?.message || err);
+          }
+        }
+      } catch (err: any) {
+        toast(err?.message || "Import sync failed", "bad");
+        return;
+      }
+    } else {
+      for (const row of importResult.rows) {
+        const symbol = resolveAssetSymbol(row.symbol);
+        createdTxs.push({
+          id: `local_${uid()}`,
+          ts: row.timestamp,
+          type: row.side,
+          asset: symbol,
+          qty: row.qty,
+          price: row.unitPrice,
+          total: row.grossValue,
+          fee: row.feeAmount,
+          feeAsset: row.feeAsset || state.base,
+          accountId: "acc_main",
+          note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`,
+          lots: "",
+        });
+      }
+      synced = createdTxs.length;
     }
 
-    // Also record the imported file
-    try {
-      await createImportedFile({
-        file_name: fileName,
-        file_hash: fileHash,
+    if (createdTxs.length === 0) {
+      const missing = [...missingSymbols].slice(0, 6).join(", ");
+      toast(missing ? `No rows imported. Missing assets: ${missing}` : "No rows imported.", "bad");
+      return;
+    }
+
+    setState((prev) => ({
+      ...prev,
+      txs: [...prev.txs, ...createdTxs],
+      importedFiles: [...(prev.importedFiles || []), {
+        name: fileName,
+        hash: fileHash,
+        importedAt: Date.now(),
         exchange: importResult.exchange,
-        export_type: importResult.exportType,
-        row_count: importResult.rows.length,
-      });
-    } catch (err: any) {
-      console.warn("[import] Failed to record imported file:", err.message);
+        exportType: importResult.exportType,
+        rowCount: importResult.rows.length,
+      }],
+    }));
+
+    if (isWorkerConfigured()) {
+      try {
+        await createImportedFile({
+          file_name: fileName,
+          file_hash: fileHash,
+          exchange: importResult.exchange,
+          export_type: importResult.exportType,
+          row_count: importResult.rows.length,
+        });
+      } catch (err: any) {
+        console.warn("[import] Failed to record imported file:", err.message);
+      }
     }
 
-    toast(`Imported ${importResult.rows.length} trades (${synced} synced)`, "good");
+    const missingText = missingSymbols.size > 0
+      ? ` · ${missingSymbols.size} skipped (missing asset mapping)`
+      : "";
+
+    toast(
+      `${isWorkerConfigured() ? "Imported" : "Imported local-only"} ${createdTxs.length}/${importResult.rows.length} trades (${synced} synced)${missingText}`,
+      missingSymbols.size > 0 ? "bad" : "good",
+    );
     setImportStage("done");
   };
 
@@ -413,13 +558,4 @@ export default function LedgerPage() {
       </div>
     </>
   );
-}
-
-function extractBase(symbol: string): string {
-  const clean = symbol.replace(/[_\-/]/g, "");
-  const stables = ["USDT", "USDC", "BUSD", "TUSD", "DAI", "FDUSD", "EUR", "GBP", "USD", "QAR", "BTC", "ETH", "BNB"];
-  for (const q of stables) {
-    if (clean.endsWith(q) && clean.length > q.length) return clean.slice(0, -q.length);
-  }
-  return clean;
 }
