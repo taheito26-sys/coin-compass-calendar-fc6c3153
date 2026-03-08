@@ -51,8 +51,8 @@ export default function UserPage() {
                       <tr key={s.asset}>
                         <td className="mono" style={{ fontWeight: 900 }}>{s.asset}</td>
                         <td className="mono">{fmtQty(s.totalQty)}</td>
-                        <td className="mono">{fmtPx(s.avgPrice)} {state.base}</td>
-                        <td className="mono">{s.currentPrice !== null ? fmtPx(s.currentPrice) + " " + state.base : "—"}</td>
+                        <td className="mono">{fmtPx(s.avgPrice)}</td>
+                        <td className="mono">{s.currentPrice !== null ? fmtPx(s.currentPrice) : "—"}</td>
                         <td className="mono">{fmtFiat(s.totalCost, state.base)}</td>
                         <td className="mono">{s.mv !== null ? fmtFiat(s.mv, state.base) : "—"}</td>
                         <td className={`mono ${s.pnl === null ? "" : s.pnl >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
