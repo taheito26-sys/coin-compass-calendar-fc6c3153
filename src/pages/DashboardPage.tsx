@@ -329,7 +329,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                   {watchlistData.map(w => (
                     <tr key={w.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{w.sym}</td>
-                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? "$" + fmtPx(w.price) : "—"}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? fmtPx(w.price) : "—"}</td>
                       <td style={{ textAlign: "right" }}>
                         {w.change24h !== null ? (
                           <span className={`mono ${w.change24h >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
