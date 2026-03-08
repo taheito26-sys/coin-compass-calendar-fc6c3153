@@ -365,7 +365,7 @@ export default function PortfolioPage() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, fontSize: 11 }}>
           <div><span className="muted">Qty </span><span className="mono">{fmtQty(pos.qty)}</span></div>
           <div><span className="muted">Price </span><span className="mono">{pos.price !== null ? fmtPx(pos.price) : "—"}</span></div>
-          <div><span className="muted">Avg </span><span className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</span></div>
+          <div><span className="muted">Avg </span><span className="mono">{pos.avg > 0 ? fmtPx(pos.avg) : "—"}</span></div>
           <div><span className="muted">Cost </span><span className="mono">{fmtFiat(pos.cost, base)}</span></div>
           <div><span className="muted">Alloc </span><span className="mono">{alloc.toFixed(1)}%</span></div>
           <div>
