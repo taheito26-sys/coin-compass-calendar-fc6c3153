@@ -355,7 +355,7 @@ export default function PortfolioPage() {
             {isLot && <span className="muted" style={{ fontSize: 10 }}>{pos.lots.length} lots</span>}
           </div>
           <div style={{ textAlign: "right" }}>
-            <div className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</div>
+            <div className="mono" style={{ fontWeight: 700 }}>{fmtTotal(pos.total)}</div>
             <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
               {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
             </div>
