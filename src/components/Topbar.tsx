@@ -1,4 +1,4 @@
-import GlobalSearch from "./GlobalSearch";
+import CommandPalette from "./CommandPalette";
 
 export default function Topbar({ title, sub, onNav }: { title: string; sub: string; onNav: (p: string) => void }) {
   return (
@@ -8,7 +8,7 @@ export default function Topbar({ title, sub, onNav }: { title: string; sub: stri
         <div className="pageSub" dangerouslySetInnerHTML={{ __html: sub }} />
       </div>
       <div className="topRight">
-        <GlobalSearch onNav={onNav} />
+        <CommandPalette onNav={onNav} />
       </div>
     </header>
   );
