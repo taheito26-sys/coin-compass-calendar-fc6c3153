@@ -203,7 +203,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
           </div>
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalMV)}</div>
           <div className="kpi-sub">{assetCount} assets tracked</div>
         </div>
         <div className="kpi-card">
