@@ -41,14 +41,21 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const response = await fetch(`${WORKER_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...headers,
-      ...((options?.headers as Record<string, string>) || {}),
-    },
-    signal: options?.signal ?? AbortSignal.timeout(15000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${WORKER_BASE}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...((options?.headers as Record<string, string>) || {}),
+      },
+      signal: options?.signal ?? AbortSignal.timeout(15000),
+    });
+  } catch (err: any) {
+    throw new Error(
+      `Network error calling Worker API (${WORKER_BASE}${path}). Check Worker URL, deployment, and CORS ALLOWED_ORIGINS. Root: ${err?.message || 'Failed to fetch'}`,
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => `HTTP ${response.status}`);
