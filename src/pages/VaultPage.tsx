@@ -154,59 +154,61 @@ export default function VaultPage() {
 
   return (
     <>
-      {/* Local Snapshots */}
-      <div className="panel">
-        <div className="panel-head">
-          <h2>💾 Local Snapshots</h2>
-          <span className="pill">{snapshots.length} saved</span>
-        </div>
-        <div className="panel-body">
-          <p className="muted" style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.6 }}>
-            Instant local snapshots stored in IndexedDB. Survives page reloads.
-          </p>
-          <div style={{ display: "flex", gap: 6, marginBottom: 10, flexWrap: "wrap" }}>
-            <input className="input" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Snapshot description" style={{ flex: 1, minWidth: 200 }} />
-            <button className="btn" onClick={takeSnapshot}>📸 Take Snapshot</button>
+      {/* Top row: Snapshots + Export/Import side by side on desktop */}
+      <div className="vault-top-grid">
+        {/* Local Snapshots */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>💾 Local Snapshots</h2>
+            <span className="pill">{snapshots.length} saved</span>
           </div>
-          {loading && <div className="muted" style={{ fontSize: 11 }}>Loading snapshots…</div>}
-          {!loading && snapshots.length === 0 && <div className="muted" style={{ fontSize: 11, padding: "12px 0" }}>No snapshots yet. Take your first snapshot above.</div>}
-          
-          {/* Responsive card layout for snapshots */}
-          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-            {snapshots.map(s => (
-              <div key={s.id} className="vault-card">
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 12 }}>{s.label}</div>
-                  <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{fmtDate(s.ts)} · {fmtSize(s.size)}</div>
-                </div>
-                <div style={{ display: "flex", gap: 4, flexShrink: 0, flexWrap: "wrap" }}>
-                  <button className="rowBtn" onClick={() => restoreSnap(s.id)}>Restore</button>
-                  <button className="rowBtn" onClick={() => exportSnap(s.id)}>Export</button>
-                  <button className="rowBtn" onClick={() => deleteSnap(s.id)} style={{ color: "var(--bad)" }}>Del</button>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
+          <div className="panel-body">
+            <p className="muted" style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.6 }}>
+              Instant local snapshots stored in IndexedDB. Survives page reloads.
+            </p>
+            <div className="vault-snap-input">
+              <input className="input" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Snapshot description" style={{ flex: 1, minWidth: 0 }} />
+              <button className="btn" onClick={takeSnapshot}>📸 Snapshot</button>
+            </div>
+            {loading && <div className="muted" style={{ fontSize: 11 }}>Loading snapshots…</div>}
+            {!loading && snapshots.length === 0 && <div className="muted" style={{ fontSize: 11, padding: "12px 0" }}>No snapshots yet. Take your first snapshot above.</div>}
 
-      {/* Data Export & Import */}
-      <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head">
-          <h2>📦 Data Export & Import</h2>
-          <span className="pill">JSON</span>
-        </div>
-        <div className="panel-body">
-          <p className="muted" style={{ fontSize: 11, marginBottom: 10 }}>Export your data for offline backup or transfer between devices.</p>
-          <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 10 }}>
-            <button className="btn secondary" onClick={exportJSON}>📄 Export JSON</button>
-            <label className="btn secondary" style={{ cursor: "pointer" }}>
-              📂 Import JSON
-              <input ref={fileRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importJSON(f); }} />
-            </label>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {snapshots.map(s => (
+                <div key={s.id} className="vault-card">
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontWeight: 700, fontSize: 12 }}>{s.label}</div>
+                    <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{fmtDate(s.ts)} · {fmtSize(s.size)}</div>
+                  </div>
+                  <div className="vault-card-actions">
+                    <button className="rowBtn" onClick={() => restoreSnap(s.id)}>Restore</button>
+                    <button className="rowBtn" onClick={() => exportSnap(s.id)}>Export</button>
+                    <button className="rowBtn" onClick={() => deleteSnap(s.id)} style={{ color: "var(--bad)" }}>Del</button>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
-          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10 }}>
-            <button className="btn danger" onClick={clearAll}>⚠ Clear All Data</button>
+        </div>
+
+        {/* Data Export & Import */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>📦 Export & Import</h2>
+            <span className="pill">JSON</span>
+          </div>
+          <div className="panel-body">
+            <p className="muted" style={{ fontSize: 11, marginBottom: 10 }}>Export your data for offline backup or transfer between devices.</p>
+            <div className="vault-actions-grid">
+              <button className="btn secondary" onClick={exportJSON}>📄 Export JSON</button>
+              <label className="btn secondary" style={{ cursor: "pointer" }}>
+                📂 Import JSON
+                <input ref={fileRef} type="file" accept=".json" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) importJSON(f); }} />
+              </label>
+            </div>
+            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
+              <button className="btn danger" onClick={clearAll}>⚠ Clear All Data</button>
+            </div>
           </div>
         </div>
       </div>
