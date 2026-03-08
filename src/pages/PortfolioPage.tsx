@@ -406,7 +406,7 @@ export default function PortfolioPage() {
       <div className="kpis" style={{ marginBottom: 10 }}>
         <div className="kpi-card">
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalMV)}</div>
           <div className="kpi-sub">{filteredRows.length} assets</div>
         </div>
         <div className="kpi-card">
