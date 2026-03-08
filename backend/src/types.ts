@@ -57,6 +57,13 @@ export interface ImportedFileRow {
   imported_at: string;
 }
 
+export interface UserPreferenceRow {
+  id: string;
+  user_id: string;
+  key: string;
+  value: string;
+}
+
 /** KV price data shape */
 export interface PriceEntry {
   price: number;

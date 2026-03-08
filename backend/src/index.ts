@@ -6,6 +6,7 @@ import pricesRoute from './routes/prices';
 import transactionsRoute from './routes/transactions';
 import trackingRoute from './routes/tracking';
 import importedFilesRoute from './routes/imported-files';
+import preferencesRoute from './routes/preferences';
 import { pollPrices } from './cron/poll-prices';
 
 const app = new Hono<{ Bindings: Env }>();
@@ -19,6 +20,7 @@ app.route('/api/prices', pricesRoute);
 app.route('/api/transactions', transactionsRoute);
 app.route('/api/tracking-preferences', trackingRoute);
 app.route('/api/imported-files', importedFilesRoute);
+app.route('/api/preferences', preferencesRoute);
 
 // Health check (matches ref repo's /api/status pattern)
 app.get('/api/status', async (c) => {
@@ -40,7 +42,7 @@ app.onError((err, c) => {
   return c.json({ error: 'Internal server error' }, 500);
 });
 
-// Export Worker — fetch + scheduled (matches ref repo's export default pattern)
+// Export Worker — fetch + scheduled
 export default {
   fetch: app.fetch,
 

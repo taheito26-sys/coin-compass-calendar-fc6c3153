@@ -115,6 +115,70 @@ app.put('/:id', async (c) => {
   return c.json({ transaction: row });
 });
 
+/** POST /api/transactions/batch — create multiple transactions at once (for migration) */
+app.post('/batch', async (c) => {
+  const userId = c.get('userId');
+  const body = await c.req.json<{
+    transactions: Array<{
+      asset_id: string;
+      timestamp: string;
+      type: string;
+      qty: number;
+      unit_price?: number;
+      fee_amount?: number;
+      fee_currency?: string;
+      venue?: string;
+      note?: string;
+      tags?: string[];
+      source?: string;
+      external_id?: string;
+    }>;
+  }>();
+
+  if (!body.transactions || !Array.isArray(body.transactions)) {
+    return c.json({ error: 'transactions array required' }, 400);
+  }
+
+  if (body.transactions.length > 500) {
+    return c.json({ error: 'Maximum 500 transactions per batch' }, 400);
+  }
+
+  const now = new Date().toISOString();
+  const created: string[] = [];
+  const errors: string[] = [];
+
+  for (const tx of body.transactions) {
+    if (!tx.asset_id || !tx.timestamp || !tx.type || tx.qty == null) {
+      errors.push(`Missing fields for tx at ${tx.timestamp}`);
+      continue;
+    }
+
+    const id = crypto.randomUUID();
+    try {
+      await c.env.DB.prepare(`
+        INSERT INTO transactions (id, user_id, asset_id, timestamp, type, qty, unit_price, fee_amount, fee_currency, venue, note, tags, source, external_id, created_at, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).bind(
+        id, userId, tx.asset_id, tx.timestamp, tx.type, tx.qty,
+        tx.unit_price ?? 0, tx.fee_amount ?? 0, tx.fee_currency ?? 'USD',
+        tx.venue ?? null, tx.note ?? null,
+        tx.tags ? JSON.stringify(tx.tags) : null,
+        tx.source ?? 'migration', tx.external_id ?? null,
+        now, now,
+      ).run();
+      created.push(id);
+    } catch (err: any) {
+      errors.push(`Failed: ${tx.timestamp} ${tx.type} - ${err.message}`);
+    }
+  }
+
+  return c.json({
+    created: created.length,
+    errors: errors.length,
+    errorDetails: errors.slice(0, 10),
+  }, created.length > 0 ? 201 : 400);
+});
+
 /** DELETE /api/transactions/:id */
 app.delete('/:id', async (c) => {
   const userId = c.get('userId');
