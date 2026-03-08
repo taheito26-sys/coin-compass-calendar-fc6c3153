@@ -4,6 +4,7 @@ import { usePortfolio } from "@/hooks/usePortfolio";
 import { mergePositionSources } from "@/lib/mergePositions";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
+import AssetDrilldown from "@/components/AssetDrilldown";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
 // Mini sparkline canvas component
