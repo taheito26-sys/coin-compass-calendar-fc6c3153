@@ -235,7 +235,7 @@ export default function PortfolioPage() {
       ),
       profitAbs: (
         <td key="profitAbs" className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
-          {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          {(pos.pnlAbs >= 0 ? "+" : "-") + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
         </td>
       ),
       realizedPnl: (
