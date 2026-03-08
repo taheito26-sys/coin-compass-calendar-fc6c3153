@@ -11,7 +11,6 @@ import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import VaultPage from "@/pages/VaultPage";
 import AlertsPage from "@/pages/AlertsPage";
-import ImportPage from "@/pages/ImportPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
