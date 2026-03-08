@@ -295,7 +295,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                     <tr key={g.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{g.sym}</td>
                       <td className="mono good" style={{ textAlign: "right", fontWeight: 700 }}>▲ {g.pnlPct.toFixed(2)}%</td>
-                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtFiat(g.pnlAbs, base)}</td>
+                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtTotal(g.pnlAbs)}</td>
                     </tr>
                   ))}
                   {topLosers.map(l => (
