@@ -302,7 +302,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                     <tr key={l.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{l.sym}</td>
                       <td className="mono bad" style={{ textAlign: "right", fontWeight: 700 }}>▼ {Math.abs(l.pnlPct).toFixed(2)}%</td>
-                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtFiat(l.pnlAbs, base)}</td>
+                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtTotal(l.pnlAbs)}</td>
                     </tr>
                   ))}
                 </tbody>
