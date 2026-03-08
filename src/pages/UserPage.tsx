@@ -78,7 +78,7 @@ export default function UserPage() {
                         <td className="mono">{new Date(h.date).toLocaleDateString()}</td>
                         <td className="mono" style={{ fontWeight: 900 }}>{h.asset}</td>
                         <td className="mono">{fmtQty(h.quantity)}</td>
-                        <td className="mono">{fmtPx(h.buyPrice)} {state.base}</td>
+                        <td className="mono">{fmtPx(h.buyPrice)}</td>
                         <td className="mono">{fmtFiat(h.quantity * h.buyPrice, state.base)}</td>
                         <td className="mono muted">{h.exchange || "—"}</td>
                         <td><button className="rowBtn" onClick={() => deleteHolding(h.id)} style={{ color: "var(--bad)" }}>Del</button></td>
