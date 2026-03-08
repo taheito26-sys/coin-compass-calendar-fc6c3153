@@ -294,7 +294,7 @@ export default function PortfolioPage() {
       ),
       profitAbs: (
         <td key="profitAbs" className="mono" style={{ fontSize: 11, color: lotPnl !== null ? (lotPnl >= 0 ? "var(--good)" : "var(--bad)") : "var(--muted)" }}>
-          {lotPnl !== null ? (lotPnl >= 0 ? "+" : "-") + "$" + Math.abs(lotPnl).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : "—"}
+          {lotPnl !== null ? (lotPnl >= 0 ? "+" : "-") + Math.abs(lotPnl).toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 }) : "—"}
         </td>
       ),
       realizedPnl: <td key="realizedPnl" />,
