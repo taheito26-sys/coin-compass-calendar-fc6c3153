@@ -5,6 +5,7 @@ import { parseBinance } from "./binance";
 import { parseBybit } from "./bybit";
 import { parseOKX } from "./okx";
 import { parseGate } from "./gate";
+import { extractBaseFromPair, normalizeSymbol } from "@/lib/symbolAliases";
 import type { ParseResult, NormalizedRow, ImportFile } from "./types";
 
 const ADAPTERS = {
@@ -43,7 +44,13 @@ export async function importCSV(fileContent: string, fileName: string): Promise<
 
   // Parse with exchange-specific adapter
   const adapter = ADAPTERS[detection.exchange];
-  const { parsed, skipped } = adapter(rows);
+  const { parsed: rawParsed, skipped } = adapter(rows);
+
+  // Normalize symbols through alias map
+  const parsed = rawParsed.map(row => ({
+    ...row,
+    symbol: normalizeSymbol(row.symbol),
+  }));
 
   // Deduplicate by externalId, or by composite fingerprint
   const seen = new Set<string>();

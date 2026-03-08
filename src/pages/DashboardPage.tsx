@@ -1,6 +1,7 @@
 ﻿import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { usePortfolio } from "@/hooks/usePortfolio";
+import { mergePositionSources } from "@/lib/mergePositions";
 import { useMemo } from "react";
 
 const COIN_COLORS = [
@@ -105,22 +106,22 @@ export default function DashboardPage() {
   const { state, refresh } = useCrypto();
   const localD = cryptoDerived(state);
 
-  // Prefer worker data only when authenticated, no error, AND worker actually has positions.
-  // Otherwise fall back to local imported data so CSV imports are visible immediately.
+  // Merged local-first dataset
   const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
   const hasWorkerData = workerReady && portfolio.positions.length > 0;
-  const hasLocalData = localD.rows.length > 0;
 
-  // Use worker if it has data; else use local; merge both if both have data
-  const useWorker = hasWorkerData;
-  const useLocal = !hasWorkerData && hasLocalData;
+  const rows = useMemo(() => {
+    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
+  }, [localD.rows, portfolio.positions, hasWorkerData]);
 
-  const totalMV = useWorker ? portfolio.totalMV : localD.pricedMV;
-  const totalCost = useWorker ? portfolio.totalCost : localD.totalCost;
-  const totalPnl = useWorker ? portfolio.totalPnl : localD.unreal;
-  const totalPnlPct = useWorker ? portfolio.totalPnlPct : (localD.pricedCost > 0 ? (localD.unreal / localD.pricedCost) * 100 : 0);
-  const assetCount = useWorker ? portfolio.assetCount : localD.rows.length;
-  const priceAge = useWorker ? portfolio.priceAge : (localD.priceAgeMs < 60000 ? Math.round(localD.priceAgeMs / 1000) + "s" : Math.round(localD.priceAgeMs / 60000) + "m");
+  const hasLocalOnly = rows.some(r => r.source === "local");
+
+  // Compute totals from merged dataset
+  const totalMV = rows.reduce((s, r) => s + (r.mv ?? 0), 0);
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const totalPnl = totalMV - totalCost;
+  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const assetCount = rows.length;
   const base = state.base || "USD";
   const method = state.method || "FIFO";
 
@@ -195,6 +196,13 @@ export default function DashboardPage() {
       {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>Not signed in, showing local data only. Sign in to sync your portfolio.</div>
+        </div>
+      )}
+      {hasLocalOnly && portfolio.authenticated && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body" style={{ fontSize: 12, color: "var(--warn)" }}>
+            Some assets are local only — they'll sync once the backend maps them.
+          </div>
         </div>
       )}
       {portfolio.error && (
@@ -298,11 +306,11 @@ export default function DashboardPage() {
       {/* Top Positions Table */}
       <div className="panel" style={{ marginTop: 10 }}>
         <div className="panel-head"><h2>Top Positions</h2><span className="pill">{rows.length} assets</span></div>
-        <div className="panel-body">
+        <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
           <div className="tableWrap">
             <table>
               <thead>
-                <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th></tr>
+                <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th><th>Source</th></tr>
               </thead>
               <tbody>
                 {rows.length ? rows.map(r => {
@@ -317,10 +325,15 @@ export default function DashboardPage() {
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
                         {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
                       </td>
+                      <td>
+                        <span className="pill" style={{ fontSize: 9 }}>
+                          {r.source === "local" ? "Local" : r.source === "worker" ? "Synced" : "Merged"}
+                        </span>
+                      </td>
                     </tr>
                   );
                 }) : (
-                  <tr><td colSpan={6} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
+                  <tr><td colSpan={7} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
                 )}
               </tbody>
             </table>

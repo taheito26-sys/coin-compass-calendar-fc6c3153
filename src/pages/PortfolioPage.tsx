@@ -1,6 +1,7 @@
 ﻿import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { usePortfolio } from "@/hooks/usePortfolio";
+import { mergePositionSources } from "@/lib/mergePositions";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
@@ -124,6 +125,11 @@ const mergedBaseRows = useMemo(() => {
 
 const usingLocalFirst = hasLocalPortfolio && localD.rows.length > 0;
 
+  // Merge local + worker positions
+  const mergedRows = useMemo(() => {
+    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
+  }, [localD.rows, portfolio.positions, hasWorkerData]);
+
   // Persist visible columns and order
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify([...visibleCols]));
@@ -145,31 +151,28 @@ const usingLocalFirst = hasLocalPortfolio && localD.rows.length > 0;
     else { setSortCol(col); setSortDir("desc"); }
   };
 
-  // Build unified position list with live prices
+  // Build unified position list with live prices from merged data
   const positions = useMemo(() => {
-    const buildPos = (sym: string, name: string, qty: number, cost: number) => {
-      const live = getPrice(sym);
-      const livePrice = live?.current_price ?? null;
-      const avg = qty > 0 ? cost / qty : 0;
-      const total = livePrice !== null ? livePrice * qty : 0;
-      const pnlAbs = livePrice !== null ? total - cost : 0;
-      const pnlPct = cost > 0 && livePrice !== null ? (pnlAbs / cost) * 100 : 0;
+    return mergedRows.map(r => {
+      const live = getPrice(r.sym);
+      const livePrice = live?.current_price ?? r.price;
+      const avg = r.qty > 0 ? r.cost / r.qty : 0;
+      const total = livePrice !== null ? (livePrice ?? 0) * r.qty : 0;
+      const pnlAbs = livePrice !== null ? total - r.cost : 0;
+      const pnlPct = r.cost > 0 && livePrice !== null ? (pnlAbs / r.cost) * 100 : 0;
       const c1h = live?.price_change_percentage_1h_in_currency ?? 0;
       const c24h = live?.price_change_percentage_24h_in_currency ?? 0;
       const c7d = live?.price_change_percentage_7d_in_currency ?? 0;
       return {
-        sym, name, qty, price: livePrice, avg, total, cost, pnlAbs, pnlPct,
-        coinId: live?.id ?? sym.toLowerCase(),
+        sym: r.sym, name: r.sym, qty: r.qty, price: livePrice, avg, total, cost: r.cost, pnlAbs, pnlPct,
+        coinId: live?.id ?? r.sym.toLowerCase(),
         change1h: c1h, change24h: c24h, change7d: c7d,
         marketCap: live?.market_cap ?? 0,
         volume: live?.total_volume ?? 0,
+        source: r.source,
       };
-    };
-    if (useWorker) {
-      return portfolio.positions.map(p => buildPos(p.symbol, p.name, p.qty, p.cost));
-    }
-    return localD.rows.map(r => buildPos(r.sym, r.sym, r.qty, r.cost));
-  }, [useWorker, portfolio.positions, localD.rows, liveCoinsList, getPrice]);
+    });
+  }, [mergedRows, liveCoinsList, getPrice]);
 
   // Fetch real 7-day sparkline data
   const sparkCoinIds = useMemo(() => positions.map(p => p.coinId), [positions]);
@@ -319,7 +322,7 @@ const usingLocalFirst = hasLocalPortfolio && localD.rows.length > 0;
           <h2>Assets</h2>
           <span className="pill">{sorted.length} positions</span>
         </div>
-        <div className="panel-body" style={{ padding: 0 }}>
+        <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
           <div className="tableWrap">
             <table>
               <thead>

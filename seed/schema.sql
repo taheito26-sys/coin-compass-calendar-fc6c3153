@@ -1,5 +1,5 @@
 -- CryptoTracker D1 Schema
--- Phase A: All relational tables migrated from Supabase
+-- Cloudflare D1 relational tables
 
 CREATE TABLE IF NOT EXISTS assets (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
