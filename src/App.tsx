@@ -11,13 +11,17 @@ import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import VaultPage from "@/pages/VaultPage";
 import AlertsPage from "@/pages/AlertsPage";
+import AnalyticsPage from "@/pages/AnalyticsPage";
+import ConnectionsPage from "@/pages/ConnectionsPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
   assets: ["Assets", "Positions, P&amp;L, Lots"],
+  analytics: ["Analytics", "Risk Metrics, Benchmarking, Correlations"],
   calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
   ledger: ["Ledger", "Journal, Manual Entry, CSV Import"],
   markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
+  connections: ["Connections", "Exchange APIs, Wallet Tracking"],
   alerts: ["Alerts", "Price Alerts, Notifications"],
   vault: ["Vault", "Snapshots, Backups, Export"],
   settings: ["Settings", "Layout, Themes, Data"],
