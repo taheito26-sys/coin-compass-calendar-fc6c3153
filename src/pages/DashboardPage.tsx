@@ -1,4 +1,4 @@
-import { useCrypto } from "@/lib/cryptoContext";
+﻿import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useMemo } from "react";
@@ -124,7 +124,7 @@ export default function DashboardPage() {
   const base = state.base || "USD";
   const method = state.method || "FIFO";
 
-  // Rows for table/charts — use whichever source actually has data
+  // Rows for table/charts â€” use whichever source actually has data
   const rows = useMemo(() => {
     if (useWorker) {
       return portfolio.positions.map(p => ({
@@ -231,7 +231,7 @@ export default function DashboardPage() {
         </div>
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "â–²" : "â–¼"}</span>
+            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "Ã¢â€“Â²" : "Ã¢â€“Â¼"}</span>
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
@@ -244,7 +244,7 @@ export default function DashboardPage() {
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
           <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
-          <div className="kpi-sub">{useWorker ? portfolio.txCount + " transactions" : state.lots.length + " lots"}</div>
+          <div className="kpi-sub">{txCount} transactions</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
@@ -330,3 +330,8 @@ export default function DashboardPage() {
     </>
   );
 }
+
+
+
+
+

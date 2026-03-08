@@ -1,4 +1,4 @@
-import { useCrypto } from "@/lib/cryptoContext";
+﻿import { useCrypto } from "@/lib/cryptoContext";
 import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { usePortfolio } from "@/hooks/usePortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
@@ -72,20 +72,57 @@ function loadColOrder(): string[] {
 
 export default function PortfolioPage() {
   const portfolio = usePortfolio();
-  const { state, refresh } = useCrypto();
-  const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
-  const localD = cryptoDerived(state);
-  const [sortCol, setSortCol] = useState<string>("total");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [visibleCols, setVisibleCols] = useState<Set<string>>(loadVisibleCols);
-  const [colOrder, setColOrder] = useState<string[]>(loadColOrder);
-  const [showColConfig, setShowColConfig] = useState(false);
-  const [dragCol, setDragCol] = useState<string | null>(null);
+const { state, refresh } = useCrypto();
+const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
+const localD = cryptoDerived(state);
 
-  // Prefer worker data only when it actually has positions; fall back to local
-  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
-  const useWorker = workerReady && portfolio.positions.length > 0;
-  const base = state.base || "USD";
+const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
+const hasLocalPortfolio =
+  state.txs.length > 0 ||
+  (state.importedFiles?.length ?? 0) > 0 ||
+  localD.rows.length > 0;
+
+const base = state.base || "USD";
+
+const mergedBaseRows = useMemo(() => {
+  const map = new Map<
+    string,
+    {
+      sym: string;
+      name: string;
+      qty: number;
+      cost: number;
+      priceHint: number | null;
+    }
+  >();
+
+  if (workerReady && portfolio.positions.length > 0) {
+    for (const p of portfolio.positions) {
+      map.set(p.symbol, {
+        sym: p.symbol,
+        name: p.name || p.symbol,
+        qty: p.qty,
+        cost: p.cost,
+        priceHint: p.price ?? null,
+      });
+    }
+  }
+
+  for (const r of localD.rows) {
+    const existing = map.get(r.sym);
+    map.set(r.sym, {
+      sym: r.sym,
+      name: existing?.name || r.sym,
+      qty: r.qty,
+      cost: r.cost,
+      priceHint: r.price ?? existing?.priceHint ?? null,
+    });
+  }
+
+  return [...map.values()];
+}, [workerReady, portfolio.positions, localD.rows]);
+
+const usingLocalFirst = hasLocalPortfolio && localD.rows.length > 0;
 
   // Persist visible columns and order
   useEffect(() => {
@@ -157,15 +194,15 @@ export default function PortfolioPage() {
 
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th onClick={() => toggleSort(col)} style={{ cursor: "pointer", userSelect: "none" }}>
-      {label} {sortCol === col ? (sortDir === "asc" ? "↑" : "↓") : ""}
+      {label} {sortCol === col ? (sortDir === "asc" ? "â†‘" : "â†“") : ""}
     </th>
   );
 
   const renderChangePill = (val: number) => {
-    if (val === 0) return <span className="mono muted">—</span>;
+    if (val === 0) return <span className="mono muted">â€”</span>;
     return (
       <span className={`mono ${val > 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
-        {val > 0 ? "▲" : "▼"} {Math.abs(val).toFixed(2)}%
+        {val > 0 ? "â–²" : "â–¼"} {Math.abs(val).toFixed(2)}%
       </span>
     );
   };
@@ -192,7 +229,7 @@ export default function PortfolioPage() {
       {!portfolio.loading && !portfolio.authenticated && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not signed in — showing local data only.
+            âš  Not signed in â€” showing local data only.
           </div>
         </div>
       )}
@@ -218,19 +255,19 @@ export default function PortfolioPage() {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
+        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>â†» Refresh</button>
         <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
-          ⚙ Columns
+          âš™ Columns
         </button>
-        {useWorker && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker ✓</span>}
-        <span className="pill">Live prices · Top 500</span>
+        {useWorker && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker âœ“</span>}
+        <span className="pill">Live prices Â· Top 500</span>
       </div>
 
       {/* Column configurator */}
       {showColConfig && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body" style={{ padding: 10 }}>
-            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder · Click to toggle</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder Â· Click to toggle</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {colOrder.map(key => {
                 const col = ALL_COLUMNS.find(c => c.key === key);
@@ -266,7 +303,7 @@ export default function PortfolioPage() {
                       userSelect: "none",
                     }}
                   >
-                    <span style={{ cursor: "grab", marginRight: 2 }}>⠿</span>
+                    <span style={{ cursor: "grab", marginRight: 2 }}>â ¿</span>
                     <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} style={{ display: "none" }} />
                     {col.label}
                   </label>
@@ -304,7 +341,7 @@ export default function PortfolioPage() {
                     asset: (
                       <td key="asset">
                         <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
-                        {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>· {pos.name}</span>}
+                        {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>Â· {pos.name}</span>}
                       </td>
                     ),
                     sparkline: <td key="sparkline"><Sparkline data={sparkData.get(pos.coinId) || []} positive={pos.change7d >= 0} /></td>,
@@ -312,7 +349,7 @@ export default function PortfolioPage() {
                     change1h: <td key="change1h">{renderChangePill(pos.change1h)}</td>,
                     change24h: <td key="change24h">{renderChangePill(pos.change24h)}</td>,
                     change7d: <td key="change7d">{renderChangePill(pos.change7d)}</td>,
-                    price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>,
+                    price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "â€”"}</td>,
                     total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>,
                     allocation: (
                       <td key="allocation">
@@ -324,22 +361,22 @@ export default function PortfolioPage() {
                         </div>
                       </td>
                     ),
-                    avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "—"}</td>,
-                    avgSell: <td key="avgSell" className="mono muted">—</td>,
+                    avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "â€”"}</td>,
+                    avgSell: <td key="avgSell" className="mono muted">â€”</td>,
                     pnl: (
                       <td key="pnl" style={{ textAlign: "right" }}>
                         <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
                           {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                         </div>
                         <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
-                          {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                          {pos.pnlPct >= 0 ? "â–²" : "â–¼"} {Math.abs(pos.pnlPct).toFixed(2)}%
                         </div>
                       </td>
                     ),
                     pnlPct: (
                       <td key="pnlPct">
                         <span className={`mono ${pos.pnlPct >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
-                          {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                          {pos.pnlPct >= 0 ? "â–²" : "â–¼"} {Math.abs(pos.pnlPct).toFixed(2)}%
                         </span>
                       </td>
                     ),
@@ -367,3 +404,6 @@ export default function PortfolioPage() {
     </>
   );
 }
+
+
+

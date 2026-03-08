@@ -1,4 +1,4 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { SignIn, UserButton, useAuth, useUser } from "@clerk/react";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
 import Sidebar from "@/components/Sidebar";
@@ -117,15 +117,7 @@ function AppShell({
       <div className="app">
         <Sidebar page={page} onNav={setPage} onLogout={onLogout} />
         <div className="mainWrap">
-          <div
-            style={{
-              display: "flex",
-              justifyContent: "flex-end",
-              alignItems: "center",
-              gap: 10,
-              padding: "12px 18px 0",
-            }}
-          >
+          <div className="appUserBar" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, padding: "12px 18px 0", }}>
             {userLabel ? (
               <span style={{ fontSize: 12, color: "var(--muted, #a1a1aa)" }}>{userLabel}</span>
             ) : null}
