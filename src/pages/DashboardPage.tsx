@@ -227,7 +227,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalCost)}</div>
           <div className="kpi-sub">{txCount} transactions</div>
         </div>
         <div className="kpi-card">
