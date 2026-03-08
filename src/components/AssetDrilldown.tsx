@@ -1,5 +1,6 @@
 import { useCrypto } from "@/lib/cryptoContext";
-import { fmtFiat, fmtQty, fmtPx, calcDCA, cryptoPriceOf } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useMemo } from "react";
 
 interface Props {
@@ -9,39 +10,29 @@ interface Props {
 
 export default function AssetDrilldown({ sym, onClose }: Props) {
   const { state } = useCrypto();
-  const base = state.base || "USD";
+  const portfolio = useUnifiedPortfolio();
+  const base = portfolio.base;
 
-  // DCA info
-  const dca = useMemo(() => calcDCA(state.holdings, sym), [state.holdings, sym]);
+  // Get position from unified portfolio (same data as Dashboard and Assets page)
+  const position = portfolio.getPosition(sym);
 
-  // Current price
-  const currentPrice = cryptoPriceOf(state, sym);
+  const qty = position?.qty ?? 0;
+  const avgCost = position?.avg ?? 0;
+  const currentPrice = position?.price ?? null;
+  const totalCost = position?.cost ?? 0;
+  const mv = position?.mv ?? null;
+  const unrealizedPnl = position?.unreal ?? null;
+  const unrealizedPct = totalCost > 0 && unrealizedPnl !== null ? (unrealizedPnl / totalCost) * 100 : null;
+  const realizedPnl = position?.realizedPnl ?? 0;
+  const lots = position?.lots ?? [];
 
-  // Lots for this asset
-  const lots = useMemo(() => {
-    return state.lots
-      .filter(l => l.asset.toUpperCase() === sym.toUpperCase() && l.qtyRem > 0)
-      .sort((a, b) => a.ts - b.ts);
-  }, [state.lots, sym]);
-
-  // Transactions for this asset
+  // Transactions for this asset (from the single source of truth)
   const txs = useMemo(() => {
     return state.txs
       .filter(t => t.asset.toUpperCase() === sym.toUpperCase())
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 50);
   }, [state.txs, sym]);
-
-  // Realized P&L
-  const realizedPnl = useMemo(() => {
-    return txs
-      .filter(t => t.type === "sell" && typeof (t as any).realized === "number")
-      .reduce((sum, t) => sum + ((t as any).realized || 0), 0);
-  }, [txs]);
-
-  // Unrealized P&L
-  const unrealizedPnl = currentPrice !== null ? (currentPrice - dca.avgPrice) * dca.totalQty : null;
-  const unrealizedPct = dca.totalCost > 0 && unrealizedPnl !== null ? (unrealizedPnl / dca.totalCost) * 100 : null;
 
   return (
     <div className="modalBg open" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -55,11 +46,11 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
           <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8, marginBottom: 16 }}>
             <div className="cal-stat">
               <div className="kpi-lbl">Holdings</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>{fmtQty(dca.totalQty)}</div>
+              <div className="kpi-val" style={{ fontSize: 16 }}>{fmtQty(qty)}</div>
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Avg Cost</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>${fmtPx(dca.avgPrice)}</div>
+              <div className="kpi-val" style={{ fontSize: 16 }}>${fmtPx(avgCost)}</div>
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Current Price</div>
@@ -67,7 +58,7 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Market Value</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>{currentPrice !== null ? fmtFiat(currentPrice * dca.totalQty, base) : "—"}</div>
+              <div className="kpi-val" style={{ fontSize: 16 }}>{mv !== null ? fmtFiat(mv, base) : "—"}</div>
             </div>
           </div>
 
@@ -75,7 +66,7 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
             <div className="cal-stat">
               <div className="kpi-lbl">Cost Basis</div>
-              <div className="kpi-val" style={{ fontSize: 14 }}>{fmtFiat(dca.totalCost, base)}</div>
+              <div className="kpi-val" style={{ fontSize: 14 }}>{fmtFiat(totalCost, base)}</div>
             </div>
             <div className="cal-stat">
               <div className="kpi-lbl">Unrealized P&L</div>
@@ -146,7 +137,7 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
           </div>
 
           <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 12 }}>
-            {dca.entries} holdings entries · {lots.length} open lots · {txs.length} transactions
+            {lots.length} open lots · {txs.length} transactions
           </div>
         </div>
       </div>

@@ -1,11 +1,9 @@
-import { useCrypto } from "@/lib/cryptoContext";
-import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { usePortfolio } from "@/hooks/usePortfolio";
-import { mergePositionSources } from "@/lib/mergePositions";
+import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
 import AssetDrilldown from "@/components/AssetDrilldown";
-import { useState, useMemo, useRef, useEffect, useCallback } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 
 // Mini sparkline canvas component
 function Sparkline({ data, positive }: { data: number[]; positive: boolean }) {
@@ -73,10 +71,8 @@ function loadColOrder(): string[] {
 }
 
 export default function PortfolioPage() {
-  const portfolio = usePortfolio();
-  const { state, refresh } = useCrypto();
-  const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
-  const localD = cryptoDerived(state);
+  const portfolio = useUnifiedPortfolio();
+  const { getPrice } = useLivePrices();
   const [sortCol, setSortCol] = useState<string>("total");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
   const [visibleCols, setVisibleCols] = useState<Set<string>>(loadVisibleCols);
@@ -85,14 +81,7 @@ export default function PortfolioPage() {
   const [dragCol, setDragCol] = useState<string | null>(null);
   const [drilldownSym, setDrilldownSym] = useState<string | null>(null);
 
-  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
-  const hasWorkerData = workerReady && portfolio.positions.length > 0;
-  const base = state.base || "USD";
-
-  // Merge local + worker positions
-  const mergedRows = useMemo(() => {
-    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
-  }, [localD.rows, portfolio.positions, hasWorkerData]);
+  const base = portfolio.base;
 
   // Persist visible columns and order
   useEffect(() => {
@@ -115,38 +104,35 @@ export default function PortfolioPage() {
     else { setSortCol(col); setSortDir("desc"); }
   };
 
-  // Build unified position list with live prices from merged data
-  const positions = useMemo(() => {
-    return mergedRows.map(r => {
+  // Build display rows with live price enrichment
+  const displayRows = useMemo(() => {
+    return portfolio.positions.map(r => {
       const live = getPrice(r.sym);
       const livePrice = live?.current_price ?? r.price;
-      const avg = r.qty > 0 ? r.cost / r.qty : 0;
       const total = livePrice !== null ? (livePrice ?? 0) * r.qty : 0;
       const pnlAbs = livePrice !== null ? total - r.cost : 0;
       const pnlPct = r.cost > 0 && livePrice !== null ? (pnlAbs / r.cost) * 100 : 0;
-      const c1h = live?.price_change_percentage_1h_in_currency ?? 0;
-      const c24h = live?.price_change_percentage_24h_in_currency ?? 0;
-      const c7d = live?.price_change_percentage_7d_in_currency ?? 0;
       return {
-        sym: r.sym, name: r.sym, qty: r.qty, price: livePrice, avg, total, cost: r.cost, pnlAbs, pnlPct,
+        sym: r.sym, name: r.sym, qty: r.qty, price: livePrice, avg: r.avg, total, cost: r.cost, pnlAbs, pnlPct,
         coinId: live?.id ?? r.sym.toLowerCase(),
-        change1h: c1h, change24h: c24h, change7d: c7d,
+        change1h: live?.price_change_percentage_1h_in_currency ?? 0,
+        change24h: live?.price_change_percentage_24h_in_currency ?? 0,
+        change7d: live?.price_change_percentage_7d_in_currency ?? 0,
         marketCap: live?.market_cap ?? 0,
         volume: live?.total_volume ?? 0,
-        source: r.source,
       };
     });
-  }, [mergedRows, liveCoinsList, getPrice]);
+  }, [portfolio.positions, getPrice]);
 
   // Fetch real 7-day sparkline data
-  const sparkCoinIds = useMemo(() => positions.map(p => p.coinId), [positions]);
+  const sparkCoinIds = useMemo(() => displayRows.map(p => p.coinId), [displayRows]);
   const sparkData = useSparklineData(sparkCoinIds);
 
-  const totalMV = positions.reduce((s, p) => s + p.total, 0);
+  const totalMV = displayRows.reduce((s, p) => s + p.total, 0);
 
   const sorted = useMemo(() => {
     const m = sortDir === "asc" ? 1 : -1;
-    return [...positions].sort((a, b) => {
+    return [...displayRows].sort((a, b) => {
       switch (sortCol) {
         case "qty": return (a.qty - b.qty) * m;
         case "price": return ((a.price ?? 0) - (b.price ?? 0)) * m;
@@ -157,7 +143,7 @@ export default function PortfolioPage() {
         default: return (a.total - b.total) * m;
       }
     });
-  }, [positions, sortCol, sortDir]);
+  }, [displayRows, sortCol, sortDir]);
 
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th onClick={() => toggleSort(col)} style={{ cursor: "pointer", userSelect: "none" }}>
@@ -174,11 +160,7 @@ export default function PortfolioPage() {
     );
   };
 
-  const handleRefresh = async () => {
-    await Promise.all([portfolio.refresh(), refresh(true)]);
-  };
-
-  const totalCost = positions.reduce((s, p) => s + p.cost, 0);
+  const totalCost = displayRows.reduce((s, p) => s + p.cost, 0);
   const totalPnl = totalMV - totalCost;
   const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
 
@@ -193,20 +175,12 @@ export default function PortfolioPage() {
 
   return (
     <>
-      {!portfolio.loading && !portfolio.authenticated && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body muted" style={{ fontSize: 12 }}>
-            ⚠ Not signed in — showing local data only.
-          </div>
-        </div>
-      )}
-
       {/* Summary KPIs */}
       <div className="kpis" style={{ marginBottom: 10 }}>
         <div className="kpi-card">
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
           <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
-          <div className="kpi-sub">{positions.length} assets</div>
+          <div className="kpi-sub">{displayRows.length} assets</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL P&L</div>
@@ -222,11 +196,9 @@ export default function PortfolioPage() {
       </div>
 
       <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
         <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
           ⚙ Columns
         </button>
-        {hasWorkerData && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker ✓</span>}
         <span className="pill">Live prices · Top 500</span>
       </div>
 
