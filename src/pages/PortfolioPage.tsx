@@ -357,7 +357,7 @@ export default function PortfolioPage() {
                     volume: <td key="volume" className="mono">{formatCompact(pos.volume)}</td>,
                   };
                   return (
-                    <tr key={pos.sym}>
+                    <tr key={pos.sym} onClick={handleRowClick} style={{ cursor: "pointer" }}>
                       {colOrder.filter(k => visibleCols.has(k)).map(k => cellMap[k])}
                     </tr>
                   );
