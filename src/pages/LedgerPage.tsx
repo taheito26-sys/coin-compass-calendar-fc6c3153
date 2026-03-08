@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
@@ -85,7 +85,8 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // Manual save — writes to both localStorage AND Worker
+  // Manual save — writes transaction to state.txs (single source of truth)
+  // Lots, holdings, and portfolio are derived automatically by derivePortfolio
   const save = async () => {
     const a = asset.trim().toUpperCase(), q = parseFloat(qty), p = parseFloat(price), f = parseFloat(fee) || 0;
     if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
@@ -93,24 +94,8 @@ export default function LedgerPage() {
     const ts = Date.now();
     const tx = { id: uid(), ts, type, asset: a, qty: q, price: p, total, fee: f, feeAsset: state.base, accountId: "acc_main", note, lots: "" };
 
-    // Save to local state
-    setState(prev => {
-      const newState = { ...prev, txs: [tx, ...prev.txs] };
-      if (type === "buy" || type === "reward" || type === "transfer_in") {
-        const unitCost = type === "buy" && q > 0 ? (total + f) / q : 0;
-        newState.lots = [...prev.lots, { id: "lot_" + uid().slice(0, 10), ts: tx.ts, asset: a, qty: q, qtyRem: q, unitCost, cost: unitCost * q, accountId: "acc_main", tag: type, note }];
-      } else if (type === "sell") {
-        const lots = [...prev.lots].filter(l => l.asset.toUpperCase() === a && cnum(l.qtyRem, 0) > 0).sort((a, b) => a.ts - b.ts);
-        let rem = q, cost = 0;
-        for (const l of lots) { if (rem <= 0) break; const take = Math.min(l.qtyRem, rem); l.qtyRem -= take; rem -= take; cost += take * l.unitCost; }
-        (tx as any).realized = q * p - f - cost; (tx as any).cost = cost;
-        newState.lots = prev.lots.map(pl => lots.find(l => l.id === pl.id) || pl);
-      }
-      if (type === "buy") {
-        newState.holdings = [...prev.holdings, { id: uid(), asset: a, buyPrice: p, quantity: q, date: Date.now(), exchange: venue, note }];
-      }
-      return newState;
-    });
+    // Save to local state — ONLY txs, everything else is derived
+    setState(prev => ({ ...prev, txs: [tx, ...prev.txs] }));
 
     // Save to backend via Worker API
     setSaving(true);
@@ -210,11 +195,9 @@ export default function LedgerPage() {
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
 
-    // Save to local state
+    // Save to local state — ONLY txs (lots/holdings derived automatically)
     setState(prev => {
       const newTxs = [...prev.txs];
-      const newLots = [...prev.lots];
-      const newHoldings = [...prev.holdings];
       for (const row of importResult.rows) {
         const txId = uid();
         const assetSym = extractBase(row.symbol);
@@ -225,19 +208,9 @@ export default function LedgerPage() {
           accountId: "acc_main", note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`, lots: "",
         };
         newTxs.push(tx);
-        if (row.side === "buy") {
-          const unitCost = row.qty > 0 ? (row.grossValue + row.feeAmount) / row.qty : 0;
-          newLots.push({ id: "lot_" + uid().slice(0, 10), ts: row.timestamp, asset: assetSym, qty: row.qty, qtyRem: row.qty, unitCost, cost: unitCost * row.qty, accountId: "acc_main", tag: "buy", note: `Import: ${EXCHANGE_LABELS[row.exchange]}` });
-          newHoldings.push({ id: uid(), asset: assetSym, buyPrice: row.unitPrice, quantity: row.qty, date: row.timestamp, exchange: EXCHANGE_LABELS[row.exchange], note: `Imported from ${fileName}` });
-        } else if (row.side === "sell") {
-          const lots = newLots.filter(l => l.asset.toUpperCase() === assetSym && (l.qtyRem || 0) > 0).sort((a, b) => a.ts - b.ts);
-          let rem = row.qty, cost = 0;
-          for (const l of lots) { if (rem <= 0) break; const take = Math.min(l.qtyRem, rem); l.qtyRem -= take; rem -= take; cost += take * l.unitCost; }
-          (tx as any).realized = row.grossValue - row.feeAmount - cost; (tx as any).cost = cost;
-        }
       }
       return {
-        ...prev, txs: newTxs, lots: newLots, holdings: newHoldings,
+        ...prev, txs: newTxs,
         importedFiles: [...(prev.importedFiles || []), { name: fileName, hash: fileHash, importedAt: Date.now(), exchange: importResult.exchange, exportType: importResult.exportType, rowCount: importResult.rows.length }],
       };
     });

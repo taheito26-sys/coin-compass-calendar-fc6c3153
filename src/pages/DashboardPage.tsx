@@ -1,7 +1,6 @@
 import { useCrypto } from "@/lib/cryptoContext";
-import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { usePortfolio } from "@/hooks/usePortfolio";
-import { mergePositionSources } from "@/lib/mergePositions";
+import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useMemo } from "react";
 
@@ -103,49 +102,18 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
 }
 
 export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
-  const portfolio = usePortfolio();
-  const { state, refresh } = useCrypto();
-  const localD = cryptoDerived(state);
+  const { state } = useCrypto();
+  const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
 
-  // Merged local-first dataset
-  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
-  const hasWorkerData = workerReady && portfolio.positions.length > 0;
-
-  const rows = useMemo(() => {
-    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
-  }, [localD.rows, portfolio.positions, hasWorkerData]);
-
-  const hasLocalOnly = rows.some(r => r.source === "local");
-
-  // Compute totals from merged dataset
-  const totalMV = rows.reduce((s, r) => s + (r.mv ?? 0), 0);
-  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
-  const totalPnl = totalMV - totalCost;
-  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  const assetCount = rows.length;
-  const base = state.base || "USD";
-  const method = state.method || "FIFO";
-
-  // Realized P&L from sell transactions
-  const realizedPnl = useMemo(() => {
-    return state.txs
-      .filter(t => t.type === "sell" && typeof (t as any).realized === "number")
-      .reduce((sum, t) => sum + ((t as any).realized || 0), 0);
-  }, [state.txs]);
-
-  const priceAge = useMemo(() => {
-    if (hasWorkerData) return portfolio.priceAge;
-    if (localD.priceAgeMs < 60000) return Math.round(localD.priceAgeMs / 1000) + "s";
-    return Math.round(localD.priceAgeMs / 60000) + "m";
-  }, [hasWorkerData, portfolio.priceAge, localD.priceAgeMs]);
-
-  const txCount = hasWorkerData ? portfolio.txCount : state.lots.length;
+  const { positions, totalMV, totalCost, totalPnl, totalPnlPct, realizedPnl, assetCount, txCount } = portfolio;
+  const base = portfolio.base;
+  const method = portfolio.method;
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
     if (totalMV <= 0) return [];
-    const topCoins = rows.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
+    const topCoins = positions.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
     const topTotal = topCoins.reduce((s, r) => s + (r.mv || 0), 0);
     const rest = totalMV - topTotal;
     const slices = topCoins.map((r, i) => ({
@@ -158,11 +126,11 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       slices.push({ label: "Other", value: rest, pct: (rest / totalMV) * 100, color: "var(--muted2)" });
     }
     return slices;
-  }, [rows, totalMV]);
+  }, [positions, totalMV]);
 
   // Heatmap
   const heatmapItems = useMemo(() => {
-    return rows
+    return positions
       .filter(r => r.mv !== null)
       .map(r => {
         const pnlPct = r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0;
@@ -181,7 +149,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       })
       .sort((a, b) => b.mv - a.mv)
       .slice(0, 9);
-  }, [rows, base]);
+  }, [positions, base]);
 
   // Watchlist with live prices
   const watchlistData = useMemo(() => {
@@ -206,7 +174,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
 
   // Top gainers/losers
   const { topGainers, topLosers } = useMemo(() => {
-    const withPnl = rows
+    const withPnl = positions
       .filter(r => r.unreal !== null && r.cost > 0)
       .map(r => ({
         sym: r.sym,
@@ -218,52 +186,14 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3),
       topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
     };
-  }, [rows]);
+  }, [positions]);
 
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
 
-  const handleRefresh = async () => {
-    await Promise.all([portfolio.refresh(), refresh(true)]);
-  };
-
   return (
     <>
-      {/* Source indicator */}
-      {portfolio.loading && (
-        <div className="pill" style={{ marginBottom: 8 }}>Loading data...</div>
-      )}
-      {!portfolio.loading && !portfolio.authenticated && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body muted" style={{ fontSize: 12 }}>Not signed in, showing local data only. Sign in to sync your portfolio.</div>
-        </div>
-      )}
-      {hasLocalOnly && portfolio.authenticated && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body" style={{ fontSize: 12, color: "var(--warn)" }}>
-            Some assets are local only — they'll sync once the backend maps them.
-          </div>
-        </div>
-      )}
-      {portfolio.error && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body" style={{ fontSize: 12, color: "var(--bad)" }}>
-            API error: {portfolio.error}
-          </div>
-        </div>
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>↻ Refresh</button>
-        <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
-        {portfolio.workerOnline && (
-          <span className="pill" style={{
-            background: "hsl(142 76% 36% / 0.15)",
-            color: "hsl(142 76% 36%)",
-            fontWeight: 700,
-            fontSize: 10,
-          }}>⚡ Worker Online</span>
-        )}
       </div>
 
       {/* KPI Cards */}
@@ -298,7 +228,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
           <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
-          <div className="kpi-sub">{txCount} {hasWorkerData ? "transactions" : "lots"}</div>
+          <div className="kpi-sub">{txCount} transactions</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">METHOD</div>
@@ -434,7 +364,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           <div className="panel-head">
             <h2>Top Positions</h2>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span className="pill">{rows.length} assets</span>
+              <span className="pill">{positions.length} assets</span>
               {onNav && <button className="btn tiny secondary" onClick={() => onNav("assets")}>View All →</button>}
             </div>
           </div>
@@ -442,30 +372,22 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             <div className="tableWrap">
               <table>
                 <thead>
-                  <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th><th>Source</th></tr>
+                  <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th></tr>
                 </thead>
                 <tbody>
-                  {rows.length ? rows.slice(0, 10).map(r => {
-                    const avg = r.qty > 0 ? r.cost / r.qty : 0;
-                    return (
-                      <tr key={r.sym}>
-                        <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
-                        <td className="mono">{fmtQty(r.qty)}</td>
-                        <td className="mono">{fmtPx(avg)} {base}</td>
-                        <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
-                        <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
-                        <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                          {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
-                        </td>
-                        <td>
-                          <span className="pill" style={{ fontSize: 9 }}>
-                            {r.source === "local" ? "Local" : r.source === "worker" ? "Synced" : "Merged"}
-                          </span>
-                        </td>
-                      </tr>
-                    );
-                  }) : (
-                    <tr><td colSpan={7} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
+                  {positions.length ? positions.slice(0, 10).map(r => (
+                    <tr key={r.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
+                      <td className="mono">{fmtQty(r.qty)}</td>
+                      <td className="mono">{fmtPx(r.avg)} {base}</td>
+                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
+                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
+                      <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
+                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+                      </td>
+                    </tr>
+                  )) : (
+                    <tr><td colSpan={6} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
                   )}
                 </tbody>
               </table>
