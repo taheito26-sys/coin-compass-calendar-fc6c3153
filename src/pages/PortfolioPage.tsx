@@ -4,6 +4,7 @@ import { usePortfolio } from "@/hooks/usePortfolio";
 import { mergePositionSources } from "@/lib/mergePositions";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
+import AssetDrilldown from "@/components/AssetDrilldown";
 import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 
 // Mini sparkline canvas component
@@ -82,6 +83,7 @@ export default function PortfolioPage() {
   const [colOrder, setColOrder] = useState<string[]>(loadColOrder);
   const [showColConfig, setShowColConfig] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
+  const [drilldownSym, setDrilldownSym] = useState<string | null>(null);
 
   const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
   const hasWorkerData = workerReady && portfolio.positions.length > 0;
@@ -301,6 +303,7 @@ export default function PortfolioPage() {
               <tbody>
                 {sorted.length > 0 ? sorted.map((pos, i) => {
                   const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
+                  const handleRowClick = () => setDrilldownSym(pos.sym);
                   const cellMap: Record<string, React.ReactNode> = {
                     rank: <td key="rank" className="mono muted">{i + 1}</td>,
                     asset: (
@@ -354,7 +357,7 @@ export default function PortfolioPage() {
                     volume: <td key="volume" className="mono">{formatCompact(pos.volume)}</td>,
                   };
                   return (
-                    <tr key={pos.sym}>
+                    <tr key={pos.sym} onClick={handleRowClick} style={{ cursor: "pointer" }}>
                       {colOrder.filter(k => visibleCols.has(k)).map(k => cellMap[k])}
                     </tr>
                   );
@@ -366,6 +369,9 @@ export default function PortfolioPage() {
           </div>
         </div>
       </div>
+      {drilldownSym && (
+        <AssetDrilldown sym={drilldownSym} onClose={() => setDrilldownSym(null)} />
+      )}
     </>
   );
 }
