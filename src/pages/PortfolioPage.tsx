@@ -317,8 +317,8 @@ export default function PortfolioPage() {
       }}>
         <div><span className="muted">Date</span> <span className="mono">{dateStr}</span></div>
         <div><span className="muted">Qty</span> <span className="mono">{fmtQty(lot.qtyRem)}</span></div>
-        <div><span className="muted">Unit Cost</span> <span className="mono">${fmtPx(lot.unitCost)}</span></div>
-        <div><span className="muted">Cost</span> <span className="mono">{fmtFiat(lotCost, base)}</span></div>
+        <div><span className="muted">Unit Cost</span> <span className="mono">{fmtPx(lot.unitCost)}</span></div>
+        <div><span className="muted">Cost</span> <span className="mono">{fmtTotal(lotCost)}</span></div>
         {lotPnl !== null && (
           <div style={{ gridColumn: "1 / -1" }}>
             <span className="muted">P/L </span>
