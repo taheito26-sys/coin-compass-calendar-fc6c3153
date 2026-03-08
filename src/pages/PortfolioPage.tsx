@@ -83,6 +83,7 @@ export default function PortfolioPage() {
   const [colOrder, setColOrder] = useState<string[]>(loadColOrder);
   const [showColConfig, setShowColConfig] = useState(false);
   const [dragCol, setDragCol] = useState<string | null>(null);
+  const [drilldownSym, setDrilldownSym] = useState<string | null>(null);
 
   const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
   const hasWorkerData = workerReady && portfolio.positions.length > 0;
