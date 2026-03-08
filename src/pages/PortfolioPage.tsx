@@ -202,8 +202,8 @@ export default function PortfolioPage() {
       change1h: <td key="change1h">{renderChangePill(pos.change1h)}</td>,
       change24h: <td key="change24h">{renderChangePill(pos.change24h)}</td>,
       change7d: <td key="change7d">{renderChangePill(pos.change7d)}</td>,
-      price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "—"}</td>,
-      total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>,
+      price: <td key="price" className="mono">{pos.price !== null ? fmtPx(pos.price) : "—"}</td>,
+      total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtTotal(pos.total)}</td>,
       allocation: (
         <td key="allocation">
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
