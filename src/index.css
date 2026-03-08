@@ -1144,6 +1144,13 @@ tbody tr { transition: background var(--lt-tr); }
 .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .settings-prefs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
 
+/* ── DASHBOARD GRIDS ── */
+.dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+
+/* ── LEDGER GRID ── */
+.ledger-top-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px; }
+
 /* â”€â”€ RESPONSIVE â”€â”€ */
 /* No internal horizontal scroll - tables wrap on mobile */
 /* Tables need horizontal scroll for wide content */
