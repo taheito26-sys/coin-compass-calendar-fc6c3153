@@ -379,11 +379,11 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                     <tr key={r.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(r.avg)} {base}</td>
-                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
-                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
+                      <td className="mono">{fmtPx(r.avg)}</td>
+                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price)}</td>
+                      <td className="mono">{r.mv === null ? "-" : fmtTotal(r.mv)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
+                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtTotal(r.unreal)}
                       </td>
                     </tr>
                   )) : (
