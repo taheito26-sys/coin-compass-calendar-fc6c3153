@@ -286,7 +286,7 @@ export default function LedgerPage() {
   return (
     <>
       {/* Top row: Manual Entry + CSV Import side by side */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
+      <div className="ledger-top-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
         {/* Manual Entry */}
         <div className="panel">
           <div className="panel-head"><h2>+ Manual Entry</h2>{saving && <span className="pill">Syncing…</span>}</div>

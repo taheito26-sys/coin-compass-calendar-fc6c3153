@@ -105,8 +105,16 @@ export default function DashboardPage() {
   const { state, refresh } = useCrypto();
   const localD = cryptoDerived(state);
 
-  const useWorker = portfolio.authenticated && !portfolio.error;
-  const positions = useWorker ? portfolio.positions : [];
+  // Prefer worker data only when authenticated, no error, AND worker actually has positions.
+  // Otherwise fall back to local imported data so CSV imports are visible immediately.
+  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
+  const hasWorkerData = workerReady && portfolio.positions.length > 0;
+  const hasLocalData = localD.rows.length > 0;
+
+  // Use worker if it has data; else use local; merge both if both have data
+  const useWorker = hasWorkerData;
+  const useLocal = !hasWorkerData && hasLocalData;
+
   const totalMV = useWorker ? portfolio.totalMV : localD.pricedMV;
   const totalCost = useWorker ? portfolio.totalCost : localD.totalCost;
   const totalPnl = useWorker ? portfolio.totalPnl : localD.unreal;
@@ -116,10 +124,10 @@ export default function DashboardPage() {
   const base = state.base || "USD";
   const method = state.method || "FIFO";
 
-  // Rows for table/charts - merge both sources
+  // Rows for table/charts — use whichever source actually has data
   const rows = useMemo(() => {
-    if (useWorker && positions.length > 0) {
-      return positions.map(p => ({
+    if (useWorker) {
+      return portfolio.positions.map(p => ({
         sym: p.symbol,
         qty: p.qty,
         cost: p.cost,
@@ -129,7 +137,7 @@ export default function DashboardPage() {
       }));
     }
     return localD.rows;
-  }, [useWorker, positions, localD.rows]);
+  }, [useWorker, portfolio.positions, localD.rows]);
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
@@ -246,7 +254,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Coin Allocation + Heatmap */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div className="dashboard-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
           <div className="panel-body" style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
