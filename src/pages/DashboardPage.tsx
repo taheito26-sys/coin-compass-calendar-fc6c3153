@@ -280,7 +280,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       </div>
 
       {/* Gainers/Losers + Watchlist Row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      <div className="dashboard-charts-grid">
         {/* Top Gainers/Losers */}
         <div className="panel">
           <div className="panel-head"><h2>Top Movers</h2></div>
