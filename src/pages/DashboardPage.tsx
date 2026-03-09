@@ -170,20 +170,17 @@ function DragHandle({ editing }: { editing: boolean }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
-  const [returnPeriod, setReturnPeriod] = useState<string>("max");
   const { state } = useCrypto();
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
 
-  const base   = state.base   || "USD";
-  const method = state.method || "FIFO";
+  const base = state.base || "USD";
 
   const positions = portfolio.positions;
   const totalMV     = portfolio.totalMV;
   const totalCost   = portfolio.totalCost;
   const totalPnl    = portfolio.totalPnl;
   const totalPnlPct = portfolio.totalPnlPct;
-  const assetCount  = portfolio.positions.length;
   const txCount     = state.txs.length;
   const realizedPnl = useMemo(() => positions.reduce((s, p) => s + p.realizedPnl, 0), [positions]);
 
