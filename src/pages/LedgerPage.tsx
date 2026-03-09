@@ -349,14 +349,14 @@ export default function LedgerPage() {
           id: `local_${uid()}`,
           ts: row.timestamp,
           type: row.side,
-          asset: row.symbol,
+          asset: row.assetSymbol,
           qty: row.qty,
-          price: row.unitPrice,
+          price: row.price,
           total: row.grossValue,
           fee: row.feeAmount,
           feeAsset: row.feeAsset || "USD",
           accountId: "acc_main",
-          note: `Import: ${EXCHANGE_LABELS[row.exchange] ?? row.exchange}`,
+          note: `Import: ${EXCHANGE_LABELS[row.sourceExchange] ?? row.sourceExchange}`,
           lots: "",
         }));
         return {
