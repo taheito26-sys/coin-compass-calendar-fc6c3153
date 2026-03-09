@@ -266,7 +266,8 @@ export default function ChartsPage() {
               {/* Individual sparklines */}
               <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 10 }}>
                 {portfolio.positions.slice(0, 8).map(p => {
-                  const spark = sparklines.get(p.coingeckoId || "") || [];
+                  const meta = assetMeta.get(p.sym);
+                  const spark = sparklines.get(meta?.coingeckoId || "") || [];
                   return (
                     <div key={p.sym} className="card" style={{ padding: 14 }}>
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
