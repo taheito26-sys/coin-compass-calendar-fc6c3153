@@ -301,7 +301,7 @@ export default function PortfolioPage() {
   // ── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "80vh", padding: "0 2px" }}>
       {/* Summary KPIs */}
       <div className="kpis" style={{ marginBottom: 10 }}>
         <div className="kpi-card">
@@ -392,21 +392,21 @@ export default function PortfolioPage() {
 
       {/* Mobile cards */}
       {isMobile ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
           {sorted.length === 0 ? (
             <div className="muted" style={{ textAlign: "center", padding: 32 }}>No assets. Import trades in the Ledger.</div>
           ) : sorted.map(pos => <MobileCard key={pos.sym} pos={pos} />)}
         </div>
       ) : (
         /* Desktop table */
-        <div className="panel">
+        <div className="panel" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div className="panel-head">
             <h2>Assets</h2>
             <span className="pill">
               {sorted.length} positions{isLotView && ` · ${sorted.reduce((s, r) => s + r.lots.length, 0)} lots`}
             </span>
           </div>
-          <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
+          <div className="panel-body" style={{ padding: 0, overflow: "auto", flex: 1 }}>
             <div className="tableWrap">
               <table>
                 <thead>
@@ -567,6 +567,6 @@ export default function PortfolioPage() {
       {drilldownSym && (
         <AssetDrilldown sym={drilldownSym} onClose={() => setDrilldownSym(null)} />
       )}
-    </>
+    </div>
   );
 }
