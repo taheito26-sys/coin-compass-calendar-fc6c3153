@@ -122,6 +122,8 @@ export default function LedgerPage() {
   const [fileHash, setFileHash] = useState("");
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
+  const [isDeltaImport, setIsDeltaImport] = useState(false);
+  const [deltaCount, setDeltaCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const importedFiles = state.importedFiles ?? [];
@@ -275,42 +277,75 @@ export default function LedgerPage() {
   const handleFile = useCallback(async (file: File) => {
     setImportError("");
     setImportLoading(true);
+    setIsDeltaImport(false);
+    setDeltaCount(0);
     try {
       const text = await file.text();
       const hash = await hashFile(text);
 
-      if (importedFiles.some((f: any) => f.hash === hash)) {
-        setImportError("This file was already imported (duplicate detected).");
-        setImportLoading(false);
-        return;
-      }
-
+      // Check if file was previously imported (local or backend)
+      const knownLocally = importedFiles.some((f: any) => f.hash === hash);
+      let knownInBackend = false;
       if (isWorkerConfigured()) {
         try {
           const backendFiles = await fetchImportedFiles();
-          if (backendFiles.some((f: any) => f.file_hash === hash)) {
-            setImportError("This file was already imported (found in backend).");
-            setImportLoading(false);
-            return;
-          }
+          knownInBackend = backendFiles.some((f: any) => f.file_hash === hash);
         } catch { /* ignore */ }
       }
 
       const parsed = await importCSV(text, file.name);
       setFileName(file.name);
       setFileHash(hash);
-      setImportResult(parsed);
 
       if (parsed.rows.length === 0) {
         setImportError(parsed.warnings[0] ?? "No valid rows found in file.");
+        setImportLoading(false);
+        return;
+      }
+
+      if (knownLocally || knownInBackend) {
+        // Delta mode: compute which rows are NOT already in current state
+        const existingExternalIds = new Set(
+          state.txs
+            .map((t: any) => t.externalId ?? t.external_id)
+            .filter(Boolean)
+        );
+
+        // Also build a composite fingerprint set for rows without externalId
+        const existingFingerprints = new Set(
+          state.txs.map((t: any) =>
+            `${t.ts}:${t.asset}:${t.type === "buy" ? "buy" : "sell"}:${t.qty}:${t.price}`
+          )
+        );
+
+        const newRows = parsed.rows.filter(row => {
+          if (row.externalId && existingExternalIds.has(row.externalId)) return false;
+          const fp = `${row.timestamp}:${row.symbol}:${row.side}:${row.qty}:${row.unitPrice}`;
+          if (existingFingerprints.has(fp)) return false;
+          return true;
+        });
+
+        if (newRows.length === 0) {
+          setImportError(`All ${parsed.rows.length} rows already exist in your tracker. Nothing new to import.`);
+          setImportLoading(false);
+          return;
+        }
+
+        // Replace rows with only the delta
+        const deltaResult = { ...parsed, rows: newRows, rowCount: newRows.length };
+        setImportResult(deltaResult);
+        setIsDeltaImport(true);
+        setDeltaCount(parsed.rows.length - newRows.length);
+        setImportStage("preview");
       } else {
+        setImportResult(parsed);
         setImportStage("preview");
       }
     } catch (e: any) {
       setImportError("Parse failed: " + (e?.message ?? String(e)));
     }
     setImportLoading(false);
-  }, [importedFiles]);
+  }, [importedFiles, state.txs]);
 
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
@@ -438,6 +473,8 @@ export default function LedgerPage() {
     setFileName("");
     setFileHash("");
     setImportError("");
+    setIsDeltaImport(false);
+    setDeltaCount(0);
     if (fileRef.current) fileRef.current.value = "";
   };
 
@@ -762,8 +799,25 @@ export default function LedgerPage() {
               {/* STAGE: PREVIEW */}
               {importStage === "preview" && importResult && (
                 <div>
+                  {/* Delta import banner */}
+                  {isDeltaImport && (
+                    <div style={{
+                      marginBottom: 12, padding: "10px 14px",
+                      background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.3)",
+                      borderRadius: "var(--lt-radius-sm)", fontSize: 12, color: "var(--warn)",
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span style={{ fontSize: 16 }}>⚡</span>
+                      <span>
+                        <strong>Delta import:</strong> This file was previously imported.{" "}
+                        <strong>{deltaCount}</strong> row{deltaCount !== 1 ? "s" : ""} already in your tracker —
+                        only the <strong>{importResult.rowCount}</strong> new row{importResult.rowCount !== 1 ? "s" : ""} will be added.
+                      </span>
+                    </div>
+                  )}
                   <div style={{ marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <StatCard label="ROWS PARSED" value={importResult.rowCount} accent="var(--good)" />
+                    <StatCard label={isDeltaImport ? "NEW ROWS" : "ROWS PARSED"} value={importResult.rowCount} accent="var(--good)" />
+                    {isDeltaImport && <StatCard label="ALREADY EXIST" value={deltaCount} accent="var(--muted)" />}
                     <StatCard label="SKIPPED" value={importResult.skippedCount} accent={importResult.skippedCount > 0 ? "var(--bad)" : "var(--muted)"} />
                     <StatCard label="EXCHANGE" value={EXCHANGE_LABELS[importResult.exchange] ?? importResult.exchange} />
                     <StatCard label="TYPE" value={importResult.exportType} />
@@ -786,7 +840,9 @@ export default function LedgerPage() {
                     File: <strong style={{ color: "var(--text)" }}>{fileName}</strong>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn" onClick={commitImport}>Commit {importResult.rowCount} Trades →</button>
+                    <button className="btn" onClick={commitImport}>
+                      {isDeltaImport ? `Import ${importResult.rowCount} New Trade${importResult.rowCount !== 1 ? "s" : ""} →` : `Commit ${importResult.rowCount} Trades →`}
+                    </button>
                     <button className="btn secondary" onClick={resetImport}>Cancel</button>
                   </div>
                 </div>
