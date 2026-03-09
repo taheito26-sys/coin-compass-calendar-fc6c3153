@@ -25,6 +25,20 @@ import {
 import { useCrypto } from "@/lib/cryptoContext";
 import { normalizeSymbol } from "@/lib/symbolAliases";
 
+export interface LiveCoin {
+  id: string;
+  symbol: string;
+  name: string;
+  current_price: number;
+  market_cap: number;
+  total_volume: number;
+  market_cap_rank: number;
+  image: string;
+  price_change_percentage_1h_in_currency: number | null;
+  price_change_percentage_24h_in_currency: number | null;
+  price_change_percentage_7d_in_currency: number | null;
+}
+
 // ─── Multi-source market data with cascading fallback ──────
 // Priority: CoinGecko → CoinCap → CoinPaprika → CryptoCompare → Binance REST
 // If the primary source fails, automatically tries the next one.
