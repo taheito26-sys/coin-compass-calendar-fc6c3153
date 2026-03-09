@@ -302,14 +302,7 @@ export default function PortfolioPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "80vh", padding: "0 2px" }}>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
-          <TabsTrigger value="portfolio" style={{ fontSize: 11 }}>Portfolio</TabsTrigger>
-          <TabsTrigger value="alerts" style={{ fontSize: 11 }}>Alerts</TabsTrigger>
-          
-        </TabsList>
-
-        <TabsContent value="portfolio" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {/* Compact KPIs — 40% smaller */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             <div style={{ background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "7px 12px", minWidth: 100 }}>
