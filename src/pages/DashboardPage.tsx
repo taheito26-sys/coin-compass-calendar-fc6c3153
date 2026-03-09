@@ -29,7 +29,6 @@ const ALL_CARDS: CardDef[] = [
   { id: "kpis", label: "KPI Summary", colSpan: 2 },
   { id: "allocation", label: "Coin Allocation" },
   { id: "heatmap", label: "Heatmap" },
-  { id: "histValue", label: "Historical Net Value" },
   { id: "fearGreed", label: "Fear & Greed" },
   { id: "movers", label: "Top Movers" },
   { id: "watchlist", label: "Watchlist" },
