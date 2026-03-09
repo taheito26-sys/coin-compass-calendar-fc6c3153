@@ -528,6 +528,7 @@ export default function LedgerPage() {
           { id: "journal" as Tab, label: "📋 Journal",         badge: stats.total },
           { id: "add"     as Tab, label: "✚ Add Transaction",  badge: 0 },
           { id: "import"  as Tab, label: "📥 Import CSV",       badge: 0 },
+          { id: "connect" as Tab, label: "🔗 Connect API",      badge: 0 },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
