@@ -1138,12 +1138,13 @@ tbody tr { transition: background var(--lt-tr); }
 }
 .vault-card:hover { border-color: var(--brand); transform: translateY(-1px); box-shadow: 0 4px 12px var(--glow); }
 .vault-card-actions { display: flex; gap: 4px; flex-shrink: 0; flex-wrap: wrap; }
-.vault-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.vault-stats { display: grid; grid-template-columns: repeat(auto-fill, minmax(100px, 1fr)); gap: 8px; }
 
-/* ── SETTINGS ── */
+/* ── SETTINGS LAYOUT ── */
 .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.settings-prefs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
-.settings-preview-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.settings-prefs-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 12px; }
+.settings-preview-kpis { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 10px; }
+.settings-top-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; align-items: start; }
 
 /* ── DASHBOARD GRIDS ── */
 .dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
