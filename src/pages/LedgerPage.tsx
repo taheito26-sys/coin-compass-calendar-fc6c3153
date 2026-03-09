@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile, applyLookup } from "@/lib/importers";
 import type { ParseResult, ImportRowStatus, Exchange } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
+import ExchangeConnect from "@/components/ledger/ExchangeConnect";
 import {
   createTransaction,
   updateTransaction,
