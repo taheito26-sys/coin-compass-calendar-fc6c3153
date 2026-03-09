@@ -295,7 +295,7 @@ export default function ChartsPage() {
                   <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Asset Comparison (% change)</div>
                   <ComparisonChart series={selectedAssets.map((sym, i) => {
                     const pos = portfolio.positions.find(p => p.sym === sym);
-                    const spark = sparklines.get(pos?.coingeckoId || "") || [];
+                    const spark = sparklines.get(assetMeta.get(sym)?.coingeckoId || "") || [];
                     const colors = ["var(--brand)", "#f97316", "#8b5cf6", "#22c55e", "#ef4444"];
                     return { label: sym, data: spark.length > 1 ? spark : genBench(pos?.price || 100, 7, 0.3, 0.6), color: colors[i % colors.length] };
                   })} />
