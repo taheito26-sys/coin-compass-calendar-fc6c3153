@@ -396,9 +396,75 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
           </div>
         </div>
       </div>
+
+      {/* Vault / Snapshots */}
+      <VaultSection />
     </div>
   );
 });
+
+// ── Vault Section (merged from VaultPage) ─────────────────────────
+const DB_NAME = "cryptotracker_vault";
+const STORE = "snapshots";
+interface Snapshot { id: string; label: string; ts: number; size: number; }
+
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, 1);
+    req.onupgradeneeded = () => { const db = req.result; if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: "id" }); };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function idbSave(id: string, state: any, label: string) { const db = await openDB(); const blob = JSON.stringify(state); return new Promise<void>((res, rej) => { const tx = db.transaction(STORE, "readwrite"); tx.objectStore(STORE).put({ id, label, ts: Date.now(), state, size: blob.length }); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+async function idbList(): Promise<Snapshot[]> { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, "readonly"); const req = tx.objectStore(STORE).getAll(); req.onsuccess = () => { const items = (req.result || []).map((s: any) => ({ id: s.id, label: s.label, ts: s.ts, size: s.size || 0 })); items.sort((a: Snapshot, b: Snapshot) => b.ts - a.ts); res(items); }; req.onerror = () => rej(req.error); }); }
+async function idbGet(id: string): Promise<any> { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, "readonly"); const req = tx.objectStore(STORE).get(id); req.onsuccess = () => res(req.result); req.onerror = () => rej(req.error); }); }
+async function idbDelete(id: string): Promise<void> { const db = await openDB(); return new Promise((res, rej) => { const tx = db.transaction(STORE, "readwrite"); tx.objectStore(STORE).delete(id); tx.oncomplete = () => res(); tx.onerror = () => rej(tx.error); }); }
+function fmtDate(ts: number) { return new Date(ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "numeric", hour: "2-digit", minute: "2-digit" }); }
+function fmtSize(bytes: number) { if (bytes > 1048576) return (bytes / 1048576).toFixed(1) + " MB"; if (bytes > 1024) return (bytes / 1024).toFixed(1) + " KB"; return bytes + " B"; }
+
+function VaultSection() {
+  const { state, setState, toast } = useCrypto();
+  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
+  const [desc, setDesc] = useState("");
+  const [loading, setLoading] = useState(true);
+  const loadSnaps = useCallback(async () => { try { setSnapshots(await idbList()); } catch {} setLoading(false); }, []);
+  useEffect(() => { loadSnaps(); }, [loadSnaps]);
+
+  const takeSnapshot = async () => { if (!desc.trim()) { toast("Add a description", "warn"); return; } try { await idbSave("snap_" + Date.now(), state, desc.trim()); setDesc(""); toast("📸 Snapshot saved", "good"); loadSnaps(); } catch { toast("Failed", "bad"); } };
+  const restoreSnap = async (id: string) => { if (!confirm("Restore this snapshot?")) return; try { const s = await idbGet(id); if (s?.state) { setState(() => s.state); toast("✓ Restored", "good"); } else toast("Not found", "bad"); } catch { toast("Failed", "bad"); } };
+  const deleteSnap = async (id: string) => { if (!confirm("Delete?")) return; await idbDelete(id); toast("Deleted", "warn"); loadSnaps(); };
+  const exportSnap = async (id: string) => { const s = await idbGet(id); if (!s?.state) { toast("Not found", "bad"); return; } const blob = new Blob([JSON.stringify(s.state, null, 2)], { type: "application/json" }); const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = `snapshot-${new Date(s.ts).toISOString().slice(0, 19).replace(/[:T]/g, "-")}.json`; a.click(); URL.revokeObjectURL(a.href); toast("Exported", "good"); };
+
+  return (
+    <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
+      <div className="panel-head"><h2>💾 Vault — Local Snapshots</h2><span className="pill">{snapshots.length} saved</span></div>
+      <div className="panel-body">
+        <p className="muted" style={{ fontSize: 11, marginBottom: 10, lineHeight: 1.6 }}>Instant local snapshots stored in IndexedDB. Survives page reloads.</p>
+        <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+          <input className="inp" value={desc} onChange={e => setDesc(e.target.value)} placeholder="Snapshot description" style={{ flex: 1, minWidth: 0 }} />
+          <button className="btn" onClick={takeSnapshot}>📸 Snapshot</button>
+        </div>
+        {loading && <div className="muted" style={{ fontSize: 11 }}>Loading…</div>}
+        {!loading && snapshots.length === 0 && <div className="muted" style={{ fontSize: 11, padding: "12px 0" }}>No snapshots yet.</div>}
+        <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {snapshots.map(s => (
+            <div key={s.id} className="vault-card">
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontWeight: 700, fontSize: 12 }}>{s.label}</div>
+                <div className="muted" style={{ fontSize: 10, marginTop: 2 }}>{fmtDate(s.ts)} · {fmtSize(s.size)}</div>
+              </div>
+              <div className="vault-card-actions">
+                <button className="rowBtn" onClick={() => restoreSnap(s.id)}>Restore</button>
+                <button className="rowBtn" onClick={() => exportSnap(s.id)}>Export</button>
+                <button className="rowBtn" onClick={() => deleteSnap(s.id)} style={{ color: "var(--bad)" }}>Del</button>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
 
 SettingsPage.displayName = "SettingsPage";
 
