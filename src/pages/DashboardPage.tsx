@@ -406,6 +406,12 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
       </div>
 
+      {/* Value Distribution + Events Analysis */}
+      <div className="dashboard-charts-grid">
+        <ValueDistribution />
+        <EventsAnalysis />
+      </div>
+
       {/* Bottom: Top Positions + Recent Activity */}
       <div className="dash-bottom" style={{ marginTop: 10 }}>
         <div className="panel">
