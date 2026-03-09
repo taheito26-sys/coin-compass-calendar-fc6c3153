@@ -15,7 +15,7 @@ import {
   lookupImportRows,
   recordImportBatch,
 } from "@/lib/api";
-import { getAssetCatalog, resolveAssetId } from "@/lib/assetResolver";
+import { getAssetCatalog, resolveAssetId, resolveOrCreateAsset } from "@/lib/assetResolver";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -172,13 +172,7 @@ export default function LedgerPage() {
 
     try {
       if (isWorkerConfigured()) {
-        const assets = await getAssetCatalog();
-        const { assetId } = resolveAssetId(a, assets);
-        if (!assetId) {
-          toast(`Unknown asset: ${a}. Not found in catalog.`, "bad");
-          setSaving(false);
-          return;
-        }
+        const { assetId } = await resolveOrCreateAsset(a);
         await createTransaction({
           asset_id: assetId,
           timestamp: new Date(ts).toISOString(),
@@ -385,14 +379,21 @@ export default function LedgerPage() {
     try {
       const assets = await getAssetCatalog(true);
       const batchPayload: any[] = [];
-      const missingSymbols = new Set<string>();
+      const autoCreated: string[] = [];
 
       for (const row of importResult.rows) {
-        const { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
+        let { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
         if (!assetId) {
-          missingSymbols.add(symbol);
-          counts.rejected++;
-          continue;
+          // Auto-create missing asset
+          try {
+            const result = await resolveOrCreateAsset(row.assetSymbol);
+            assetId = result.assetId;
+            symbol = result.symbol;
+            autoCreated.push(symbol);
+          } catch {
+            counts.rejected++;
+            continue;
+          }
         }
         const nativeId = row.tradeId || row.orderId || row.txHash || "";
         counts.accepted++;
@@ -412,8 +413,7 @@ export default function LedgerPage() {
       }
 
       if (batchPayload.length === 0) {
-        const missing = [...missingSymbols].slice(0, 6).join(", ");
-        setImportErrorMsg(missing ? `No rows accepted. Unknown assets: ${missing}` : "No rows accepted.");
+        setImportErrorMsg("No rows accepted.");
         setImportStage("error");
         setImportCounts(counts);
         return;
@@ -446,9 +446,9 @@ export default function LedgerPage() {
         setImportStage("error");
       } else {
         setImportStage("done");
-        const missText = missingSymbols.size > 0 ? ` · ${missingSymbols.size} unknown assets` : "";
-        toast(`Imported ${counts.persisted} trades (${counts.skippedDuplicate} dupes skipped)${missText}`,
-          counts.failed > 0 || missingSymbols.size > 0 ? "bad" : "good");
+        const createdText = autoCreated.length > 0 ? ` · ${autoCreated.length} new assets created` : "";
+        toast(`Imported ${counts.persisted} trades (${counts.skippedDuplicate} dupes skipped)${createdText}`,
+          counts.failed > 0 ? "bad" : "good");
       }
     } catch (err: any) {
       setImportErrorMsg(`Backend error: ${err?.message ?? "Unknown"}`);
