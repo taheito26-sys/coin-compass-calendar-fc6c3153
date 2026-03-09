@@ -12,7 +12,7 @@ import SettingsPage from "@/pages/SettingsPage";
 import VaultPage from "@/pages/VaultPage";
 import AlertsPage from "@/pages/AlertsPage";
 import AnalyticsPage from "@/pages/AnalyticsPage";
-import ConnectionsPage from "@/pages/ConnectionsPage";
+
 import ReportsPage from "@/pages/ReportsPage";
 
 const PAGE_TITLES: Record<string, [string, string]> = {
