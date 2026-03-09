@@ -10,6 +10,7 @@ import importedFilesRoute from "./routes/imported-files";
 import preferencesRoute from "./routes/preferences";
 import importRoute from "./routes/import";
 import fearGreedRoute from "./routes/fear-greed";
+import exchangeSyncRoute from "./routes/exchange-sync";
 import { pollPrices } from "./cron/poll-prices";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -27,6 +28,7 @@ app.route("/api/imported-files", importedFilesRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/import", importRoute);
 app.route("/api/fear-greed", fearGreedRoute);
+app.route("/api/exchange-sync", exchangeSyncRoute);
 
 // Health check
 app.get("/api/status", async (c) => {

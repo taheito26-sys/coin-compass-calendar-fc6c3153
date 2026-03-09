@@ -1,9 +1,10 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+import { useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile, applyLookup } from "@/lib/importers";
 import type { ParseResult, ImportRowStatus, Exchange } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
+import ExchangeConnect from "@/components/ledger/ExchangeConnect";
 import {
   createTransaction,
   updateTransaction,
@@ -29,7 +30,7 @@ interface ImportCounts {
   failed: number;
 }
 
-type Tab = "journal" | "add" | "import";
+type Tab = "journal" | "add" | "import" | "connect";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
@@ -527,6 +528,7 @@ export default function LedgerPage() {
           { id: "journal" as Tab, label: "📋 Journal",         badge: stats.total },
           { id: "add"     as Tab, label: "✚ Add Transaction",  badge: 0 },
           { id: "import"  as Tab, label: "📥 Import CSV",       badge: 0 },
+          { id: "connect" as Tab, label: "🔗 Connect API",      badge: 0 },
         ]).map(t => (
           <button key={t.id} onClick={() => setTab(t.id)}
             style={{
@@ -901,6 +903,9 @@ export default function LedgerPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════════ TAB: CONNECT API ═══════════ */}
+      {tab === "connect" && <ExchangeConnect />}
     </div>
   );
 }
