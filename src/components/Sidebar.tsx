@@ -2,12 +2,9 @@ import { useCrypto } from "@/lib/cryptoContext";
 
 const pages = [
   { id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation", icon: "M4 13h7V4H4v9Zm9 7h7V11h-7v9ZM4 20h7v-5H4v5Zm9-11h7V4h-7v5Z" },
-  { id: "assets", label: "Assets", sub: "Positions · P&L", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
+  { id: "assets", label: "Assets", sub: "Portfolio · Alerts · Ledger", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
   { id: "calendar", label: "Calendar", sub: "Daily P&L", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" },
-  { id: "ledger", label: "Ledger", sub: "Journal · Import · API", icon: "M7 4h10M7 8h10M7 12h10M7 16h10M7 20h10" },
   { id: "markets", label: "Markets", sub: "Live Prices", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
-  
-  { id: "alerts", label: "Alerts", sub: "Price Alerts", icon: "M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9M13.73 21a2 2 0 0 1-3.46 0" },
   { id: "vault", label: "Vault", sub: "Snapshots · Backup", icon: "M12 2L3 7v10l9 5 9-5V7l-9-5ZM3 7l9 5M12 12l9-5M12 12v10" },
   { id: "settings", label: "Settings", sub: "Layout · Themes", icon: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM19.4 15a7.9 7.9 0 0 0 .1-1l2-1.5-2-3.5-2.4 1a8 8 0 0 0-1.7-1L13 3h-4l-.9 2.9a8 8 0 0 0-1.7 1l-2.4-1-2 3.5L4 13a8 8 0 0 0 .1 1l-2 1.5 2 3.5 2.4-1a8 8 0 0 0 1.7 1L9 21h4l.9-2.9a8 8 0 0 0 1.7-1l2.4 1 2-3.5-2-1.6Z" },
 ];
