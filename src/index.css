@@ -1143,6 +1143,7 @@ tbody tr { transition: background var(--lt-tr); }
 /* ── SETTINGS ── */
 .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .settings-prefs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.settings-preview-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 
 /* ── DASHBOARD GRIDS ── */
 .dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
@@ -1187,7 +1188,7 @@ table { table-layout: auto; }
   .dashboard-charts-grid{grid-template-columns:1fr !important;}
   .ledger-top-grid{grid-template-columns:1fr !important;}
 }
-@media(max-width:560px){ .kpis{grid-template-columns:1fr;} .kpis-5{grid-template-columns:1fr;} .lt-grid{grid-template-columns:1fr 1fr;} .theme-colors{grid-template-columns:repeat(3,1fr);} .cal-stats{grid-template-columns:1fr;} .vault-stats{grid-template-columns:1fr 1fr;} .settings-prefs-grid{grid-template-columns:1fr !important;} }
+@media(max-width:560px){ .kpis{grid-template-columns:1fr;} .kpis-5{grid-template-columns:1fr;} .lt-grid{grid-template-columns:1fr 1fr;} .theme-colors{grid-template-columns:repeat(3,1fr);} .cal-stats{grid-template-columns:1fr;} .vault-stats{grid-template-columns:1fr 1fr;} .settings-prefs-grid{grid-template-columns:1fr !important;} .settings-preview-kpis{grid-template-columns:1fr !important;} }
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
