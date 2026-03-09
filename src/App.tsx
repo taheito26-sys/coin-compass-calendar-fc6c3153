@@ -8,18 +8,24 @@ import PortfolioPage from "@/pages/PortfolioPage";
 import CalendarPage from "@/pages/CalendarPage";
 import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
-import VaultPage from "@/pages/VaultPage";
 import LedgerPage from "@/pages/LedgerPage";
+import ChartsPage from "@/pages/ChartsPage";
+import ToolsPage from "@/pages/ToolsPage";
+import HelpPage from "@/pages/HelpPage";
+import AlertsPage from "@/pages/AlertsPage";
 
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
-  assets: ["Assets", "Portfolio, Alerts"],
+  assets: ["Portfolio", "Holdings, Lots, Alerts"],
+  charts: ["Charts &amp; Analytics", "Performance, Risk, Comparison"],
+  alerts: ["Alerts", "Price Alerts, Channels, History"],
   ledger: ["Ledger", "Transactions, Import, Connect"],
   calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
-  markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
-  vault: ["Vault", "Snapshots, Backups, Export"],
-  settings: ["Settings", "Layout, Themes, Data"],
+  markets: ["Markets", "Live Prices, Watchlist"],
+  tools: ["Tools", "Calculator, QR, Simulator"],
+  settings: ["Settings", "Theme, Data, Vault, Preferences"],
+  help: ["Help", "FAQ, Troubleshooting, Docs"],
 };
 
 function LoadingScreen() {
@@ -130,11 +136,14 @@ function AppShell({
           <div className="scroll">
             {page === "dashboard" && <DashboardPage onNav={setPage} />}
             {page === "assets" && <PortfolioPage />}
+            {page === "charts" && <ChartsPage />}
+            {page === "alerts" && <AlertsPage />}
             {page === "ledger" && <LedgerPage />}
             {page === "calendar" && <CalendarPage />}
             {page === "markets" && <MarketsPage />}
-            {page === "vault" && <VaultPage />}
+            {page === "tools" && <ToolsPage />}
             {page === "settings" && <SettingsPage />}
+            {page === "help" && <HelpPage />}
           </div>
         </div>
       </div>
