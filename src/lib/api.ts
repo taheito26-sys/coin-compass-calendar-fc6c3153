@@ -59,9 +59,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
+  const url = `${WORKER_BASE}${path}`;
+
   let response: Response;
   try {
-    response = await fetch(`${WORKER_BASE}${path}`, {
+    response = await fetch(url, {
       ...options,
       headers: {
         ...headers,
@@ -71,13 +73,16 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     });
   } catch (err: any) {
     throw new Error(
-      `Network error calling Worker API (${WORKER_BASE}${path}). Check Worker URL, deployment, and CORS ALLOWED_ORIGINS. Root: ${err?.message || 'Failed to fetch'}`,
+      `Network error calling Worker API (${url}). Check Worker URL, deployment, and CORS ALLOWED_ORIGINS. Root: ${err?.message || "Failed to fetch"}`,
     );
   }
 
   if (!response.ok) {
     const text = await response.text().catch(() => `HTTP ${response.status}`);
-    throw new Error(`API ${response.status}: ${text}`);
+    const hint = response.status === 404
+      ? " (route missing — check VITE_WORKER_API_URL points to the correct backend + latest deploy)"
+      : "";
+    throw new Error(`Worker API ${response.status} for ${url}: ${text}${hint}`);
   }
 
   return response.json() as Promise<T>;
