@@ -310,7 +310,7 @@ export default function PortfolioPage() {
         <TabsList className="mb-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
           <TabsTrigger value="portfolio" style={{ fontSize: 11 }}>Portfolio</TabsTrigger>
           <TabsTrigger value="alerts" style={{ fontSize: 11 }}>Alerts</TabsTrigger>
-          <TabsTrigger value="ledger" style={{ fontSize: 11 }}>Ledger</TabsTrigger>
+          
         </TabsList>
 
         <TabsContent value="portfolio" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
