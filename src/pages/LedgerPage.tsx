@@ -749,7 +749,7 @@ export default function LedgerPage() {
           <div className="panel">
             <div className="panel-head">
               <h2>Import CSV</h2>
-              <span className="pill">Spot Trades · Binance · Bybit · OKX · Gate.io</span>
+              <span className="pill">Spot Trades · Binance · Bybit · OKX · Gate.io · MEXC · KuCoin</span>
             </div>
             <div className="panel-body">
 

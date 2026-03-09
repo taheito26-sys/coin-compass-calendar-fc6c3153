@@ -255,7 +255,29 @@ export async function createImportedFile(input: CreateImportedFileInput): Promis
   return response.file;
 }
 
+// ─── Import audit / fingerprint lookup (v2) ─────────────────
+
+export type ImportLookupResponse = {
+  existingFingerprints: Record<string, { native_id: string | null; canonical_json: string | null }>;
+  existingByNativeId: Record<string, { fingerprint_hash: string; canonical_json: string | null }>;
+};
+
+export async function lookupImportRows(input: { fingerprint_hashes: string[]; native_ids: string[] }): Promise<ImportLookupResponse> {
+  return apiFetch<ImportLookupResponse>("/api/import/lookup", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
+export async function recordImportBatch(input: any): Promise<{ ok: boolean; batch_id: string }> {
+  return apiFetch<{ ok: boolean; batch_id: string }>("/api/import/record", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ─── User preferences ─────────────────────────────────────
+
 
 export async function fetchUserPreferences(): Promise<Record<string, string>> {
   const response = await apiFetch<{ preferences: Record<string, string> }>("/api/preferences");
