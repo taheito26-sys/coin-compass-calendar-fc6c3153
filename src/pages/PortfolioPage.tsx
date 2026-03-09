@@ -7,11 +7,8 @@ import AssetDrilldown from "@/components/AssetDrilldown";
 import { Sparkline } from "@/components/portfolio/Sparkline";
 import { AssetFilter } from "@/components/portfolio/AssetFilter";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useState, useMemo, useEffect, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { DerivedLot } from "@/lib/derivePortfolio";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-
-const AlertsPage = lazy(() => import("@/pages/AlertsPage"));
 
 // ── View mode ──────────────────────────────────────────────────────────────
 
