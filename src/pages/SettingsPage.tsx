@@ -243,32 +243,20 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
 
   return (
     <div style={{ minWidth: 0, overflowX: "hidden" }}>
-      {/* Layout Templates + Live Preview — side by side on desktop, stacked on mobile */}
-      <div className="settings-top-split">
-        <div className="panel" style={{ minWidth: 0 }}>
-          <div className="panel-head"><h2>Layout Templates</h2></div>
-          <div className="panel-body">
-            <div className="lt-grid">
-              {LAYOUTS.map(l => (
-                <LayoutCard
-                  key={l.id}
-                  layout={l}
-                  active={state.layout === l.id}
-                  currentTheme={state.theme}
-                  onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
-                />
-              ))}
-            </div>
-          </div>
-        </div>
-
-        <div className="panel" style={{ minWidth: 0 }}>
-          <div className="panel-head">
-            <h2>Live Preview</h2>
-            <span className="pill">{activeLayout?.name} · Theme {state.theme.slice(1)}</span>
-          </div>
-          <div className="panel-body">
-            <LivePreview colors={activeColors} layoutName={state.layout} />
+      {/* Layout Templates */}
+      <div className="panel" style={{ minWidth: 0 }}>
+        <div className="panel-head"><h2>Layout Templates</h2></div>
+        <div className="panel-body">
+          <div className="lt-grid">
+            {LAYOUTS.map(l => (
+              <LayoutCard
+                key={l.id}
+                layout={l}
+                active={state.layout === l.id}
+                currentTheme={state.theme}
+                onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
+              />
+            ))}
           </div>
         </div>
       </div>
