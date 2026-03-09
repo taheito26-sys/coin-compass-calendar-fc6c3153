@@ -212,7 +212,6 @@ function ensureMarketPolling() {
     if (Date.now() - _marketCacheTs > STALE_MS && !_marketFetching) {
       doMarketFetch().then(persistCache);
     }
-    }
   }, POLL_MS);
 }
 
