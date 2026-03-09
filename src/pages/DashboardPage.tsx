@@ -319,6 +319,12 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
       </div>
 
+      {/* Historical Net Value + Fear & Greed */}
+      <div className="dashboard-charts-grid">
+        <HistoricalNetValue />
+        <FearGreedGauge />
+      </div>
+
       {/* Gainers/Losers + Watchlist */}
       <div className="dashboard-charts-grid">
         <div className="panel">
