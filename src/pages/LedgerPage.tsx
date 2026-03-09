@@ -172,13 +172,7 @@ export default function LedgerPage() {
 
     try {
       if (isWorkerConfigured()) {
-        const assets = await getAssetCatalog();
-        const { assetId } = resolveAssetId(a, assets);
-        if (!assetId) {
-          toast(`Unknown asset: ${a}. Not found in catalog.`, "bad");
-          setSaving(false);
-          return;
-        }
+        const { assetId } = await resolveOrCreateAsset(a);
         await createTransaction({
           asset_id: assetId,
           timestamp: new Date(ts).toISOString(),
