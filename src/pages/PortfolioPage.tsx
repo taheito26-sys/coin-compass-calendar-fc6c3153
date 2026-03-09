@@ -406,7 +406,7 @@ export default function PortfolioPage() {
               {sorted.length} positions{isLotView && ` · ${sorted.reduce((s, r) => s + r.lots.length, 0)} lots`}
             </span>
           </div>
-          <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
+          <div className="panel-body" style={{ padding: 0, overflow: "auto", flex: 1 }}>
             <div className="tableWrap">
               <table>
                 <thead>
