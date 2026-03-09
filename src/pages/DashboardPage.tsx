@@ -2,7 +2,11 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
+import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
+import ValueDistribution from "@/components/dashboard/ValueDistribution";
+import EventsAnalysis from "@/components/dashboard/EventsAnalysis";
 
 const COIN_COLORS = [
   "#f97316", "#3b82f6", "#8b5cf6", "#ef4444", "#22c55e",
