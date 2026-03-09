@@ -102,6 +102,107 @@ const REFRESH_INTERVALS = [
   { id: "600", name: "10 minutes" },
 ];
 
+type ThemeColors = { brand: string; brand2: string; bg: string; panel: string; text: string; good: string; bad: string };
+
+function LivePreview({ colors, layoutName }: { colors: ThemeColors | undefined; layoutName: string }) {
+  if (!colors) return null;
+  const muted = colors.text + "88";
+  const line = colors.text + "18";
+  const brand3 = colors.brand + "1a";
+
+  return (
+    <div style={{
+      background: colors.bg, borderRadius: 8, padding: 16, border: "1px solid " + line,
+      fontFamily: layoutName === "cipher" || layoutName === "carbon" ? "'JetBrains Mono', monospace"
+        : layoutName === "prism" ? "'Space Grotesk', sans-serif"
+        : layoutName === "pulse" ? "'DM Sans', sans-serif"
+        : "'Inter', sans-serif",
+    }}>
+      {/* KPI Cards row */}
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+        {[
+          { label: "PORTFOLIO VALUE", value: "$124,580.32", sub: "12 assets" },
+          { label: "TOTAL P&L", value: "+$18,420.15", sub: "+17.34%", isGood: true },
+          { label: "24H CHANGE", value: "-$1,230.40", sub: "-0.98%", isBad: true },
+        ].map((kpi, i) => (
+          <div key={i} style={{
+            background: colors.panel, borderRadius: 6, padding: "10px 12px",
+            border: "1px solid " + line,
+            boxShadow: "0 2px 8px " + colors.brand + "10",
+          }}>
+            <div style={{ fontSize: 8, fontWeight: 700, color: muted, letterSpacing: "0.5px", textTransform: "uppercase" }}>{kpi.label}</div>
+            <div style={{
+              fontSize: 16, fontWeight: 900, marginTop: 4,
+              color: kpi.isGood ? colors.good : kpi.isBad ? colors.bad : colors.text,
+            }}>{kpi.value}</div>
+            <div style={{ fontSize: 9, color: kpi.isGood ? colors.good : kpi.isBad ? colors.bad : muted, marginTop: 2 }}>{kpi.sub}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Sample table */}
+      <div style={{
+        background: colors.panel, borderRadius: 6, overflow: "hidden",
+        border: "1px solid " + line,
+      }}>
+        <div style={{
+          padding: "8px 12px", borderBottom: "1px solid " + line,
+          display: "flex", justifyContent: "space-between", alignItems: "center",
+        }}>
+          <span style={{ fontSize: 11, fontWeight: 800, color: colors.text }}>Assets</span>
+          <span style={{
+            fontSize: 9, padding: "2px 8px", borderRadius: 10,
+            background: brand3, color: colors.brand, fontWeight: 600,
+          }}>Live</span>
+        </div>
+        {[
+          { sym: "BTC", name: "Bitcoin", price: "$67,245.80", change: "+2.34%", value: "$84,057.25", good: true },
+          { sym: "ETH", name: "Ethereum", price: "$3,521.40", change: "-1.12%", value: "$28,171.20", good: false },
+          { sym: "SOL", name: "Solana", price: "$142.65", change: "+5.67%", value: "$12,351.87", good: true },
+        ].map((row, i) => (
+          <div key={i} style={{
+            display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr",
+            padding: "7px 12px", borderBottom: i < 2 ? "1px solid " + line : "none",
+            fontSize: 11, alignItems: "center",
+          }}>
+            <div>
+              <span style={{ fontWeight: 800, color: colors.text }}>{row.sym}</span>
+              <span style={{ fontSize: 9, color: muted, marginLeft: 4 }}>{row.name}</span>
+            </div>
+            <div style={{ fontFamily: "monospace", fontWeight: 700, color: colors.text, textAlign: "right" }}>{row.price}</div>
+            <div style={{ fontFamily: "monospace", fontWeight: 700, color: row.good ? colors.good : colors.bad, textAlign: "right" }}>
+              {row.good ? "▲" : "▼"} {row.change}
+            </div>
+            <div style={{ fontFamily: "monospace", fontWeight: 600, color: colors.text, textAlign: "right", fontSize: 10 }}>{row.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Button samples */}
+      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
+        <div style={{
+          padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+          background: colors.brand, color: "#fff", cursor: "default",
+        }}>Primary</div>
+        <div style={{
+          padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700,
+          background: "transparent", border: "1px solid " + colors.brand,
+          color: colors.brand, cursor: "default",
+        }}>Secondary</div>
+        <div style={{ flex: 1 }} />
+        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.good }} />
+          <span style={{ fontSize: 9, color: muted }}>Good</span>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.bad, marginLeft: 6 }} />
+          <span style={{ fontSize: 9, color: muted }}>Bad</span>
+          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.brand, marginLeft: 6 }} />
+          <span style={{ fontSize: 9, color: muted }}>Brand</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
 
