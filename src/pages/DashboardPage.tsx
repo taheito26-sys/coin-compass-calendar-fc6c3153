@@ -466,38 +466,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         );
 
-      case "activity":
-        return (
-          <div className="panel">
-            <div className="panel-head">
-              <DragHandle editing={editing} />
-              <h2>Recent Activity</h2>
-              {onNav && <button className="btn tiny secondary" onClick={() => onNav("ledger")}>Ledger →</button>}
-            </div>
-            <div className="panel-body" style={{ padding: 0 }}>
-              {recentTxs.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {recentTxs.map(tx => (
-                    <div key={tx.id} style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "8px 12px", borderBottom: "1px solid var(--line)", fontSize: 11,
-                    }}>
-                      <span className={`pill ${tx.type === "buy" ? "good" : tx.type === "sell" ? "bad" : ""}`} style={{ fontSize: 9, minWidth: 36, textAlign: "center" }}>
-                        {tx.type.toUpperCase()}
-                      </span>
-                      <span className="mono" style={{ fontWeight: 900, minWidth: 40 }}>{tx.asset}</span>
-                      <span className="mono muted" style={{ flex: 1 }}>{fmtQty(tx.qty)}</span>
-                      <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
-                        {new Date(tx.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : <div className="muted" style={{ padding: 20, textAlign: "center" }}>No recent activity.</div>}
-            </div>
-          </div>
-        );
-
       default: return null;
     }
   };
