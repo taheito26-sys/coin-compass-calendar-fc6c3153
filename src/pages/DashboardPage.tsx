@@ -4,7 +4,6 @@ import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useMemo, useState } from "react";
 import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
-import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
 import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
 import BenchmarkChart from "@/components/dashboard/BenchmarkChart";
 
