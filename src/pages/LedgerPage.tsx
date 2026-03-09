@@ -122,6 +122,8 @@ export default function LedgerPage() {
   const [fileHash, setFileHash] = useState("");
   const [importLoading, setImportLoading] = useState(false);
   const [importError, setImportError] = useState("");
+  const [isDeltaImport, setIsDeltaImport] = useState(false);
+  const [deltaCount, setDeltaCount] = useState(0);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const importedFiles = state.importedFiles ?? [];
