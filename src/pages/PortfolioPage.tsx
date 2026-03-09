@@ -392,14 +392,14 @@ export default function PortfolioPage() {
 
       {/* Mobile cards */}
       {isMobile ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1 }}>
           {sorted.length === 0 ? (
             <div className="muted" style={{ textAlign: "center", padding: 32 }}>No assets. Import trades in the Ledger.</div>
           ) : sorted.map(pos => <MobileCard key={pos.sym} pos={pos} />)}
         </div>
       ) : (
         /* Desktop table */
-        <div className="panel">
+        <div className="panel" style={{ flex: 1, display: "flex", flexDirection: "column", minHeight: 0 }}>
           <div className="panel-head">
             <h2>Assets</h2>
             <span className="pill">
