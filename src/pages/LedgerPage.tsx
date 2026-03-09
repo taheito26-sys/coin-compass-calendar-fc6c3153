@@ -1,23 +1,16 @@
-import { useState, useRef, useCallback, useMemo, lazy, Suspense } from "react";
+import { useState, useRef, useCallback, useMemo } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile, applyLookup } from "@/lib/importers";
-import type { ParseResult, ImportRowStatus, Exchange } from "@/lib/importers";
+import type { ParseResult, Exchange } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import ExchangeConnect from "@/components/ledger/ExchangeConnect";
 import {
-  createTransaction,
-  updateTransaction,
-  deleteTransaction,
-  batchCreateTransactions,
-  createImportedFile,
-  fetchImportedFiles,
   isWorkerConfigured,
   lookupImportRows,
-  recordImportBatch,
 } from "@/lib/api";
 import { getAssetCatalog, resolveAssetId, resolveOrCreateAsset } from "@/lib/assetResolver";
-
+import { useLedgerMutations, type WriteStatus } from "@/hooks/useLedgerMutations";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -91,10 +84,57 @@ function StatCard({ label, value, sub, accent }: { label: string; value: string 
   );
 }
 
+function WriteStatusBanner({ status, onRetry }: { status: WriteStatus; onRetry: () => void }) {
+  if (status === "ready") return null;
+
+  const configs: Record<Exclude<WriteStatus, "ready">, { bg: string; border: string; color: string; icon: string; msg: string }> = {
+    checking: {
+      bg: "rgba(234,179,8,0.06)", border: "rgba(234,179,8,0.2)",
+      color: "var(--warn, #eab308)", icon: "⏳",
+      msg: "Checking backend availability…",
+    },
+    unavailable: {
+      bg: "rgba(220,38,38,0.08)", border: "rgba(220,38,38,0.25)",
+      color: "var(--bad)", icon: "⚠",
+      msg: "Backend unavailable — transactions cannot be saved, edited, or deleted right now.",
+    },
+    unconfigured: {
+      bg: "rgba(220,38,38,0.08)", border: "rgba(220,38,38,0.25)",
+      color: "var(--bad)", icon: "🔌",
+      msg: "Backend not configured (VITE_WORKER_API_URL missing). All write operations are disabled.",
+    },
+  };
+
+  const cfg = configs[status];
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+      background: cfg.bg, border: `1px solid ${cfg.border}`,
+      borderRadius: "var(--lt-radius)", fontSize: 13, color: cfg.color,
+    }}>
+      <span>{cfg.icon} {cfg.msg}</span>
+      {status === "unavailable" && (
+        <button className="btn secondary" onClick={onRetry}
+          style={{ marginLeft: "auto", fontSize: 11, padding: "4px 10px" }}>Retry</button>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export default function LedgerPage() {
-  const { state, setState, rehydrateFromBackend, toast } = useCrypto();
+  const { state, rehydrateFromBackend, toast } = useCrypto();
+  const {
+    writeStatus,
+    checkWriteStatus,
+    createManualTransaction,
+    updateLedgerTransaction,
+    deleteLedgerTransaction,
+    commitImportedTransactions,
+  } = useLedgerMutations();
+
+  const canWrite = writeStatus === "ready";
 
   // Tab
   const [tab, setTab] = useState<Tab>("journal");
@@ -158,7 +198,7 @@ export default function LedgerPage() {
     return txs;
   }, [state.txs, filterType, searchQ]);
 
-  // ── Save manual transaction ────────────────────────────────────────────────
+  // ── Save manual transaction (BACKEND-ONLY) ────────────────────────────────
 
   const save = async () => {
     const a = asset.trim();
@@ -168,70 +208,28 @@ export default function LedgerPage() {
 
     if (!a || !(q > 0)) { toast("Asset and quantity are required", "bad"); return; }
 
-    const saveLocal = () => {
-      setState((prev) => ({
-        ...prev,
-        txs: [{
-          id: `local_${uid()}`,
-          ts,
-          type: txType,
-          asset: a.toUpperCase(),
-          qty: q,
-          price: p,
-          total: q * p,
-          fee: f,
-          feeAsset: state.base || "USD",
-          accountId: "acc_main",
-          note,
-          lots: "",
-        }, ...prev.txs],
-      }));
-    };
-
     setSaving(true);
-    const ts = Date.now();
+    const result = await createManualTransaction({
+      asset: a,
+      type: txType,
+      qty: q,
+      price: p,
+      fee: f,
+      base: state.base || "USD",
+      venue: venue || undefined,
+      note: note || undefined,
+    });
 
-    try {
-      if (isWorkerConfigured()) {
-        try {
-          const { assetId } = await resolveOrCreateAsset(a);
-          await createTransaction({
-            asset_id: assetId,
-            timestamp: new Date(ts).toISOString(),
-            type: txType,
-            qty: q,
-            unit_price: p,
-            fee_amount: f,
-            fee_currency: state.base || "USD",
-            venue: venue || undefined,
-            note: note || undefined,
-            source: "manual",
-          });
-          await rehydrateFromBackend();
-          toast("Transaction saved ✓", "good");
-        } catch (err: any) {
-          const msg = String(err?.message || "");
-          const isNetwork = msg.includes("Network error calling Worker API") || msg.includes("Failed to fetch");
-          if (isNetwork) {
-            saveLocal();
-            toast("Saved locally (Worker unreachable)", "warn");
-          } else {
-            throw err;
-          }
-        }
-      } else {
-        saveLocal();
-        toast("Saved locally (backend not configured)", "bad");
-      }
-
+    if (result.success) {
+      toast("Transaction saved ✓", "good");
       setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-    } catch (err: any) {
-      toast("Save failed: " + (err?.message ?? "Unknown error"), "bad");
+    } else {
+      toast(result.error || "Save failed", "bad");
     }
     setSaving(false);
   };
 
-  // ── Edit handlers ─────────────────────────────────────────────────────────
+  // ── Edit handlers (BACKEND-ONLY) ─────────────────────────────────────────
 
   const startEdit = (t: any) => {
     setEditId(t.id);
@@ -244,49 +242,34 @@ export default function LedgerPage() {
 
   const saveEdit = async () => {
     if (!editId) return;
-    const existing = state.txs.find(t => t.id === editId);
-    if (!existing) { setEditId(null); return; }
 
     const nextQty = parseFloat(editQty);
     const nextPrice = parseFloat(editPrice);
 
-    try {
-      if (isWorkerConfigured()) {
-        await updateTransaction(editId, {
-          type: editType || existing.type,
-          qty: Number.isFinite(nextQty) ? nextQty : undefined,
-          unit_price: Number.isFinite(nextPrice) ? nextPrice : undefined,
-        });
-        await rehydrateFromBackend();
-      } else {
-        setState((prev) => ({
-          ...prev,
-          txs: prev.txs.map(t =>
-            t.id === editId
-              ? { ...t, type: editType || t.type, qty: Number.isFinite(nextQty) ? nextQty : t.qty, price: Number.isFinite(nextPrice) ? nextPrice : t.price }
-              : t
-          ),
-        }));
-      }
+    const result = await updateLedgerTransaction(editId, {
+      type: editType || undefined,
+      qty: Number.isFinite(nextQty) ? nextQty : undefined,
+      unit_price: Number.isFinite(nextPrice) ? nextPrice : undefined,
+    });
+
+    if (result.success) {
       toast("Transaction updated ✓", "good");
-    } catch (err: any) {
-      toast(err?.message ?? "Failed to update", "bad");
+    } else {
+      toast(result.error || "Update failed", "bad");
     }
     setEditId(null);
   };
 
+  // ── Delete handler (BACKEND-ONLY) ────────────────────────────────────────
+
   const deleteTx = async (id: string) => {
     if (!confirm("Delete this transaction? This will recalculate your portfolio.")) return;
-    try {
-      if (isWorkerConfigured()) {
-        await deleteTransaction(id);
-        await rehydrateFromBackend();
-      } else {
-        setState((prev) => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
-      }
+
+    const result = await deleteLedgerTransaction(id);
+    if (result.success) {
       toast("Transaction deleted ✓", "good");
-    } catch (err: any) {
-      toast(err?.message ?? "Failed to delete", "bad");
+    } else {
+      toast(result.error || "Delete failed", "bad");
     }
   };
 
@@ -312,7 +295,7 @@ export default function LedgerPage() {
         return;
       }
 
-      // Backend-aware delta check via fingerprints (if available)
+      // Backend-aware delta check via fingerprints
       let parsed = parsedBase;
       if (isWorkerConfigured()) {
         try {
@@ -321,19 +304,18 @@ export default function LedgerPage() {
           const lookup = await lookupImportRows({ fingerprint_hashes: fpHashes, native_ids: nativeIds });
           parsed = { ...parsedBase, rows: applyLookup(parsedBase.rows, lookup) };
         } catch {
-          // If lookup fails, still allow preview + import (backend may be down)
+          // Delta lookup failed — still allow preview, commit will check backend
         }
       }
 
       const already = parsed.rows.filter((r) => r.status === "alreadyImported").length;
-      const conflicts = parsed.rows.filter((r) => r.status === "conflict").length;
       const invalid = parsed.rows.filter((r) => r.status === "invalid").length;
       const acceptedNew = parsed.rows.filter((r) => r.status === "new" || r.status === "warning").length;
 
       setIsDeltaImport(already > 0);
       setDeltaCount(already);
 
-      if (acceptedNew === 0 && conflicts === 0) {
+      if (acceptedNew === 0) {
         setImportError(
           already > 0
             ? `No new transactions found. All rows were already imported (${already} already imported${invalid ? `, ${invalid} invalid` : ""}).`
@@ -350,45 +332,12 @@ export default function LedgerPage() {
     }
 
     setImportLoading(false);
-  }, [importedFiles, state.txs]);
+  }, []);
+
+  // ── Commit import (BACKEND-ONLY) ──────────────────────────────────────────
 
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
-
-    if (!isWorkerConfigured()) {
-      // Local-only fallback
-      setState((prev) => {
-        const newTxs = importResult.rows.map(row => ({
-          id: `local_${uid()}`,
-          ts: row.timestamp,
-          type: row.side,
-          asset: row.assetSymbol,
-          qty: row.qty,
-          price: row.price,
-          total: row.grossValue,
-          fee: row.feeAmount,
-          feeAsset: row.feeAsset || "USD",
-          accountId: "acc_main",
-          note: `Import: ${EXCHANGE_LABELS[row.sourceExchange] ?? row.sourceExchange}`,
-          lots: "",
-        }));
-        return {
-          ...prev,
-          txs: [...newTxs, ...prev.txs],
-          importedFiles: [...(prev.importedFiles ?? []), {
-            name: fileName, hash: fileHash,
-            importedAt: Date.now(),
-            exchange: importResult.exchange,
-            exportType: importResult.exportType,
-            rowCount: importResult.rows.length,
-          }],
-        };
-      });
-      toast(`Imported ${importResult.rows.length} trades locally ✓`, "good");
-      setImportStage("done");
-      setImportCounts({ parsed: importResult.rows.length, accepted: importResult.rows.length, rejected: 0, persisted: importResult.rows.length, skippedDuplicate: 0, failed: 0 });
-      return;
-    }
 
     setImportStage("committing");
     setImportErrorMsg("");
@@ -401,9 +350,14 @@ export default function LedgerPage() {
       const autoCreated: string[] = [];
 
       for (const row of importResult.rows) {
+        // Skip already-imported rows
+        if (row.status === "alreadyImported" || row.status === "invalid") {
+          counts.rejected++;
+          continue;
+        }
+
         let { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
         if (!assetId) {
-          // Auto-create missing asset
           try {
             const result = await resolveOrCreateAsset(row.assetSymbol);
             assetId = result.assetId;
@@ -438,30 +392,25 @@ export default function LedgerPage() {
         return;
       }
 
-      for (let i = 0; i < batchPayload.length; i += 500) {
-        const result = await batchCreateTransactions(batchPayload.slice(i, i + 500));
-        counts.persisted += result.created;
-        counts.skippedDuplicate += result.skippedDuplicates;
-        counts.failed += result.errors;
-      }
+      const result = await commitImportedTransactions({
+        batchPayload,
+        fileName,
+        fileHash,
+        exchange: importResult.exchange,
+        exportType: importResult.exportType,
+      });
 
-      try {
-        await createImportedFile({
-          file_name: fileName,
-          file_hash: fileHash,
-          exchange: importResult.exchange,
-          export_type: importResult.exportType,
-          row_count: counts.persisted,
-        });
-      } catch (err: any) {
-        if (!err?.message?.includes("409")) console.warn("[import] file record:", err?.message);
-      }
-
-      await rehydrateFromBackend();
+      counts.persisted = result.persisted;
+      counts.skippedDuplicate = result.skippedDuplicates;
+      counts.failed = result.failed;
       setImportCounts(counts);
 
-      if (counts.failed > 0 && counts.persisted === 0) {
-        setImportErrorMsg(`All rows failed. Check the backend logs.`);
+      if (!result.success) {
+        setImportErrorMsg(result.error || "Import failed — backend error");
+        setImportStage("error");
+        toast("Import failed — no rows were committed", "bad");
+      } else if (counts.failed > 0 && counts.persisted === 0) {
+        setImportErrorMsg("All rows failed. Check the backend logs.");
         setImportStage("error");
       } else {
         setImportStage("done");
@@ -496,6 +445,9 @@ export default function LedgerPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* Backend write status banner */}
+      <WriteStatusBanner status={writeStatus} onRetry={checkWriteStatus} />
 
       {/* Sync error banner */}
       {state.syncStatus === "error" && (
@@ -634,8 +586,10 @@ export default function LedgerPage() {
                           <td className="mono muted">—</td>
                           <td>
                             <div style={{ display: "flex", gap: 4 }}>
-                              <button onClick={saveEdit} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--good)", fontSize: 12 }}>✓</button>
-                              <button onClick={cancelEdit} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>✕</button>
+                              <button onClick={saveEdit} disabled={!canWrite}
+                                style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: canWrite ? "pointer" : "not-allowed", color: "var(--good)", fontSize: 12, opacity: canWrite ? 1 : 0.5 }}>✓</button>
+                              <button onClick={cancelEdit}
+                                style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>✕</button>
                             </div>
                           </td>
                         </>
@@ -656,8 +610,10 @@ export default function LedgerPage() {
                           </td>
                           <td>
                             <div style={{ display: "flex", gap: 4 }}>
-                              <button onClick={() => startEdit(t)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--text)", fontSize: 13 }}>✎</button>
-                              <button onClick={() => deleteTx(t.id)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--bad)", fontSize: 13 }}>🗑</button>
+                              <button onClick={() => startEdit(t)} disabled={!canWrite}
+                                style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: canWrite ? "pointer" : "not-allowed", color: "var(--text)", fontSize: 13, opacity: canWrite ? 1 : 0.5 }}>✎</button>
+                              <button onClick={() => deleteTx(t.id)} disabled={!canWrite}
+                                style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: canWrite ? "pointer" : "not-allowed", color: "var(--bad)", fontSize: 13, opacity: canWrite ? 1 : 0.5 }}>🗑</button>
                             </div>
                           </td>
                         </>
@@ -689,6 +645,7 @@ export default function LedgerPage() {
           <div className="panel-head">
             <h2>Add Transaction</h2>
             {saving && <span className="pill">Saving…</span>}
+            {!canWrite && <span className="pill" style={{ background: "rgba(220,38,38,0.15)", color: "var(--bad)" }}>Backend unavailable</span>}
           </div>
           <div className="panel-body">
             {/* Transaction type pills */}
@@ -753,8 +710,9 @@ export default function LedgerPage() {
             )}
 
             <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-              <button className="btn" onClick={save} disabled={saving || !asset || !qty}>
-                {saving ? "Saving…" : "Save Transaction"}
+              <button className="btn" onClick={save} disabled={saving || !asset || !qty || !canWrite}
+                style={{ opacity: canWrite ? 1 : 0.5 }}>
+                {saving ? "Saving…" : canWrite ? "Save Transaction" : "Backend Unavailable"}
               </button>
               <button className="btn secondary" onClick={() => { setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote(""); }}>
                 Clear
@@ -777,18 +735,28 @@ export default function LedgerPage() {
               {/* STAGE: UPLOAD */}
               {importStage === "upload" && (
                 <div>
+                  {!canWrite && (
+                    <div style={{
+                      marginBottom: 12, padding: "10px 14px",
+                      background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)",
+                      borderRadius: "var(--lt-radius-sm)", fontSize: 12, color: "var(--bad)",
+                    }}>
+                      ⚠ Backend unavailable — CSV import is disabled. Transactions cannot be saved.
+                    </div>
+                  )}
                   <div
                     style={{
                       border: "2px dashed var(--line)", borderRadius: "var(--lt-radius)",
-                      padding: "40px 24px", textAlign: "center", cursor: "pointer",
+                      padding: "40px 24px", textAlign: "center", cursor: canWrite ? "pointer" : "not-allowed",
                       transition: "var(--lt-tr)", background: "var(--panel2)",
+                      opacity: canWrite ? 1 : 0.5,
                     }}
-                    onDragOver={e => e.preventDefault()}
-                    onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-                    onClick={() => fileRef.current?.click()}
+                    onDragOver={e => { if (canWrite) e.preventDefault(); }}
+                    onDrop={e => { e.preventDefault(); if (canWrite) { const f = e.dataTransfer.files[0]; if (f) handleFile(f); } }}
+                    onClick={() => canWrite && fileRef.current?.click()}
                   >
                     <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: "none" }}
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                      onChange={e => { const f = e.target.files?.[0]; if (f && canWrite) handleFile(f); }} />
                     {importLoading ? (
                       <div className="muted">Parsing…</div>
                     ) : (
@@ -812,7 +780,6 @@ export default function LedgerPage() {
               {/* STAGE: PREVIEW */}
               {importStage === "preview" && importResult && (
                 <div>
-                  {/* Delta import banner */}
                   {isDeltaImport && (
                     <div style={{
                       marginBottom: 12, padding: "10px 14px",
@@ -853,8 +820,9 @@ export default function LedgerPage() {
                     File: <strong style={{ color: "var(--text)" }}>{fileName}</strong>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn" onClick={commitImport}>
-                      {isDeltaImport ? `Import ${importResult.rowCount} New Trade${importResult.rowCount !== 1 ? "s" : ""} →` : `Commit ${importResult.rowCount} Trades →`}
+                    <button className="btn" onClick={commitImport} disabled={!canWrite}
+                      style={{ opacity: canWrite ? 1 : 0.5 }}>
+                      {!canWrite ? "Backend Unavailable" : isDeltaImport ? `Import ${importResult.rowCount} New Trade${importResult.rowCount !== 1 ? "s" : ""} →` : `Commit ${importResult.rowCount} Trades →`}
                     </button>
                     <button className="btn secondary" onClick={resetImport}>Cancel</button>
                   </div>
@@ -894,7 +862,7 @@ export default function LedgerPage() {
                 <div>
                   <div style={{ fontSize: 36, textAlign: "center", marginBottom: 12 }}>❌</div>
                   <div style={{ padding: "8px 12px", borderRadius: "var(--lt-radius-sm)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "var(--bad)", fontSize: 12, marginBottom: 16 }}>
-                    {importErrorMsg || "Import failed."}
+                    {importErrorMsg || "Import failed — no rows were committed to the backend."}
                   </div>
                   <button className="btn secondary" onClick={resetImport}>Try Again</button>
                 </div>
