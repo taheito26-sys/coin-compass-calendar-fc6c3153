@@ -4,7 +4,6 @@ import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useMemo, useState } from "react";
 import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
-import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
 import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
 import BenchmarkChart from "@/components/dashboard/BenchmarkChart";
 
@@ -29,7 +28,6 @@ const ALL_CARDS: CardDef[] = [
   { id: "kpis", label: "KPI Summary", colSpan: 2 },
   { id: "allocation", label: "Coin Allocation" },
   { id: "heatmap", label: "Heatmap" },
-  { id: "histValue", label: "Historical Net Value" },
   { id: "fearGreed", label: "Fear & Greed" },
   { id: "movers", label: "Top Movers" },
   { id: "watchlist", label: "Watchlist" },
@@ -326,7 +324,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         );
 
-      case "histValue": return <HistoricalNetValue />;
       case "fearGreed": return <FearGreedGauge />;
       case "riskBreakdown": return <PerAssetRiskBreakdown />;
       case "benchmark": return <BenchmarkChart />;

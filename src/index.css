@@ -1148,6 +1148,7 @@ tbody tr { transition: background var(--lt-tr); }
 
 /* ── DASHBOARD GRIDS ── */
 .dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* ── LEDGER GRID ── */
@@ -1162,7 +1163,7 @@ table { table-layout: auto; }
 @media(max-width:900px){
   .app{display:block;height:auto;min-height:100vh;} .sidebar{display:none;} .mobileNav{display:block;}
   .mainWrap{height:auto;max-height:none;overflow:visible;}
-  .scroll{padding-bottom:calc(150px + env(safe-area-inset-bottom));overflow-x:hidden;overflow-y:auto;} .kpis{grid-template-columns:1fr 1fr;} .kpis-5{grid-template-columns:1fr 1fr;}
+  .scroll{padding-bottom:calc(150px + env(safe-area-inset-bottom));overflow-x:hidden;overflow-y:auto;} .kpis{grid-template-columns:1fr 1fr;} .kpis-3{grid-template-columns:1fr 1fr;} .kpis-5{grid-template-columns:1fr 1fr;}
   .dashboard-charts-grid{grid-template-columns:1fr !important;}
   .ledger-top-grid{grid-template-columns:1fr !important;}
   .mainWrap,.topbar,.scroll{width:100%;max-width:100%;box-sizing:border-box;}
@@ -1188,6 +1189,7 @@ table { table-layout: auto; }
 }
 @media(max-width:560px){
   .kpis{grid-template-columns:1fr;}
+  .kpis-3{grid-template-columns:1fr;}
   .kpis-5{grid-template-columns:1fr;}
   .cal-stats{grid-template-columns:1fr;}
 }

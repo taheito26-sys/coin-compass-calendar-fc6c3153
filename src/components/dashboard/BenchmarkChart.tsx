@@ -1,22 +1,31 @@
 /**
  * BenchmarkChart — Portfolio vs Benchmarks widget for the Dashboard.
- * Auto-refreshes every 2 minutes.
+ * Auto-refreshes every 2 minutes. Supports 1D, 7D, 30D, 3M, 1Y ranges.
  */
 import { useMemo, useState, useEffect, useRef } from "react";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { fmtFiat } from "@/lib/cryptoState";
+
+const RANGES = [
+  { key: "1d", label: "1D", days: 1 },
+  { key: "7d", label: "7D", days: 7 },
+  { key: "30d", label: "30D", days: 30 },
+  { key: "3m", label: "3M", days: 90 },
+  { key: "1y", label: "1Y", days: 365 },
+] as const;
 
 function genHistory(totalMV: number, days: number, seed: number) {
   if (totalMV === 0) return Array(days).fill(0);
-  return Array.from({ length: days }, (_, i) => {
+  const pts = Math.max(days, 24); // min 24 points for 1D
+  return Array.from({ length: pts }, (_, i) => {
     const s = Math.sin((i + seed) * 0.1) * 0.03;
-    return totalMV * (1 + s + (i / days) * 0.05 + (Math.sin(i * 0.7 + seed) * 0.01)) * (0.85 + (i / days) * 0.15);
+    return totalMV * (1 + s + (i / pts) * 0.05 + (Math.sin(i * 0.7 + seed) * 0.01)) * (0.85 + (i / pts) * 0.15);
   });
 }
 
 function genBench(base: number, days: number, ret: number, vol: number, seed: number) {
+  const pts = Math.max(days, 24);
   const h = [base];
-  for (let i = 1; i < days; i++) h.push(h[i - 1] * (1 + ret / 365 + Math.sin(i * 0.3 + seed) * vol / Math.sqrt(365)));
+  for (let i = 1; i < pts; i++) h.push(h[i - 1] * (1 + ret / 365 + Math.sin(i * 0.3 + seed) * vol / Math.sqrt(365)));
   return h;
 }
 
@@ -48,6 +57,7 @@ function ComparisonChart({ series }: { series: { label: string; data: number[]; 
 export default function BenchmarkChart() {
   const portfolio = useUnifiedPortfolio();
   const [seed, setSeed] = useState(() => Date.now());
+  const [range, setRange] = useState("3m");
   const intervalRef = useRef<ReturnType<typeof setInterval>>();
 
   // Auto-refresh every 2 minutes
@@ -56,7 +66,7 @@ export default function BenchmarkChart() {
     return () => clearInterval(intervalRef.current);
   }, []);
 
-  const days = 90;
+  const days = RANGES.find(r => r.key === range)?.days ?? 90;
   const totalMV = portfolio.positions.reduce((s, p) => s + (p.mv || 0), 0);
 
   const series = useMemo(() => [
@@ -64,13 +74,24 @@ export default function BenchmarkChart() {
     { label: "Bitcoin", data: genBench(65000, days, 0.5, 0.7, seed), color: "#f7931a" },
     { label: "Ethereum", data: genBench(3500, days, 0.4, 0.8, seed), color: "#627eea" },
     { label: "S&P 500", data: genBench(5200, days, 0.12, 0.15, seed), color: "#4ade80" },
-  ], [totalMV, seed]);
+  ], [totalMV, days, seed]);
 
   return (
     <div className="panel">
       <div className="panel-head">
         <h2>Portfolio vs Benchmarks</h2>
-        <span className="pill" style={{ fontSize: 9 }}>90d · 2min refresh</span>
+        <div style={{ display: "flex", gap: 2, marginLeft: "auto" }}>
+          {RANGES.map(r => (
+            <button
+              key={r.key}
+              onClick={() => setRange(r.key)}
+              className={`btn tiny ${range === r.key ? "" : "secondary"}`}
+              style={range === r.key ? { background: "var(--brand)", color: "#fff", border: "none", fontWeight: 800, fontSize: 10, padding: "3px 8px" } : { fontSize: 10, padding: "3px 8px" }}
+            >
+              {r.label}
+            </button>
+          ))}
+        </div>
       </div>
       <div className="panel-body" style={{ padding: 12 }}>
         {totalMV > 0 ? (
