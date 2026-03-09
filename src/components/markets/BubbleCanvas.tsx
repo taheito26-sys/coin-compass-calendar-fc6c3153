@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useCallback } from "react";
 import type { LiveCoin } from "@/hooks/useLivePrices";
 
 interface Props {
@@ -10,6 +10,7 @@ interface Bubble {
   id: string; symbol: string; name: string; price: number;
   change: number; marketCap: number; image: string;
   x: number; y: number; r: number; vx: number; vy: number;
+  targetX: number; targetY: number;
 }
 
 function getChange(coin: LiveCoin, timeRange: string) {
@@ -27,16 +28,18 @@ function formatCompact(n: number): string {
   return "$" + n.toLocaleString();
 }
 
-// Pre-load coin images for canvas rendering
 const _imgCache = new Map<string, HTMLImageElement>();
 function getCoinImage(url: string): HTMLImageElement | null {
   if (!url) return null;
-  if (_imgCache.has(url)) return _imgCache.get(url)!;
+  if (_imgCache.has(url)) {
+    const img = _imgCache.get(url)!;
+    return img.complete && img.naturalWidth > 0 ? img : null;
+  }
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = url;
   _imgCache.set(url, img);
-  return null; // Not ready yet
+  return null;
 }
 
 export default function BubbleCanvas({ coins, timeRange }: Props) {
@@ -46,7 +49,7 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
   const animRef = useRef<number>(0);
   const mouseRef = useRef({ x: -999, y: -999 });
 
-  useEffect(() => {
+  const initBubbles = useCallback(() => {
     if (!coins.length) return;
     const container = containerRef.current;
     if (!container) return;
@@ -54,34 +57,61 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
     const H = container.clientHeight || 550;
     const maxMcap = Math.max(...coins.map(c => c.market_cap || 1));
 
-    // Preload images
     for (const coin of coins) {
       if (coin.image) getCoinImage(coin.image);
     }
 
-    bubblesRef.current = coins.map((coin) => {
+    // Pack bubbles in a grid-like pattern for stability
+    const bubbles: Bubble[] = [];
+    const cols = Math.ceil(Math.sqrt(coins.length * (W / H)));
+    const rows = Math.ceil(coins.length / cols);
+    const cellW = W / cols;
+    const cellH = H / rows;
+
+    coins.forEach((coin, i) => {
       const change = getChange(coin, timeRange);
       const mcapRatio = Math.sqrt((coin.market_cap || 1) / maxMcap);
-      const r = Math.max(16, Math.min(62, mcapRatio * 62));
-      return {
+      const r = Math.max(14, Math.min(56, mcapRatio * 56));
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      const tx = cellW * col + cellW / 2;
+      const ty = cellH * row + cellH / 2;
+
+      bubbles.push({
         id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
         price: coin.current_price, change, marketCap: coin.market_cap,
         image: coin.image || "",
-        x: Math.random() * (W - r * 2) + r,
-        y: Math.random() * (H - r * 2) + r,
-        r, vx: (Math.random() - 0.5) * 0.3, vy: (Math.random() - 0.5) * 0.3,
-      };
+        x: tx + (Math.random() - 0.5) * 20,
+        y: ty + (Math.random() - 0.5) * 20,
+        r, vx: 0, vy: 0,
+        targetX: tx, targetY: ty,
+      });
     });
 
+    bubblesRef.current = bubbles;
+  }, [coins, timeRange]);
+
+  useEffect(() => {
+    initBubbles();
+
     const canvas = canvasRef.current;
-    if (!canvas) return;
-    const dpr = window.devicePixelRatio || 1;
-    canvas.width = W * dpr;
-    canvas.height = H * dpr;
-    canvas.style.width = W + "px";
-    canvas.style.height = H + "px";
-    const ctx = canvas.getContext("2d")!;
-    ctx.scale(dpr, dpr);
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const setupCanvas = () => {
+      const W = container.clientWidth;
+      const H = container.clientHeight || 550;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = W * dpr;
+      canvas.height = H * dpr;
+      canvas.style.width = W + "px";
+      canvas.style.height = H + "px";
+      const ctx = canvas.getContext("2d")!;
+      ctx.scale(dpr, dpr);
+      return { W, H, ctx };
+    };
+
+    let { W, H, ctx } = setupCanvas();
 
     const animate = () => {
       const bubbles = bubblesRef.current;
@@ -89,127 +119,137 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
       let hovered: Bubble | null = null;
       const mx = mouseRef.current.x, my = mouseRef.current.y;
 
-      // Physics
+      // Gentle physics: attract to target, very slow drift
       for (const b of bubbles) {
-        b.x += b.vx; b.y += b.vy;
-        if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.7; }
-        if (b.x + b.r > W) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.7; }
-        if (b.y - b.r < 0) { b.y = b.r; b.vy = Math.abs(b.vy) * 0.7; }
-        if (b.y + b.r > H) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.7; }
-        b.vx *= 0.999; b.vy *= 0.999;
-        const dx = mx - b.x, dy = my - b.y;
-        if (Math.sqrt(dx * dx + dy * dy) < b.r) hovered = b;
+        // Spring force toward target position (keeps bubbles settled)
+        const dx = b.targetX - b.x;
+        const dy = b.targetY - b.y;
+        b.vx += dx * 0.002;
+        b.vy += dy * 0.002;
+
+        // Gentle random drift
+        b.vx += (Math.random() - 0.5) * 0.015;
+        b.vy += (Math.random() - 0.5) * 0.015;
+
+        // Heavy damping = slow, calm movement
+        b.vx *= 0.92;
+        b.vy *= 0.92;
+
+        b.x += b.vx;
+        b.y += b.vy;
+
+        // Soft wall bounce
+        if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.3; }
+        if (b.x + b.r > W) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.3; }
+        if (b.y - b.r < 0) { b.y = b.r; b.vy = Math.abs(b.vy) * 0.3; }
+        if (b.y + b.r > H) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.3; }
+
+        const mdx = mx - b.x, mdy = my - b.y;
+        if (Math.sqrt(mdx * mdx + mdy * mdy) < b.r) hovered = b;
       }
 
-      // Collisions
+      // Gentle collision separation
       for (let i = 0; i < bubbles.length; i++) {
         for (let j = i + 1; j < bubbles.length; j++) {
           const a = bubbles[i], bb = bubbles[j];
           const dx = bb.x - a.x, dy = bb.y - a.y;
           const dist = Math.sqrt(dx * dx + dy * dy);
-          const minDist = a.r + bb.r;
+          const minDist = a.r + bb.r + 2;
           if (dist < minDist && dist > 0) {
             const overlap = (minDist - dist) / 2;
             const nx = dx / dist, ny = dy / dist;
-            a.x -= nx * overlap * 0.5; a.y -= ny * overlap * 0.5;
-            bb.x += nx * overlap * 0.5; bb.y += ny * overlap * 0.5;
-            const dvx = a.vx - bb.vx, dvy = a.vy - bb.vy;
-            const dvn = dvx * nx + dvy * ny;
-            if (dvn > 0) {
-              a.vx -= dvn * nx * 0.25; a.vy -= dvn * ny * 0.25;
-              bb.vx += dvn * nx * 0.25; bb.vy += dvn * ny * 0.25;
-            }
+            a.x -= nx * overlap * 0.3;
+            a.y -= ny * overlap * 0.3;
+            bb.x += nx * overlap * 0.3;
+            bb.y += ny * overlap * 0.3;
           }
         }
       }
 
-      // Draw bubbles
+      // Draw
       for (const b of bubbles) {
         const isPos = b.change >= 0;
-        const intensity = Math.min(Math.abs(b.change) / 12, 1);
+        const intensity = Math.min(Math.abs(b.change) / 10, 1);
         const isHov = hovered === b;
-        const scale = isHov ? 1.08 : 1;
+        const scale = isHov ? 1.12 : 1;
         const dr = b.r * scale;
 
-        // Glow
+        // Soft glow on hover
         if (isHov) {
           ctx.beginPath();
-          ctx.arc(b.x, b.y, dr + 6, 0, Math.PI * 2);
-          const glow = ctx.createRadialGradient(b.x, b.y, dr * 0.5, b.x, b.y, dr + 6);
-          glow.addColorStop(0, isPos ? "rgba(34,197,94,0.15)" : "rgba(239,68,68,0.15)");
+          ctx.arc(b.x, b.y, dr + 8, 0, Math.PI * 2);
+          const glow = ctx.createRadialGradient(b.x, b.y, dr * 0.4, b.x, b.y, dr + 8);
+          glow.addColorStop(0, isPos ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)");
           glow.addColorStop(1, "transparent");
           ctx.fillStyle = glow;
           ctx.fill();
         }
 
-        // Main circle
-        const alpha = 0.12 + intensity * 0.28;
+        // Main bubble - solid, clean look
+        const alpha = 0.18 + intensity * 0.32;
         ctx.beginPath();
         ctx.arc(b.x, b.y, dr, 0, Math.PI * 2);
-        const grad = ctx.createRadialGradient(b.x, b.y - dr * 0.3, dr * 0.1, b.x, b.y, dr);
         if (isPos) {
-          grad.addColorStop(0, `rgba(34,197,94,${alpha + 0.1})`);
-          grad.addColorStop(1, `rgba(22,163,74,${alpha})`);
+          ctx.fillStyle = `rgba(34,197,94,${alpha})`;
         } else {
-          grad.addColorStop(0, `rgba(248,113,113,${alpha + 0.1})`);
-          grad.addColorStop(1, `rgba(220,38,38,${alpha})`);
+          ctx.fillStyle = `rgba(239,68,68,${alpha})`;
         }
-        ctx.fillStyle = grad;
         ctx.fill();
 
-        // Border
+        // Clean border
         ctx.strokeStyle = isPos
-          ? `rgba(34,197,94,${0.25 + intensity * 0.4})`
-          : `rgba(248,113,113,${0.25 + intensity * 0.4})`;
-        ctx.lineWidth = isHov ? 2 : 1;
+          ? `rgba(34,197,94,${0.3 + intensity * 0.35})`
+          : `rgba(239,68,68,${0.3 + intensity * 0.35})`;
+        ctx.lineWidth = isHov ? 2.5 : 1.5;
         ctx.stroke();
 
         // Coin icon
-        if (b.image && b.r > 20) {
+        if (b.image && b.r > 18) {
           const img = _imgCache.get(b.image);
           if (img?.complete && img.naturalWidth > 0) {
-            const iconSize = Math.min(dr * 0.5, 22);
+            const iconSize = Math.min(dr * 0.38, 18);
+            const iconY = b.r > 28 ? b.y - dr * 0.15 : b.y;
             ctx.save();
             ctx.beginPath();
-            ctx.arc(b.x, b.y - (b.r > 30 ? 5 : 0), iconSize, 0, Math.PI * 2);
+            ctx.arc(b.x, iconY, iconSize, 0, Math.PI * 2);
             ctx.clip();
-            ctx.drawImage(img, b.x - iconSize, b.y - (b.r > 30 ? 5 : 0) - iconSize, iconSize * 2, iconSize * 2);
+            ctx.drawImage(img, b.x - iconSize, iconY - iconSize, iconSize * 2, iconSize * 2);
             ctx.restore();
           }
         }
 
-        // Text
+        // Text - symbol prominent
         ctx.textAlign = "center";
         if (b.r > 28) {
-          // Symbol below icon
+          // Symbol
           ctx.fillStyle = isPos ? "#4ade80" : "#f87171";
-          ctx.font = `bold ${Math.max(9, dr * 0.24)}px var(--app-font, Inter), sans-serif`;
-          const textY = b.image ? b.y + dr * 0.35 : b.y - 3;
-          ctx.fillText(b.symbol, b.x, textY);
+          ctx.font = `bold ${Math.max(10, dr * 0.28)}px var(--app-font, system-ui)`;
+          const symY = b.image ? b.y + dr * 0.4 : b.y - 2;
+          ctx.fillText(b.symbol, b.x, symY);
           // Change %
-          ctx.font = `${Math.max(8, dr * 0.19)}px var(--app-font, Inter), sans-serif`;
-          ctx.fillStyle = "rgba(255,255,255,0.6)";
-          ctx.fillText((b.change >= 0 ? "+" : "") + b.change.toFixed(1) + "%", b.x, textY + dr * 0.22);
-        } else if (b.r > 18) {
+          ctx.font = `600 ${Math.max(8, dr * 0.2)}px var(--app-font, system-ui)`;
+          ctx.fillStyle = "rgba(255,255,255,0.55)";
+          ctx.fillText((b.change >= 0 ? "+" : "") + b.change.toFixed(1) + "%", b.x, symY + dr * 0.24);
+        } else if (b.r > 16) {
           ctx.fillStyle = isPos ? "#4ade80" : "#f87171";
-          ctx.font = `bold ${Math.max(8, dr * 0.36)}px var(--app-font, Inter), sans-serif`;
-          ctx.fillText(b.symbol, b.x, b.y + 3);
+          ctx.font = `bold ${Math.max(8, dr * 0.4)}px var(--app-font, system-ui)`;
+          ctx.fillText(b.symbol, b.x, b.y + 4);
         }
       }
 
       // Tooltip
       if (hovered) {
         const b = hovered;
-        const tw = 180, th = 72;
-        let tx = b.x + b.r + 12, ty = b.y - th / 2;
-        if (tx + tw > W) tx = b.x - b.r - tw - 12;
-        if (ty < 4) ty = 4; if (ty + th > H - 4) ty = H - th - 4;
+        const tw = 170, th = 68;
+        let tx = b.x + b.r + 14, ty = b.y - th / 2;
+        if (tx + tw > W) tx = b.x - b.r - tw - 14;
+        if (ty < 4) ty = 4;
+        if (ty + th > H - 4) ty = H - th - 4;
 
-        // Shadow
-        ctx.shadowColor = "rgba(0,0,0,0.5)";
-        ctx.shadowBlur = 16;
-        ctx.fillStyle = "rgba(15,15,20,0.92)";
-        const rr = 8;
+        ctx.shadowColor = "rgba(0,0,0,0.4)";
+        ctx.shadowBlur = 20;
+        ctx.fillStyle = "rgba(12,12,18,0.94)";
+        const rr = 10;
         ctx.beginPath();
         ctx.moveTo(tx + rr, ty); ctx.lineTo(tx + tw - rr, ty);
         ctx.quadraticCurveTo(tx + tw, ty, tx + tw, ty + rr);
@@ -222,35 +262,49 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
         ctx.fill();
         ctx.shadowBlur = 0;
 
-        // Border
-        ctx.strokeStyle = "rgba(255,255,255,0.08)";
+        ctx.strokeStyle = "rgba(255,255,255,0.06)";
         ctx.lineWidth = 1;
         ctx.stroke();
 
-        // Content
         ctx.textAlign = "left";
-        ctx.fillStyle = "#fff"; ctx.font = "bold 12px var(--app-font, Inter)";
-        ctx.fillText(`${b.symbol}`, tx + 10, ty + 18);
-        ctx.fillStyle = "rgba(255,255,255,0.5)"; ctx.font = "11px var(--app-font, Inter)";
-        ctx.fillText(b.name, tx + 10 + ctx.measureText(b.symbol + " ").width + 4, ty + 18);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 13px var(--app-font, system-ui)";
+        ctx.fillText(b.symbol, tx + 12, ty + 18);
 
-        ctx.fillStyle = "#fff"; ctx.font = "bold 13px var(--app-font, Inter)";
-        ctx.fillText("$" + b.price.toLocaleString(undefined, { maximumFractionDigits: b.price < 1 ? 6 : 2 }), tx + 10, ty + 38);
+        ctx.fillStyle = "rgba(255,255,255,0.4)";
+        ctx.font = "10px var(--app-font, system-ui)";
+        const symW = ctx.measureText(b.symbol + "  ").width;
+        ctx.fillText(b.name, tx + 12 + symW, ty + 18);
+
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 14px var(--app-font, system-ui)";
+        ctx.fillText("$" + b.price.toLocaleString(undefined, { maximumFractionDigits: b.price < 1 ? 6 : 2 }), tx + 12, ty + 38);
 
         ctx.fillStyle = b.change >= 0 ? "#4ade80" : "#f87171";
-        ctx.font = "bold 11px var(--app-font, Inter)";
-        ctx.fillText(`${b.change >= 0 ? "+" : ""}${b.change.toFixed(2)}%`, tx + 10, ty + 56);
+        ctx.font = "bold 11px var(--app-font, system-ui)";
+        ctx.fillText(`${b.change >= 0 ? "+" : ""}${b.change.toFixed(2)}%`, tx + 12, ty + 54);
 
-        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "11px var(--app-font, Inter)";
+        ctx.fillStyle = "rgba(255,255,255,0.35)";
+        ctx.font = "10px var(--app-font, system-ui)";
         ctx.textAlign = "right";
-        ctx.fillText(`MCap ${formatCompact(b.marketCap)}`, tx + tw - 10, ty + 56);
+        ctx.fillText(formatCompact(b.marketCap), tx + tw - 12, ty + 54);
       }
 
       animRef.current = requestAnimationFrame(animate);
     };
+
     animRef.current = requestAnimationFrame(animate);
-    return () => cancelAnimationFrame(animRef.current);
-  }, [coins, timeRange]);
+
+    const handleResize = () => {
+      ({ W, H, ctx } = setupCanvas());
+    };
+    window.addEventListener("resize", handleResize);
+
+    return () => {
+      cancelAnimationFrame(animRef.current);
+      window.removeEventListener("resize", handleResize);
+    };
+  }, [initBubbles]);
 
   // Mouse tracking
   useEffect(() => {
@@ -266,29 +320,17 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
     return () => { canvas.removeEventListener("mousemove", h); canvas.removeEventListener("mouseleave", leave); };
   }, []);
 
-  // Resize
-  useEffect(() => {
-    const h = () => {
-      const container = containerRef.current, canvas = canvasRef.current;
-      if (!container || !canvas) return;
-      const dpr = window.devicePixelRatio || 1;
-      const W = container.clientWidth;
-      const H = container.clientHeight || 550;
-      canvas.width = W * dpr;
-      canvas.height = H * dpr;
-      canvas.style.width = W + "px";
-      canvas.style.height = H + "px";
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.scale(dpr, dpr);
-    };
-    window.addEventListener("resize", h);
-    return () => window.removeEventListener("resize", h);
-  }, []);
-
   return (
     <div className="panel" style={{ overflow: "hidden" }}>
-      <div ref={containerRef} style={{ width: "100%", height: 550, position: "relative", background: "var(--bg)" }}>
-        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }} />
+      <div
+        ref={containerRef}
+        className="markets-canvas-wrap"
+        style={{ width: "100%", height: 550, position: "relative", background: "var(--bg)" }}
+      >
+        <canvas
+          ref={canvasRef}
+          style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }}
+        />
       </div>
     </div>
   );
