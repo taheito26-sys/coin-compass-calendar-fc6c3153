@@ -1,47 +1,45 @@
-// Minimal CSV parser that handles quoted fields
+import Papa from "papaparse";
+
+/**
+ * Production CSV parser (supports quoted fields, newlines in quotes, BOM, etc.)
+ *
+ * NOTE: We intentionally keep everything as strings; exchange adapters handle
+ * numeric parsing + normalization.
+ */
 export function parseCSV(text: string): { headers: string[]; rows: Record<string, string>[] } {
-  const lines = text.split(/\r?\n/).filter(l => l.trim());
-  if (lines.length < 2) return { headers: [], rows: [] };
+  const cleaned = text.replace(/^\uFEFF/, "");
 
-  const parseLine = (line: string): string[] => {
-    const result: string[] = [];
-    let current = "";
-    let inQuotes = false;
-    for (let i = 0; i < line.length; i++) {
-      const ch = line[i];
-      if (inQuotes) {
-        if (ch === '"' && line[i + 1] === '"') { current += '"'; i++; }
-        else if (ch === '"') inQuotes = false;
-        else current += ch;
-      } else {
-        if (ch === '"') inQuotes = true;
-        else if (ch === ',') { result.push(current.trim()); current = ""; }
-        else current += ch;
-      }
-    }
-    result.push(current.trim());
-    return result;
-  };
+  const parsed = Papa.parse<Record<string, unknown>>(cleaned, {
+    header: true,
+    skipEmptyLines: "greedy",
+    dynamicTyping: false,
+    transformHeader: (h) => String(h ?? "").replace(/^\uFEFF/, "").trim(),
+  });
 
-  // Skip BOM
-  const headerLine = lines[0].replace(/^\uFEFF/, "");
-  const headers = parseLine(headerLine);
+  const headers = (parsed.meta.fields ?? []).map((h) => String(h).trim()).filter(Boolean);
   const rows: Record<string, string>[] = [];
-  for (let i = 1; i < lines.length; i++) {
-    const vals = parseLine(lines[i]);
-    if (vals.length < 2) continue;
-    const row: Record<string, string> = {};
-    headers.forEach((h, idx) => { row[h] = vals[idx] || ""; });
-    rows.push(row);
+
+  for (const row of parsed.data ?? []) {
+    if (!row || typeof row !== "object") continue;
+    const out: Record<string, string> = {};
+    for (const h of headers) {
+      const v = (row as Record<string, unknown>)[h];
+      out[h] = v == null ? "" : String(v);
+    }
+    rows.push(out);
   }
+
   return { headers, rows };
 }
 
-// SHA-256 hash of file content for dedup
-export async function hashFile(content: string): Promise<string> {
+/** SHA-256 hex digest (used for file hashes and import fingerprints) */
+export async function hashString(content: string): Promise<string> {
   const encoder = new TextEncoder();
   const data = encoder.encode(content);
   const hashBuffer = await crypto.subtle.digest("SHA-256", data);
   const hashArray = Array.from(new Uint8Array(hashBuffer));
-  return hashArray.map(b => b.toString(16).padStart(2, "0")).join("");
+  return hashArray.map((b) => b.toString(16).padStart(2, "0")).join("");
 }
+
+/** Back-compat alias */
+export const hashFile = hashString;
