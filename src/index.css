@@ -1148,6 +1148,7 @@ tbody tr { transition: background var(--lt-tr); }
 
 /* ── DASHBOARD GRIDS ── */
 .dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
+.kpis-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .kpis-5 { grid-template-columns: repeat(5, minmax(0, 1fr)); }
 
 /* ── LEDGER GRID ── */
