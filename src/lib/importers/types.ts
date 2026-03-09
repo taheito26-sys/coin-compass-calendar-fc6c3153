@@ -2,7 +2,7 @@
 // v1A: Spot trade history only. No deposits, withdrawals, transfers.
 // No futures, margin, options, earn, P2P, copy trading.
 
-export type Exchange = "binance" | "bybit" | "okx" | "gate";
+export type Exchange = "binance" | "bybit" | "okx" | "gate" | "mexc" | "kucoin";
 
 export interface NormalizedRow {
   timestamp: number;        // unix ms

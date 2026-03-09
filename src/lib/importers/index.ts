@@ -5,6 +5,8 @@ import { parseBinance } from "./binance";
 import { parseBybit } from "./bybit";
 import { parseOKX } from "./okx";
 import { parseGate } from "./gate";
+import { parseMEXC } from "./mexc";
+import { parseKuCoin } from "./kucoin";
 import { extractBaseFromPair, normalizeSymbol } from "@/lib/symbolAliases";
 import type { ParseResult, NormalizedRow, ImportFile } from "./types";
 
@@ -13,6 +15,8 @@ const ADAPTERS = {
   bybit: parseBybit,
   okx: parseOKX,
   gate: parseGate,
+  mexc: parseMEXC,
+  kucoin: parseKuCoin,
 } as const;
 
 export type { ParseResult, NormalizedRow, ImportFile };

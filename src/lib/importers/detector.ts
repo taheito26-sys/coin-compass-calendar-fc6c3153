@@ -50,6 +50,30 @@ const SIGNATURES: { exchange: Exchange; exportType: string; required: string[]; 
     exportType: "Spot Trade History",
     required: ["Pair", "Side"],
   },
+  // MEXC Spot Trade History
+  {
+    exchange: "mexc",
+    exportType: "Spot Trade History",
+    required: ["Pairs", "Side"],
+  },
+  // MEXC alternate
+  {
+    exchange: "mexc",
+    exportType: "Spot Trade History",
+    required: ["Trading Pair", "Direction"],
+  },
+  // KuCoin Spot Trade History
+  {
+    exchange: "kucoin",
+    exportType: "Spot Trade History",
+    required: ["tradeCreatedAt", "symbol", "side"],
+  },
+  // KuCoin alternate
+  {
+    exchange: "kucoin",
+    exportType: "Spot Trade History",
+    required: ["Symbol", "Side", "Trade Time"],
+  },
 ];
 
 // Headers that indicate a NON-spot export (reject these)
@@ -94,5 +118,5 @@ export function detectExchange(headers: string[], firstRows: Record<string, stri
     }
   }
 
-  return { detected: false, exchange: null, exportType: null, rejected: true, rejectionReason: "No supported exchange format detected. Supported: Binance, Bybit, OKX, Gate.io spot trade history exports." };
+  return { detected: false, exchange: null, exportType: null, rejected: true, rejectionReason: "No supported exchange format detected. Supported: Binance, Bybit, OKX, Gate.io, MEXC, KuCoin spot trade history exports." };
 }
