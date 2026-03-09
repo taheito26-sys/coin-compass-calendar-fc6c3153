@@ -14,11 +14,9 @@ import LedgerPage from "@/pages/LedgerPage";
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
   assets: ["Portfolio", "Holdings, Lots, Alerts"],
-  charts: ["Charts &amp; Analytics", "Performance, Risk, Comparison"],
   ledger: ["Ledger", "Transactions, Import, Connect"],
-  calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
+  calendar: ["Calendar", "Daily P&L, Per Coin"],
   markets: ["Markets", "Live Prices, Watchlist"],
-  tools: ["Tools", "Calculator, QR, Simulator"],
   settings: ["Settings", "Theme, Data, Vault, Alerts"],
 };
 
