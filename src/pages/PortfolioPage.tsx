@@ -567,6 +567,6 @@ export default function PortfolioPage() {
       {drilldownSym && (
         <AssetDrilldown sym={drilldownSym} onClose={() => setDrilldownSym(null)} />
       )}
-    </>
+    </div>
   );
 }
