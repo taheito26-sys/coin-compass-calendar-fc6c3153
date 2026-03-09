@@ -167,41 +167,59 @@ export default function LedgerPage() {
 
     if (!a || !(q > 0)) { toast("Asset and quantity are required", "bad"); return; }
 
+    const saveLocal = () => {
+      setState((prev) => ({
+        ...prev,
+        txs: [{
+          id: `local_${uid()}`,
+          ts,
+          type: txType,
+          asset: a.toUpperCase(),
+          qty: q,
+          price: p,
+          total: q * p,
+          fee: f,
+          feeAsset: state.base || "USD",
+          accountId: "acc_main",
+          note,
+          lots: "",
+        }, ...prev.txs],
+      }));
+    };
+
     setSaving(true);
     const ts = Date.now();
 
     try {
       if (isWorkerConfigured()) {
-        const { assetId } = await resolveOrCreateAsset(a);
-        await createTransaction({
-          asset_id: assetId,
-          timestamp: new Date(ts).toISOString(),
-          type: txType,
-          qty: q,
-          unit_price: p,
-          fee_amount: f,
-          fee_currency: state.base || "USD",
-          venue: venue || undefined,
-          note: note || undefined,
-          source: "manual",
-        });
-        await rehydrateFromBackend();
-        toast("Transaction saved ✓", "good");
+        try {
+          const { assetId } = await resolveOrCreateAsset(a);
+          await createTransaction({
+            asset_id: assetId,
+            timestamp: new Date(ts).toISOString(),
+            type: txType,
+            qty: q,
+            unit_price: p,
+            fee_amount: f,
+            fee_currency: state.base || "USD",
+            venue: venue || undefined,
+            note: note || undefined,
+            source: "manual",
+          });
+          await rehydrateFromBackend();
+          toast("Transaction saved ✓", "good");
+        } catch (err: any) {
+          const msg = String(err?.message || "");
+          const isNetwork = msg.includes("Network error calling Worker API") || msg.includes("Failed to fetch");
+          if (isNetwork) {
+            saveLocal();
+            toast("Saved locally (Worker unreachable)", "warn");
+          } else {
+            throw err;
+          }
+        }
       } else {
-        setState((prev) => ({
-          ...prev,
-          txs: [{
-            id: `local_${uid()}`,
-            ts, type: txType, asset: a.toUpperCase(),
-            qty: q, price: p,
-            total: q * p,
-            fee: f,
-            feeAsset: state.base || "USD",
-            accountId: "acc_main",
-            note,
-            lots: "",
-          }, ...prev.txs],
-        }));
+        saveLocal();
         toast("Saved locally (backend not configured)", "bad");
       }
 
