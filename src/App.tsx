@@ -142,6 +142,7 @@ function AppShell({
             {page === "ledger" && <LedgerPage />}
             {page === "markets" && <MarketsPage />}
             {page === "connections" && <ConnectionsPage />}
+            {page === "reports" && <ReportsPage />}
             {page === "alerts" && <AlertsPage />}
             {page === "vault" && <VaultPage />}
             {page === "settings" && <SettingsPage />}
