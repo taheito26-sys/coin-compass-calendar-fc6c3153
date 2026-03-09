@@ -1163,7 +1163,6 @@ table { table-layout: auto; }
   .app{display:block;height:auto;min-height:100vh;} .sidebar{display:none;} .mobileNav{display:block;}
   .mainWrap{height:auto;max-height:none;overflow:visible;}
   .scroll{padding-bottom:calc(150px + env(safe-area-inset-bottom));overflow-x:hidden;overflow-y:auto;} .kpis{grid-template-columns:1fr 1fr;} .kpis-5{grid-template-columns:1fr 1fr;}
-  .chart-grid,.lt-grid{grid-template-columns:1fr 1fr;}
   .dashboard-charts-grid{grid-template-columns:1fr !important;}
   .ledger-top-grid{grid-template-columns:1fr !important;}
   .mainWrap,.topbar,.scroll{width:100%;max-width:100%;box-sizing:border-box;}
@@ -1175,21 +1174,23 @@ table { table-layout: auto; }
   .cal-stats{grid-template-columns:1fr 1fr;}
   .vault-top-grid{grid-template-columns:1fr !important;}
   .settings-row{grid-template-columns:1fr !important;}
-  .settings-prefs-grid{grid-template-columns:1fr 1fr !important;}
+  .settings-top-split{grid-template-columns:1fr !important;}
   .vault-card{flex-direction:column;align-items:flex-start;}
   .vault-card-actions{width:100%;justify-content:flex-start;}
-  .vault-stats{grid-template-columns:1fr 1fr;}
   .dash-bottom{grid-template-columns:1fr !important;}
   .tableWrap{overflow-x:auto;-webkit-overflow-scrolling:touch;max-width:100vw;}
   table{min-width:600px;}
-  /* Markets bubble canvas mobile height */
   .markets-canvas-wrap{height:350px !important;}
 }
 @media(max-width:700px){
   .dashboard-charts-grid{grid-template-columns:1fr !important;}
   .ledger-top-grid{grid-template-columns:1fr !important;}
 }
-@media(max-width:560px){ .kpis{grid-template-columns:1fr;} .kpis-5{grid-template-columns:1fr;} .lt-grid{grid-template-columns:1fr 1fr;} .theme-colors{grid-template-columns:repeat(3,1fr);} .cal-stats{grid-template-columns:1fr;} .vault-stats{grid-template-columns:1fr 1fr;} .settings-prefs-grid{grid-template-columns:1fr !important;} .settings-preview-kpis{grid-template-columns:1fr !important;} }
+@media(max-width:560px){
+  .kpis{grid-template-columns:1fr;}
+  .kpis-5{grid-template-columns:1fr;}
+  .cal-stats{grid-template-columns:1fr;}
+}
 
 @keyframes blink { 0%,100%{opacity:1} 50%{opacity:.3} }
 
