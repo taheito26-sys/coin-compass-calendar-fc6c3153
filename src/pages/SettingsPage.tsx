@@ -239,8 +239,6 @@ function ThemeButton({ themeId, layoutId, active, onClick }: {
 const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
 
-  const currentLayoutColors = useMemo(() => TC[state.layout] || TC.flux, [state.layout]);
-  const activeColors = currentLayoutColors[state.theme] || currentLayoutColors.t1;
   const activeLayout = LAYOUTS.find(l => l.id === state.layout);
 
   return (
