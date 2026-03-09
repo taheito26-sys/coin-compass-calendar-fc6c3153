@@ -18,12 +18,9 @@ import AlertsPage from "@/pages/AlertsPage";
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
   assets: ["Assets", "Positions, P&amp;L, Lots"],
-  analytics: ["Analytics", "Risk Metrics, Benchmarking, Correlations"],
   calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
   ledger: ["Ledger", "Journal, Manual Entry, CSV Import"],
   markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
-  
-  
   alerts: ["Alerts", "Price Alerts, Notifications"],
   vault: ["Vault", "Snapshots, Backups, Export"],
   settings: ["Settings", "Layout, Themes, Data"],
