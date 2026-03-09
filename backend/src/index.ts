@@ -9,6 +9,7 @@ import trackingRoute from "./routes/tracking";
 import importedFilesRoute from "./routes/imported-files";
 import preferencesRoute from "./routes/preferences";
 import importRoute from "./routes/import";
+import fearGreedRoute from "./routes/fear-greed";
 import { pollPrices } from "./cron/poll-prices";
 
 const app = new Hono<{ Bindings: Env }>();
