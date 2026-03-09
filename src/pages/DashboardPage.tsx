@@ -318,15 +318,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     switch (id) {
       case "kpis":
         return (
-          <div className="kpis kpis-5">
-            <div className="kpi-card">
-              <div className="kpi-head">
-                <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
-              </div>
-              <div className="kpi-lbl">PORTFOLIO VALUE</div>
-              <div className="kpi-val">{fmtTotal(totalMV)}</div>
-              <div className="kpi-sub">{assetCount} assets tracked</div>
-            </div>
+          <div className="kpis kpis-3">
             <div className="kpi-card">
               <div className="kpi-head"><span className={`kpi-badge`}>{totalPnl >= 0 ? "▲" : "▼"}</span></div>
               <div className="kpi-lbl">UNREALIZED P&amp;L</div>
@@ -342,11 +334,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
               <div className="kpi-lbl">TOTAL COST</div>
               <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
               <div className="kpi-sub">{txCount} transactions</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-lbl">METHOD</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>{method}</div>
-              <div className="kpi-sub">{assetCount > 0 ? "All priced OK" : "No positions"}</div>
             </div>
           </div>
         );
