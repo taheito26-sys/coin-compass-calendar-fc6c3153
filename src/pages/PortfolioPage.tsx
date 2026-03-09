@@ -301,7 +301,7 @@ export default function PortfolioPage() {
   // ── RENDER ───────────────────────────────────────────────────────────────
 
   return (
-    <>
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "80vh", padding: "0 2px" }}>
       {/* Summary KPIs */}
       <div className="kpis" style={{ marginBottom: 10 }}>
         <div className="kpi-card">
