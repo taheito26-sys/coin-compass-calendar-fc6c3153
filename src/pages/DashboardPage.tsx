@@ -1,7 +1,7 @@
-﻿import { useCrypto } from "@/lib/cryptoContext";
-import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { usePortfolio } from "@/hooks/usePortfolio";
-import { mergePositionSources } from "@/lib/mergePositions";
+import { useCrypto } from "@/lib/cryptoContext";
+import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
+import { useLivePrices } from "@/hooks/useLivePrices";
+import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
 import { useMemo } from "react";
 
 const COIN_COLORS = [
@@ -84,15 +84,16 @@ function DonutLegend({ slices }: { slices: DonutSlice[] }) {
 
 function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; pct: string; color: string }) {
   return (
-    <div style={{
-      background: color,
-      borderRadius: "var(--lt-radius-sm)",
-      padding: "12px 8px",
-      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-      gap: 2, minHeight: 80, transition: "transform 0.15s", cursor: "default",
-    }}
-    onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.04)")}
-    onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
+    <div
+      style={{
+        background: color,
+        borderRadius: "var(--lt-radius-sm)",
+        padding: "12px 8px",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+        gap: 2, minHeight: 80, transition: "transform 0.15s", cursor: "default",
+      }}
+      onMouseEnter={e => (e.currentTarget.style.transform = "scale(1.04)")}
+      onMouseLeave={e => (e.currentTarget.style.transform = "scale(1)")}
     >
       <div style={{ fontWeight: 900, fontSize: 14, color: "#fff" }}>{sym}</div>
       <div style={{ fontWeight: 800, fontSize: 16, color: "#fff" }}>{value}</div>
@@ -106,119 +107,125 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
 
-  // Merged local-first dataset
-  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
-  const hasWorkerData = workerReady && portfolio.positions.length > 0;
-
-  const rows = useMemo(() => {
-    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
-  }, [localD.rows, portfolio.positions, hasWorkerData]);
-
-  const hasLocalOnly = rows.some(r => r.source === "local");
-
-  // Compute totals from merged dataset
-  const totalMV = rows.reduce((s, r) => s + (r.mv ?? 0), 0);
-  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
-  const totalPnl = totalMV - totalCost;
-  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
-  const assetCount = rows.length;
-  const base = state.base || "USD";
+  const base   = state.base   || "USD";
   const method = state.method || "FIFO";
 
-  // Rows for table/charts â€” use whichever source actually has data
-  const rows = useMemo(() => {
-    if (useWorker) {
-      return portfolio.positions.map(p => ({
-        sym: p.symbol,
-        qty: p.qty,
-        cost: p.cost,
-        price: p.price,
-        mv: p.mv,
-        unreal: p.pnlAbs,
-      }));
-    }
-    return localD.rows;
-  }, [useWorker, portfolio.positions, localD.rows]);
+  // Positions from unified hook
+  const positions = portfolio.positions;
+
+  const totalMV     = portfolio.totalMV;
+  const totalCost   = portfolio.totalCost;
+  const totalPnl    = portfolio.totalPnl;
+  const totalPnlPct = portfolio.totalPnlPct;
+  const assetCount  = portfolio.positions.length;
+  const txCount     = state.txs.length;
+  const realizedPnl = useMemo(() => positions.reduce((s, p) => s + p.realizedPnl, 0), [positions]);
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
     if (totalMV <= 0) return [];
-    const topCoins = positions.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
-    const topTotal = topCoins.reduce((s, r) => s + (r.mv || 0), 0);
+    const topCoins = positions
+      .filter(r => {
+        const live = getPrice(r.sym);
+        const mv   = (live?.current_price ?? r.price ?? 0) * r.qty;
+        return mv > 0;
+      })
+      .slice(0, 12);
+
+    const topTotal = topCoins.reduce((s, r) => {
+      const live = getPrice(r.sym);
+      const mv   = (live?.current_price ?? r.price ?? 0) * r.qty;
+      return s + mv;
+    }, 0);
+
     const rest = totalMV - topTotal;
-    const slices = topCoins.map((r, i) => ({
-      label: r.sym,
-      value: r.mv || 0,
-      pct: ((r.mv || 0) / totalMV) * 100,
-      color: COIN_COLORS[i % COIN_COLORS.length],
-    }));
+    const slices = topCoins.map((r, i) => {
+      const live = getPrice(r.sym);
+      const mv   = (live?.current_price ?? r.price ?? 0) * r.qty;
+      return {
+        label: r.sym,
+        value: mv,
+        pct: (mv / totalMV) * 100,
+        color: COIN_COLORS[i % COIN_COLORS.length],
+      };
+    });
+
     if (rest > 0.01) {
       slices.push({ label: "Other", value: rest, pct: (rest / totalMV) * 100, color: "var(--muted2)" });
     }
     return slices;
-  }, [positions, totalMV]);
+  }, [positions, totalMV, getPrice]);
 
   // Heatmap
   const heatmapItems = useMemo(() => {
     return positions
-      .filter(r => r.mv !== null)
       .map(r => {
-        const pnlPct = r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0;
-        const isPositive = (r.unreal || 0) >= 0;
-        const intensity = Math.min(Math.abs(pnlPct) / 50, 1);
+        const live   = getPrice(r.sym);
+        const liveP  = live?.current_price ?? r.price ?? 0;
+        const mv     = liveP * r.qty;
+        const unreal = mv - r.cost;
+        const pnlPct = r.cost > 0 ? (unreal / r.cost) * 100 : 0;
+        const isPositive = unreal >= 0;
+        const intensity  = Math.min(Math.abs(pnlPct) / 50, 1);
         const bg = isPositive
           ? `rgba(22,163,74,${0.3 + intensity * 0.5})`
           : `rgba(220,38,38,${0.3 + intensity * 0.5})`;
-        return {
-          sym: r.sym,
-          value: fmtTotal(r.mv || 0),
-          pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%",
-          color: bg,
-          mv: r.mv || 0,
-        };
+        return { sym: r.sym, value: fmtTotal(mv), pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%", color: bg, mv };
       })
+      .filter(x => x.mv > 0)
       .sort((a, b) => b.mv - a.mv)
       .slice(0, 9);
-  }, [positions, base]);
+  }, [positions, getPrice]);
 
-  // Watchlist with live prices
+  // Watchlist
   const watchlistData = useMemo(() => {
     return state.watch.map(sym => {
       const live = getPrice(sym);
       return {
         sym,
-        price: live?.current_price ?? null,
+        price:     live?.current_price ?? null,
         change24h: live?.price_change_percentage_24h_in_currency ?? null,
-        change7d: live?.price_change_percentage_7d_in_currency ?? null,
+        change7d:  live?.price_change_percentage_7d_in_currency  ?? null,
       };
     });
   }, [state.watch, getPrice]);
 
-  // Recent activity from transactions
+  // Recent activity
   const recentTxs = useMemo(() => {
-    return state.txs
-      .slice()
-      .sort((a, b) => b.ts - a.ts)
-      .slice(0, 8);
+    return [...state.txs].sort((a, b) => b.ts - a.ts).slice(0, 8);
   }, [state.txs]);
 
   // Top gainers/losers
   const { topGainers, topLosers } = useMemo(() => {
     const withPnl = positions
-      .filter(r => r.unreal !== null && r.cost > 0)
-      .map(r => ({
-        sym: r.sym,
-        pnlPct: r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0,
-        pnlAbs: r.unreal || 0,
-      }));
+      .map(r => {
+        const live   = getPrice(r.sym);
+        const liveP  = live?.current_price ?? r.price ?? 0;
+        const unreal = liveP * r.qty - r.cost;
+        const pnlPct = r.cost > 0 ? (unreal / r.cost) * 100 : 0;
+        return { sym: r.sym, pnlPct, pnlAbs: unreal };
+      })
+      .filter(r => r.pnlAbs !== 0);
+
     const sorted = [...withPnl].sort((a, b) => b.pnlPct - a.pnlPct);
     return {
       topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3),
-      topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
+      topLosers:  sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
     };
-  }, [positions]);
+  }, [positions, getPrice]);
 
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
+
+  // Derived per-position display rows for table
+  const displayPositions = useMemo(() => {
+    return positions.map(r => {
+      const live  = getPrice(r.sym);
+      const price = live?.current_price ?? r.price ?? null;
+      const mv    = price !== null ? price * r.qty : null;
+      const unreal = mv !== null ? mv - r.cost : null;
+      return { ...r, price, mv, unreal, avg: r.avg };
+    });
+  }, [positions, getPrice]);
 
   return (
     <>
@@ -238,9 +245,9 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "Ã¢â€“Â²" : "Ã¢â€“Â¼"}</span>
+            <span className={`kpi-badge`}>{totalPnl >= 0 ? "▲" : "▼"}</span>
           </div>
-          <div className="kpi-lbl">UNREALIZED P&L</div>
+          <div className="kpi-lbl">UNREALIZED P&amp;L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
             {(totalPnl >= 0 ? "+" : "") + fmtTotal(totalPnl)}
           </div>
@@ -249,7 +256,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         </div>
         <div className="kpi-card">
-          <div className="kpi-lbl">REALIZED P&L</div>
+          <div className="kpi-lbl">REALIZED P&amp;L</div>
           <div className={`kpi-val ${realizedPnl >= 0 ? "good" : "bad"}`}>
             {(realizedPnl >= 0 ? "+" : "") + fmtTotal(realizedPnl)}
           </div>
@@ -267,7 +274,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
       </div>
 
-      {/* Charts Row: Coin Allocation + Heatmap */}
+      {/* Charts Row */}
       <div className="dashboard-charts-grid">
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
@@ -276,8 +283,8 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
               <>
                 <DonutChart
                   slices={coinSlices}
-                  centerLabel={topCoin?.label || "-"}
-                  centerValue={fmtTotal(topCoin?.value || 0)}
+                  centerLabel={topCoin?.label ?? "-"}
+                  centerValue={fmtTotal(topCoin?.value ?? 0)}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
                 />
@@ -301,24 +308,21 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                 ))}
               </div>
             ) : (
-              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
-                No positions to display.
-              </div>
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>No positions to display.</div>
             )}
           </div>
         </div>
       </div>
 
-      {/* Gainers/Losers + Watchlist Row */}
+      {/* Gainers/Losers + Watchlist */}
       <div className="dashboard-charts-grid">
-        {/* Top Gainers/Losers */}
         <div className="panel">
           <div className="panel-head"><h2>Top Movers</h2></div>
           <div className="panel-body" style={{ padding: 0 }}>
             {(topGainers.length > 0 || topLosers.length > 0) ? (
               <table>
                 <thead>
-                  <tr><th>Asset</th><th style={{ textAlign: "right" }}>P&L %</th><th style={{ textAlign: "right" }}>P&L</th></tr>
+                  <tr><th>Asset</th><th style={{ textAlign: "right" }}>P&amp;L %</th><th style={{ textAlign: "right" }}>P&amp;L</th></tr>
                 </thead>
                 <tbody>
                   {topGainers.map(g => (
@@ -343,7 +347,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         </div>
 
-        {/* Watchlist */}
         <div className="panel">
           <div className="panel-head">
             <h2>Watchlist</h2>
@@ -353,7 +356,12 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             {watchlistData.length > 0 ? (
               <table>
                 <thead>
-                  <tr><th>Coin</th><th style={{ textAlign: "right" }}>Price</th><th style={{ textAlign: "right" }}>24h</th><th style={{ textAlign: "right" }}>7d</th></tr>
+                  <tr>
+                    <th>Coin</th>
+                    <th style={{ textAlign: "right" }}>Price</th>
+                    <th style={{ textAlign: "right" }}>24h</th>
+                    <th style={{ textAlign: "right" }}>7d</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {watchlistData.map(w => (
@@ -387,14 +395,13 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
       </div>
 
-      {/* Bottom Row: Top Positions + Recent Activity */}
+      {/* Bottom: Top Positions + Recent Activity */}
       <div className="dash-bottom" style={{ marginTop: 10 }}>
-        {/* Top Positions Table */}
         <div className="panel">
           <div className="panel-head">
             <h2>Top Positions</h2>
             <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
-              <span className="pill">{positions.length} assets</span>
+              <span className="pill">{displayPositions.length} assets</span>
               {onNav && <button className="btn tiny secondary" onClick={() => onNav("assets")}>View All →</button>}
             </div>
           </div>
@@ -402,18 +409,25 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             <div className="tableWrap">
               <table>
                 <thead>
-                  <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th></tr>
+                  <tr>
+                    <th>Asset</th>
+                    <th>Qty</th>
+                    <th>Avg Cost</th>
+                    <th>Price</th>
+                    <th>MV</th>
+                    <th>Unreal P&amp;L</th>
+                  </tr>
                 </thead>
                 <tbody>
-                  {positions.length ? positions.slice(0, 10).map(r => (
+                  {displayPositions.length > 0 ? displayPositions.slice(0, 10).map(r => (
                     <tr key={r.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(r.avg)}</td>
-                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price)}</td>
-                      <td className="mono">{r.mv === null ? "-" : fmtTotal(r.mv)}</td>
+                      <td className="mono">{r.avg > 0 ? fmtPx(r.avg) : "—"}</td>
+                      <td className="mono">{r.price === null ? "—" : fmtPx(r.price)}</td>
+                      <td className="mono">{r.mv === null ? "—" : fmtTotal(r.mv)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtTotal(r.unreal)}
+                        {r.unreal === null ? "—" : (r.unreal >= 0 ? "+" : "") + fmtTotal(r.unreal)}
                       </td>
                     </tr>
                   )) : (
@@ -425,7 +439,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         </div>
 
-        {/* Recent Activity */}
         <div className="panel">
           <div className="panel-head">
             <h2>Recent Activity</h2>
@@ -437,8 +450,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                 {recentTxs.map(tx => (
                   <div key={tx.id} style={{
                     display: "flex", alignItems: "center", gap: 8,
-                    padding: "8px 12px", borderBottom: "1px solid var(--line)",
-                    fontSize: 11,
+                    padding: "8px 12px", borderBottom: "1px solid var(--line)", fontSize: 11,
                   }}>
                     <span className={`pill ${tx.type === "buy" ? "good" : tx.type === "sell" ? "bad" : ""}`} style={{ fontSize: 9, minWidth: 36, textAlign: "center" }}>
                       {tx.type.toUpperCase()}
@@ -452,9 +464,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                 ))}
               </div>
             ) : (
-              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
-                No recent activity.
-              </div>
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>No recent activity.</div>
             )}
           </div>
         </div>
@@ -462,8 +472,3 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     </>
   );
 }
-
-
-
-
-
