@@ -257,9 +257,9 @@ function ensureMarketPolling() {
 export function useLivePrices() {
   const { state } = useCrypto();
 
-  // CoinGecko market data (for Markets page)
-  const [cgCoins, setCgCoins] = useState<LiveCoin[]>(_cgCache);
-  const [cgLoading, setCgLoading] = useState(_cgCache.length === 0);
+  // Market data (multi-source with fallback)
+  const [marketCoins, setMarketCoins] = useState<LiveCoin[]>(_marketCache);
+  const [marketLoading, setMarketLoading] = useState(_marketCache.length === 0);
 
   // Binance spot prices (for portfolio pricing)
   const [spotPrices, setSpotPrices] = useState<Record<string, SpotPrice>>({});
@@ -280,16 +280,16 @@ export function useLivePrices() {
     return [...set];
   }, [state.txs, state.watch]);
 
-  // 1. CoinGecko polling (unchanged — for Markets page)
+  // 1. Multi-source market data polling
   useEffect(() => {
     const update = () => {
-      setCgCoins(_cgCache);
-      setCgLoading(false);
+      setMarketCoins(_marketCache);
+      setMarketLoading(false);
     };
-    _cgListeners.add(update);
-    ensureCgPolling();
-    if (_cgCache.length > 0) { setCgCoins(_cgCache); setCgLoading(false); }
-    return () => { _cgListeners.delete(update); };
+    _marketListeners.add(update);
+    ensureMarketPolling();
+    if (_marketCache.length > 0) { setMarketCoins(_marketCache); setMarketLoading(false); }
+    return () => { _marketListeners.delete(update); };
   }, []);
 
   // 2. Binance REST bootstrap when asset list changes
