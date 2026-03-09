@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { importCSV, hashFile } from "@/lib/importers";
-import type { ParseResult } from "@/lib/importers";
+import { importCSV, hashFile, applyLookup } from "@/lib/importers";
+import type { ParseResult, ImportRowStatus, Exchange } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import {
   createTransaction,
@@ -12,8 +12,11 @@ import {
   createImportedFile,
   fetchImportedFiles,
   isWorkerConfigured,
+  lookupImportRows,
+  recordImportBatch,
 } from "@/lib/api";
 import { getAssetCatalog, resolveAssetId } from "@/lib/assetResolver";
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
