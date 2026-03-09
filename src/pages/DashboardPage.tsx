@@ -107,6 +107,7 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
 }
 
 export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
+  const [returnPeriod, setReturnPeriod] = useState<string>("max");
   const { state } = useCrypto();
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
