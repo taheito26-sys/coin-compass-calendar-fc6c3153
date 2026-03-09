@@ -1,5 +1,8 @@
-// Crypto state management - localStorage + helpers
+// Crypto state management
+// localStorage stores ONLY UI preferences. Business data comes from backend.
+
 const SK = "crypto_tracker_v1";
+const MIGRATION_KEY = "crypto_tracker_migrated";
 
 export interface CryptoTx {
   id: string; ts: number; type: string; asset: string; qty: number;
@@ -66,6 +69,9 @@ export interface CryptoState {
   // UI
   layout: string;
   theme: string;
+  // Sync status
+  syncStatus?: "idle" | "loading" | "synced" | "error";
+  syncError?: string;
 }
 
 export const CRYPTO_ID_MAP: Record<string, string> = {
@@ -91,46 +97,112 @@ export function defaultState(): CryptoState {
     apiUrl: "", market: { trending: [], top: [] },
     holdings: [], calendarEntries: [], importedFiles: [],
     layout: "flux", theme: "t1",
+    syncStatus: "idle",
   };
 }
 
-function sanitizeLoadedState(parsed: any): CryptoState {
-  const base = defaultState();
-  if (!parsed || typeof parsed !== "object") return base;
+/** UI-only keys that are safe to persist in localStorage */
+const UI_KEYS = new Set([
+  "base", "method", "watch", "layout", "theme", "alerts", "connections", "accounts",
+]);
 
-  return {
-    ...base,
-    ...parsed,
-    base: VALID_BASES.has(String(parsed.base || "").toUpperCase()) ? String(parsed.base).toUpperCase() : base.base,
-    method: VALID_METHODS.has(String(parsed.method || "").toUpperCase()) ? String(parsed.method).toUpperCase() : base.method,
-    txs: Array.isArray(parsed.txs) ? parsed.txs : base.txs,
-    lots: Array.isArray(parsed.lots) ? parsed.lots : base.lots,
-    watch: Array.isArray(parsed.watch) && parsed.watch.length
-      ? parsed.watch.filter((v: any) => typeof v === "string" && v.trim())
-      : base.watch,
-    alerts: Array.isArray(parsed.alerts) ? parsed.alerts : base.alerts,
-    connections: Array.isArray(parsed.connections) ? parsed.connections : base.connections,
-    accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : base.accounts,
-    holdings: Array.isArray(parsed.holdings) ? parsed.holdings : base.holdings,
-    calendarEntries: Array.isArray(parsed.calendarEntries) ? parsed.calendarEntries : base.calendarEntries,
-    importedFiles: Array.isArray(parsed.importedFiles) ? parsed.importedFiles : base.importedFiles,
-    prices: parsed.prices && typeof parsed.prices === "object" ? parsed.prices : base.prices,
-    pricesTs: Number.isFinite(Number(parsed.pricesTs)) ? Number(parsed.pricesTs) : base.pricesTs,
-    layout: VALID_LAYOUTS.has(String(parsed.layout || "")) ? String(parsed.layout) : base.layout,
-    theme: VALID_THEMES.has(String(parsed.theme || "")) ? String(parsed.theme) : base.theme,
-  };
-}
-
+/**
+ * Load state: UI prefs from localStorage + empty business data.
+ * Business data (txs, importedFiles) will be hydrated from backend.
+ */
 export function loadState(): CryptoState {
+  const base = defaultState();
   try {
     const raw = localStorage.getItem(SK);
-    if (raw) return sanitizeLoadedState(JSON.parse(raw));
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        return {
+          ...base,
+          base: VALID_BASES.has(String(parsed.base || "").toUpperCase()) ? String(parsed.base).toUpperCase() : base.base,
+          method: VALID_METHODS.has(String(parsed.method || "").toUpperCase()) ? String(parsed.method).toUpperCase() : base.method,
+          watch: Array.isArray(parsed.watch) && parsed.watch.length
+            ? parsed.watch.filter((v: any) => typeof v === "string" && v.trim())
+            : base.watch,
+          alerts: Array.isArray(parsed.alerts) ? parsed.alerts : base.alerts,
+          connections: Array.isArray(parsed.connections) ? parsed.connections : base.connections,
+          accounts: Array.isArray(parsed.accounts) && parsed.accounts.length ? parsed.accounts : base.accounts,
+          layout: VALID_LAYOUTS.has(String(parsed.layout || "")) ? String(parsed.layout) : base.layout,
+          theme: VALID_THEMES.has(String(parsed.theme || "")) ? String(parsed.theme) : base.theme,
+          // Business data starts empty — hydrated from backend
+          txs: [],
+          lots: [],
+          holdings: [],
+          calendarEntries: [],
+          importedFiles: [],
+          prices: {},
+          pricesTs: 0,
+        };
+      }
+    }
   } catch {}
-  return defaultState();
+  return base;
 }
 
+/**
+ * Save ONLY UI preferences to localStorage.
+ * Business data (txs, lots, holdings, importedFiles) is NOT persisted locally.
+ */
 export function saveState(s: CryptoState) {
-  try { localStorage.setItem(SK, JSON.stringify(s)); } catch {}
+  try {
+    const uiOnly: Record<string, any> = {};
+    for (const key of UI_KEYS) {
+      uiOnly[key] = (s as any)[key];
+    }
+    localStorage.setItem(SK, JSON.stringify(uiOnly));
+  } catch {}
+}
+
+/**
+ * Check if localStorage has legacy business data that needs migration.
+ */
+export function hasLegacyData(): { txs: CryptoTx[]; importedFiles: ImportedFile[] } | null {
+  if (localStorage.getItem(MIGRATION_KEY)) return null; // already migrated
+
+  try {
+    const raw = localStorage.getItem(SK);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    const txs = Array.isArray(parsed.txs) ? parsed.txs : [];
+    const importedFiles = Array.isArray(parsed.importedFiles) ? parsed.importedFiles : [];
+
+    if (txs.length === 0 && importedFiles.length === 0) return null;
+
+    return { txs, importedFiles };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Mark migration as complete and clear legacy business data from localStorage.
+ */
+export function markMigrationComplete() {
+  localStorage.setItem(MIGRATION_KEY, String(Date.now()));
+  try {
+    const raw = localStorage.getItem(SK);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed === "object") {
+        // Remove business data, keep UI prefs
+        delete parsed.txs;
+        delete parsed.lots;
+        delete parsed.holdings;
+        delete parsed.calendarEntries;
+        delete parsed.importedFiles;
+        delete parsed.prices;
+        delete parsed.pricesTs;
+        localStorage.setItem(SK, JSON.stringify(parsed));
+      }
+    }
+  } catch {}
 }
 
 export function uid(): string {
@@ -142,9 +214,14 @@ export function cnum(v: any, d = 0): number {
   return Number.isFinite(n) ? n : d;
 }
 
-export function fmtFiat(n: number, cur?: string): string {
+export function fmtFiat(n: number, _cur?: string): string {
   if (!Number.isFinite(n)) return "—";
-  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + " " + (cur || "USD");
+  return n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+export function fmtTotal(n: number): string {
+  if (!Number.isFinite(n)) return "—";
+  return n.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
 }
 
 export function fmtQty(n: number): string {
@@ -204,8 +281,7 @@ export function calcDCA(holdings: UserHolding[], asset: string) {
   return { totalQty, totalCost, avgPrice, entries: filtered.length };
 }
 
-// Refresh prices - no-op now since useLivePrices handles polling.
-// Kept for API compatibility. Returns state unchanged.
+// Refresh prices - no-op since useLivePrices handles polling.
 export async function refreshPrices(state: CryptoState, _force = false): Promise<CryptoState> {
   return { ...state, pricesTs: Date.now() };
 }

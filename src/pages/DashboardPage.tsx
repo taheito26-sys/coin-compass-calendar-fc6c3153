@@ -101,10 +101,10 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
   );
 }
 
-export default function DashboardPage() {
-  const portfolio = usePortfolio();
-  const { state, refresh } = useCrypto();
-  const localD = cryptoDerived(state);
+export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
+  const { state } = useCrypto();
+  const portfolio = useUnifiedPortfolio();
+  const { getPrice } = useLivePrices();
 
   // Merged local-first dataset
   const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
@@ -143,7 +143,7 @@ export default function DashboardPage() {
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
     if (totalMV <= 0) return [];
-    const topCoins = rows.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
+    const topCoins = positions.filter(r => r.mv !== null && (r.mv ?? 0) > 0).slice(0, 12);
     const topTotal = topCoins.reduce((s, r) => s + (r.mv || 0), 0);
     const rest = totalMV - topTotal;
     const slices = topCoins.map((r, i) => ({
@@ -156,11 +156,11 @@ export default function DashboardPage() {
       slices.push({ label: "Other", value: rest, pct: (rest / totalMV) * 100, color: "var(--muted2)" });
     }
     return slices;
-  }, [rows, totalMV]);
+  }, [positions, totalMV]);
 
   // Heatmap
   const heatmapItems = useMemo(() => {
-    return rows
+    return positions
       .filter(r => r.mv !== null)
       .map(r => {
         const pnlPct = r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0;
@@ -171,7 +171,7 @@ export default function DashboardPage() {
           : `rgba(220,38,38,${0.3 + intensity * 0.5})`;
         return {
           sym: r.sym,
-          value: fmtFiat(r.mv || 0, base).split(" ")[0],
+          value: fmtTotal(r.mv || 0),
           pct: (pnlPct >= 0 ? "+" : "") + pnlPct.toFixed(1) + "%",
           color: bg,
           mv: r.mv || 0,
@@ -179,62 +179,61 @@ export default function DashboardPage() {
       })
       .sort((a, b) => b.mv - a.mv)
       .slice(0, 9);
-  }, [rows, base]);
+  }, [positions, base]);
+
+  // Watchlist with live prices
+  const watchlistData = useMemo(() => {
+    return state.watch.map(sym => {
+      const live = getPrice(sym);
+      return {
+        sym,
+        price: live?.current_price ?? null,
+        change24h: live?.price_change_percentage_24h_in_currency ?? null,
+        change7d: live?.price_change_percentage_7d_in_currency ?? null,
+      };
+    });
+  }, [state.watch, getPrice]);
+
+  // Recent activity from transactions
+  const recentTxs = useMemo(() => {
+    return state.txs
+      .slice()
+      .sort((a, b) => b.ts - a.ts)
+      .slice(0, 8);
+  }, [state.txs]);
+
+  // Top gainers/losers
+  const { topGainers, topLosers } = useMemo(() => {
+    const withPnl = positions
+      .filter(r => r.unreal !== null && r.cost > 0)
+      .map(r => ({
+        sym: r.sym,
+        pnlPct: r.cost > 0 ? ((r.unreal || 0) / r.cost) * 100 : 0,
+        pnlAbs: r.unreal || 0,
+      }));
+    const sorted = [...withPnl].sort((a, b) => b.pnlPct - a.pnlPct);
+    return {
+      topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3),
+      topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
+    };
+  }, [positions]);
 
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
 
-  const handleRefresh = async () => {
-    await Promise.all([portfolio.refresh(), refresh(true)]);
-  };
-
   return (
     <>
-      {/* Source indicator */}
-      {portfolio.loading && (
-        <div className="pill" style={{ marginBottom: 8 }}>Loading data...</div>
-      )}
-      {!portfolio.loading && !portfolio.authenticated && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body muted" style={{ fontSize: 12 }}>Not signed in, showing local data only. Sign in to sync your portfolio.</div>
-        </div>
-      )}
-      {hasLocalOnly && portfolio.authenticated && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body" style={{ fontSize: 12, color: "var(--warn)" }}>
-            Some assets are local only — they'll sync once the backend maps them.
-          </div>
-        </div>
-      )}
-      {portfolio.error && (
-        <div className="panel" style={{ marginBottom: 8 }}>
-          <div className="panel-body" style={{ fontSize: 12, color: "var(--bad)" }}>
-            API error: {portfolio.error}
-          </div>
-        </div>
-      )}
-
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
-        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>Refresh</button>
-        <span className="pill">Prices: {priceAge} ago</span>
         <span className="pill">{base}</span>
-        {portfolio.workerOnline && (
-          <span className="pill" style={{
-            background: "hsl(142 76% 36% / 0.15)",
-            color: "hsl(142 76% 36%)",
-            fontWeight: 700,
-            fontSize: 10,
-          }}>Worker Online</span>
-        )}
       </div>
 
       {/* KPI Cards */}
-      <div className="kpis">
+      <div className="kpis kpis-5">
         <div className="kpi-card">
           <div className="kpi-head">
             <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
           </div>
           <div className="kpi-lbl">PORTFOLIO VALUE</div>
-          <div className="kpi-val">{fmtFiat(totalMV, base)}</div>
+          <div className="kpi-val">{fmtTotal(totalMV)}</div>
           <div className="kpi-sub">{assetCount} assets tracked</div>
         </div>
         <div className="kpi-card">
@@ -243,11 +242,18 @@ export default function DashboardPage() {
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
-            {(totalPnl >= 0 ? "+" : "") + fmtFiat(totalPnl, base)}
+            {(totalPnl >= 0 ? "+" : "") + fmtTotal(totalPnl)}
           </div>
           <div className="kpi-sub">
             {totalCost > 0 ? totalPnlPct.toFixed(2) + "%" : "-"}
           </div>
+        </div>
+        <div className="kpi-card">
+          <div className="kpi-lbl">REALIZED P&L</div>
+          <div className={`kpi-val ${realizedPnl >= 0 ? "good" : "bad"}`}>
+            {(realizedPnl >= 0 ? "+" : "") + fmtTotal(realizedPnl)}
+          </div>
+          <div className="kpi-sub">From closed trades</div>
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
@@ -261,8 +267,8 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Coin Allocation + Heatmap */}
-      <div className="dashboard-charts-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginTop: 10 }}>
+      {/* Charts Row: Coin Allocation + Heatmap */}
+      <div className="dashboard-charts-grid">
         <div className="panel">
           <div className="panel-head"><h2>Coin Allocation</h2></div>
           <div className="panel-body" style={{ display: "flex", gap: 24, alignItems: "center", flexWrap: "wrap" }}>
@@ -271,7 +277,7 @@ export default function DashboardPage() {
                 <DonutChart
                   slices={coinSlices}
                   centerLabel={topCoin?.label || "-"}
-                  centerValue={fmtFiat(topCoin?.value || 0, base).split(" ")[0]}
+                  centerValue={fmtTotal(topCoin?.value || 0)}
                   centerSub={topCoin ? topCoin.pct.toFixed(1) + "%" : ""}
                   size={180}
                 />
@@ -291,7 +297,7 @@ export default function DashboardPage() {
             {heatmapItems.length > 0 ? (
               <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 6 }}>
                 {heatmapItems.map((item, i) => (
-                  <HeatmapBlock key={i} sym={item.sym} value={"$" + item.value} pct={item.pct} color={item.color} />
+                  <HeatmapBlock key={i} sym={item.sym} value={item.value} pct={item.pct} color={item.color} />
                 ))}
               </div>
             ) : (
@@ -303,40 +309,153 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Top Positions Table */}
-      <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head"><h2>Top Positions</h2><span className="pill">{rows.length} assets</span></div>
-        <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
-          <div className="tableWrap">
-            <table>
-              <thead>
-                <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th><th>Source</th></tr>
-              </thead>
-              <tbody>
-                {rows.length ? rows.map(r => {
-                  const avg = r.qty > 0 ? r.cost / r.qty : 0;
-                  return (
+      {/* Gainers/Losers + Watchlist Row */}
+      <div className="dashboard-charts-grid">
+        {/* Top Gainers/Losers */}
+        <div className="panel">
+          <div className="panel-head"><h2>Top Movers</h2></div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {(topGainers.length > 0 || topLosers.length > 0) ? (
+              <table>
+                <thead>
+                  <tr><th>Asset</th><th style={{ textAlign: "right" }}>P&L %</th><th style={{ textAlign: "right" }}>P&L</th></tr>
+                </thead>
+                <tbody>
+                  {topGainers.map(g => (
+                    <tr key={g.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{g.sym}</td>
+                      <td className="mono good" style={{ textAlign: "right", fontWeight: 700 }}>▲ {g.pnlPct.toFixed(2)}%</td>
+                      <td className="mono good" style={{ textAlign: "right" }}>+{fmtTotal(g.pnlAbs)}</td>
+                    </tr>
+                  ))}
+                  {topLosers.map(l => (
+                    <tr key={l.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{l.sym}</td>
+                      <td className="mono bad" style={{ textAlign: "right", fontWeight: 700 }}>▼ {Math.abs(l.pnlPct).toFixed(2)}%</td>
+                      <td className="mono bad" style={{ textAlign: "right" }}>{fmtTotal(l.pnlAbs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>No movers yet.</div>
+            )}
+          </div>
+        </div>
+
+        {/* Watchlist */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Watchlist</h2>
+            <span className="pill">{watchlistData.length} coins</span>
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {watchlistData.length > 0 ? (
+              <table>
+                <thead>
+                  <tr><th>Coin</th><th style={{ textAlign: "right" }}>Price</th><th style={{ textAlign: "right" }}>24h</th><th style={{ textAlign: "right" }}>7d</th></tr>
+                </thead>
+                <tbody>
+                  {watchlistData.map(w => (
+                    <tr key={w.sym}>
+                      <td className="mono" style={{ fontWeight: 900 }}>{w.sym}</td>
+                      <td className="mono" style={{ textAlign: "right" }}>{w.price !== null ? fmtPx(w.price) : "—"}</td>
+                      <td style={{ textAlign: "right" }}>
+                        {w.change24h !== null ? (
+                          <span className={`mono ${w.change24h >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                            {w.change24h >= 0 ? "▲" : "▼"} {Math.abs(w.change24h).toFixed(2)}%
+                          </span>
+                        ) : "—"}
+                      </td>
+                      <td style={{ textAlign: "right" }}>
+                        {w.change7d !== null ? (
+                          <span className={`mono ${w.change7d >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                            {w.change7d >= 0 ? "▲" : "▼"} {Math.abs(w.change7d).toFixed(2)}%
+                          </span>
+                        ) : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
+                Add coins to your watchlist in Markets.
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Bottom Row: Top Positions + Recent Activity */}
+      <div className="dash-bottom" style={{ marginTop: 10 }}>
+        {/* Top Positions Table */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Top Positions</h2>
+            <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+              <span className="pill">{positions.length} assets</span>
+              {onNav && <button className="btn tiny secondary" onClick={() => onNav("assets")}>View All →</button>}
+            </div>
+          </div>
+          <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
+            <div className="tableWrap">
+              <table>
+                <thead>
+                  <tr><th>Asset</th><th>Qty</th><th>Avg Cost</th><th>Price</th><th>MV</th><th>Unreal P&L</th></tr>
+                </thead>
+                <tbody>
+                  {positions.length ? positions.slice(0, 10).map(r => (
                     <tr key={r.sym}>
                       <td className="mono" style={{ fontWeight: 900 }}>{r.sym}</td>
                       <td className="mono">{fmtQty(r.qty)}</td>
-                      <td className="mono">{fmtPx(avg)} {base}</td>
-                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price) + " " + base}</td>
-                      <td className="mono">{r.mv === null ? "-" : fmtFiat(r.mv, base)}</td>
+                      <td className="mono">{fmtPx(r.avg)}</td>
+                      <td className="mono">{r.price === null ? "-" : fmtPx(r.price)}</td>
+                      <td className="mono">{r.mv === null ? "-" : fmtTotal(r.mv)}</td>
                       <td className={`mono ${r.unreal === null ? "" : r.unreal >= 0 ? "good" : "bad"}`} style={{ fontWeight: 900 }}>
-                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtFiat(r.unreal, base)}
-                      </td>
-                      <td>
-                        <span className="pill" style={{ fontSize: 9 }}>
-                          {r.source === "local" ? "Local" : r.source === "worker" ? "Synced" : "Merged"}
-                        </span>
+                        {r.unreal === null ? "-" : (r.unreal >= 0 ? "+" : "") + fmtTotal(r.unreal)}
                       </td>
                     </tr>
-                  );
-                }) : (
-                  <tr><td colSpan={7} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
-                )}
-              </tbody>
-            </table>
+                  )) : (
+                    <tr><td colSpan={6} className="muted">No positions yet. Add transactions in the Ledger.</td></tr>
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        {/* Recent Activity */}
+        <div className="panel">
+          <div className="panel-head">
+            <h2>Recent Activity</h2>
+            {onNav && <button className="btn tiny secondary" onClick={() => onNav("ledger")}>Ledger →</button>}
+          </div>
+          <div className="panel-body" style={{ padding: 0 }}>
+            {recentTxs.length > 0 ? (
+              <div style={{ display: "flex", flexDirection: "column" }}>
+                {recentTxs.map(tx => (
+                  <div key={tx.id} style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    padding: "8px 12px", borderBottom: "1px solid var(--line)",
+                    fontSize: 11,
+                  }}>
+                    <span className={`pill ${tx.type === "buy" ? "good" : tx.type === "sell" ? "bad" : ""}`} style={{ fontSize: 9, minWidth: 36, textAlign: "center" }}>
+                      {tx.type.toUpperCase()}
+                    </span>
+                    <span className="mono" style={{ fontWeight: 900, minWidth: 40 }}>{tx.asset}</span>
+                    <span className="mono muted" style={{ flex: 1 }}>{fmtQty(tx.qty)}</span>
+                    <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
+                      {new Date(tx.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="muted" style={{ padding: 20, textAlign: "center" }}>
+                No recent activity.
+              </div>
+            )}
           </div>
         </div>
       </div>

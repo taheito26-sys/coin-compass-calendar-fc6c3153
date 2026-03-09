@@ -15,10 +15,10 @@ const TIME_RANGES = [
 ];
 
 function formatCompact(n: number): string {
-  if (n >= 1e12) return "$" + (n / 1e12).toFixed(1) + "T";
-  if (n >= 1e9) return "$" + (n / 1e9).toFixed(0) + "B";
-  if (n >= 1e6) return "$" + (n / 1e6).toFixed(0) + "M";
-  return "$" + n.toLocaleString();
+  if (n >= 1e12) return (n / 1e12).toFixed(1) + "T";
+  if (n >= 1e9) return (n / 1e9).toFixed(0) + "B";
+  if (n >= 1e6) return (n / 1e6).toFixed(0) + "M";
+  return n.toLocaleString();
 }
 
 function getChange(coin: LiveCoin, timeRange: string) {
@@ -245,7 +245,7 @@ export default function MarketsPage() {
 
       {!loading && view === "bubbles" && (
         <div className="panel" style={{ overflow: "hidden" }}>
-          <div ref={containerRef} style={{ width: "100%", height: 500, position: "relative", background: "var(--bg)" }}>
+          <div ref={containerRef} className="markets-canvas-wrap" style={{ width: "100%", height: 500, position: "relative", background: "var(--bg)" }}>
             <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }} />
           </div>
         </div>

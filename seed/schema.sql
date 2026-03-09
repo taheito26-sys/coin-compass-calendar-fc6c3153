@@ -57,3 +57,12 @@ CREATE TABLE IF NOT EXISTS imported_files (
   UNIQUE(user_id, file_hash)
 );
 CREATE INDEX IF NOT EXISTS idx_imported_user ON imported_files(user_id);
+
+CREATE TABLE IF NOT EXISTS user_preferences (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  user_id TEXT NOT NULL,
+  key TEXT NOT NULL,
+  value TEXT NOT NULL,
+  UNIQUE(user_id, key)
+);
+CREATE INDEX IF NOT EXISTS idx_prefs_user ON user_preferences(user_id);

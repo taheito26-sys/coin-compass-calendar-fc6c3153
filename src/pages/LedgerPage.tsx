@@ -1,10 +1,21 @@
 ﻿import { useState, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
-import { uid, cnum, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
 import type { ParseResult } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
-import { createTransaction, updateTransaction, deleteTransaction, createImportedFile, fetchAssets } from "@/lib/api";
+import {
+  createTransaction,
+  updateTransaction,
+  deleteTransaction,
+  batchCreateTransactions,
+  createImportedFile,
+  fetchImportedFiles,
+  isWorkerConfigured,
+} from "@/lib/api";
+import { getAssetCatalog, resolveAssetId, resolveAssetSymbol } from "@/lib/assetResolver";
+
+// ─── Constants ──────────────────────────────────────────────────────────────
 
 const EXCHANGE_LABELS: Record<string, string> = {
   binance: "Binance",
@@ -95,11 +106,48 @@ async function saveTransactionViaApi(
   }
 }
 
-export default function LedgerPage() {
-  const { state, setState, toast } = useCrypto();
+// ─── Helpers ─────────────────────────────────────────────────────────────────
 
-  // Manual entry state
-  const [type, setType] = useState("buy");
+function TypeBadge({ type }: { type: string }) {
+  const meta = TYPE_META[type] || { label: type.toUpperCase(), color: "var(--muted)", icon: "·" };
+  return (
+    <span style={{
+      display: "inline-flex", alignItems: "center", gap: 3,
+      fontSize: 10, fontWeight: 800, letterSpacing: "0.06em",
+      padding: "2px 7px", borderRadius: "var(--lt-radius-sm)",
+      background: `${meta.color}18`, color: meta.color,
+      border: `1px solid ${meta.color}30`,
+    }}>
+      {meta.icon} {meta.label}
+    </span>
+  );
+}
+
+function StatCard({ label, value, sub, accent }: { label: string; value: string | number; sub?: string; accent?: string }) {
+  return (
+    <div style={{
+      background: "var(--panel2)", borderRadius: "var(--lt-radius)", padding: "12px 16px",
+      border: "1px solid var(--line)", flex: 1, minWidth: 100,
+    }}>
+      <div style={{ fontSize: 10, color: "var(--muted)", fontWeight: 700, letterSpacing: "0.08em", marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 20, fontWeight: 800, color: accent || "var(--text)" }}>{value}</div>
+      {sub && <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 2 }}>{sub}</div>}
+    </div>
+  );
+}
+
+// ─── Main Component ───────────────────────────────────────────────────────────
+
+type Tab = "journal" | "add" | "import";
+
+export default function LedgerPage() {
+  const { state, setState, rehydrateFromBackend, toast } = useCrypto();
+
+  // ── Tab state ──
+  const [tab, setTab] = useState<Tab>("journal");
+
+  // ── Manual entry ──
+  const [txType, setTxType] = useState("buy");
   const [asset, setAsset] = useState("");
   const [qty, setQty] = useState("");
   const [price, setPrice] = useState("");
@@ -108,21 +156,29 @@ export default function LedgerPage() {
   const [note, setNote] = useState("");
   const [saving, setSaving] = useState(false);
 
-  // Import state
-  const [importStage, setImportStage] = useState<"upload" | "preview" | "done">("upload");
-  const [importResult, setImportResult] = useState<ParseResult | null>(null);
-  const [fileName, setFileName] = useState("");
-  const [fileHash, setFileHash] = useState("");
-  const [importLoading, setImportLoading] = useState(false);
-  const [importError, setImportError] = useState("");
-  const fileRef = useRef<HTMLInputElement>(null);
+  // ── Journal filters ──
+  const [filterAsset, setFilterAsset] = useState("");
+  const [filterType, setFilterType] = useState("");
+  const [searchQ, setSearchQ] = useState("");
 
-  // Edit state
+  // ── Edit state ──
   const [editId, setEditId] = useState<string | null>(null);
   const [editAsset, setEditAsset] = useState("");
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
   const [editType, setEditType] = useState("");
+
+  // ── Import state ──
+  const [importStage, setImportStage] = useState<"upload" | "preview" | "committing" | "done" | "error">("upload");
+  const [importResult, setImportResult] = useState<ParseResult | null>(null);
+  const [importCounts, setImportCounts] = useState<ImportCounts | null>(null);
+  const [importErrorMsg, setImportErrorMsg] = useState("");
+  const [fileName, setFileName] = useState("");
+  const [fileHash, setFileHash] = useState("");
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState("");
+  const [dragOver, setDragOver] = useState(false);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   const importedFiles = state.importedFiles || [];
 
@@ -132,26 +188,45 @@ export default function LedgerPage() {
     if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
     const total = (type === "buy" || type === "sell") ? q * p : 0;
     const ts = Date.now();
-    const tx = { id: uid(), ts, type, asset: a, qty: q, price: p, total, fee: f, feeAsset: state.base, accountId: "acc_main", note, lots: "" };
 
-    // Save to local state
-    setState(prev => {
-      const newState = { ...prev, txs: [tx, ...prev.txs] };
-      if (type === "buy" || type === "reward" || type === "transfer_in") {
-        const unitCost = type === "buy" && q > 0 ? (total + f) / q : 0;
-        newState.lots = [...prev.lots, { id: "lot_" + uid().slice(0, 10), ts: tx.ts, asset: a, qty: q, qtyRem: q, unitCost, cost: unitCost * q, accountId: "acc_main", tag: type, note }];
-      } else if (type === "sell") {
-        const lots = [...prev.lots].filter(l => l.asset.toUpperCase() === a && cnum(l.qtyRem, 0) > 0).sort((a, b) => a.ts - b.ts);
-        let rem = q, cost = 0;
-        for (const l of lots) { if (rem <= 0) break; const take = Math.min(l.qtyRem, rem); l.qtyRem -= take; rem -= take; cost += take * l.unitCost; }
-        (tx as any).realized = q * p - f - cost; (tx as any).cost = cost;
-        newState.lots = prev.lots.map(pl => lots.find(l => l.id === pl.id) || pl);
+    try {
+      if (isWorkerConfigured()) {
+        const assets = await getAssetCatalog();
+        const { assetId } = resolveAssetId(normalizedAsset, assets);
+
+        if (!assetId) {
+          toast(`Unknown asset: ${normalizedAsset}. Check the asset catalog.`, "bad");
+          return;
+        }
+
+        await createTransaction({
+          asset_id: assetId,
+          timestamp: new Date(ts).toISOString(),
+          type: txType,
+          qty: q,
+          unit_price: p,
+          fee_amount: f,
+          fee_currency: state.base,
+          venue: venue || undefined,
+          note: note || undefined,
+          source: "manual",
+        });
+
+        await rehydrateFromBackend();
+        toast("Transaction saved ✓", "good");
+      } else {
+        const total = (txType === "buy" || txType === "sell") ? q * p : 0;
+        setState((prev) => ({
+          ...prev,
+          txs: [{
+            id: `local_${uid()}`,
+            ts, type: txType, asset: normalizedAsset,
+            qty: q, price: p, total, fee: f,
+            feeAsset: state.base, accountId: "acc_main", note,
+          }, ...prev.txs],
+        }));
+        toast("Saved locally (Worker API not configured)", "bad");
       }
-      if (type === "buy") {
-        newState.holdings = [...prev.holdings, { id: uid(), asset: a, buyPrice: p, quantity: q, date: Date.now(), exchange: venue, note }];
-      }
-      return newState;
-    });
 
     // Save to backend via Worker API
     setSaving(true);
@@ -171,7 +246,8 @@ setSaving(false);
     }
   };
 
-  // Edit handlers
+  // ── Edit handlers ────────────────────────────────────────────────────────
+
   const startEdit = (t: any) => {
     setEditId(t.id);
     setEditAsset(t.asset);
@@ -180,26 +256,18 @@ setSaving(false);
     setEditType(t.type);
   };
 
+  const cancelEdit = () => setEditId(null);
+
   const saveEdit = async () => {
     if (!editId) return;
-    const newQty = parseFloat(editQty);
-    const newPrice = parseFloat(editPrice);
+    const existing = state.txs.find(t => t.id === editId);
+    if (!existing) { setEditId(null); return; }
 
-    // Update local state
-    setState(prev => ({
-      ...prev,
-      txs: prev.txs.map(t => t.id === editId ? {
-        ...t,
-        asset: editAsset.toUpperCase(),
-        qty: newQty || t.qty,
-        price: newPrice || t.price,
-        type: editType,
-        total: (editType === "buy" || editType === "sell") ? (newQty || 0) * (newPrice || 0) : t.total,
-      } : t),
-    }));
-    setEditId(null);
+    const normalizedAsset = resolveAssetSymbol(editAsset || existing.asset);
+    const nextType = editType || existing.type;
+    const nextQty = Number.isFinite(parseFloat(editQty)) ? parseFloat(editQty) : existing.qty;
+    const nextPrice = Number.isFinite(parseFloat(editPrice)) ? parseFloat(editPrice) : existing.price;
 
-    // Persist to backend
     try {
       await updateTransaction(editId, {
         type: editType,
@@ -208,59 +276,79 @@ setSaving(false);
       });
       toast("Transaction updated âœ“", "good");
     } catch (err: any) {
-      console.error("[ledger] Update failed:", err);
-      toast("Updated locally only (backend sync failed)", "good");
+      toast(err?.message || "Failed to update", "bad");
     }
   };
 
   const deleteTx = async (id: string) => {
-    setState(prev => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
-
-    // Persist to backend
+    if (!confirm("Delete this transaction? This will recalculate your portfolio.")) return;
     try {
       await deleteTransaction(id);
       toast("Transaction deleted âœ“", "good");
     } catch (err: any) {
-      console.error("[ledger] Delete failed:", err);
-      toast("Deleted locally only (backend sync failed)", "good");
+      toast(err?.message || "Failed to delete", "bad");
     }
   };
 
-  // Import handlers
+  // ── Import handlers ──────────────────────────────────────────────────────
+
   const handleFile = useCallback(async (file: File) => {
     setImportError("");
     setImportLoading(true);
     try {
       const text = await file.text();
       const hash = await hashFile(text);
+
       if (importedFiles.some((f: any) => f.hash === hash)) {
-        setImportError("This file has already been imported (duplicate detected).");
+        setImportError("This file was already imported (duplicate detected).");
         setImportLoading(false);
         return;
       }
+
+      if (isWorkerConfigured()) {
+        try {
+          const backendFiles = await fetchImportedFiles();
+          if (backendFiles.some((f: any) => f.file_hash === hash)) {
+            setImportError("This file was already imported (found in backend).");
+            setImportLoading(false);
+            return;
+          }
+        } catch {}
+      }
+
       const parsed = await importCSV(text, file.name);
       setFileName(file.name);
       setFileHash(hash);
       setImportResult(parsed);
+
       if (parsed.rows.length === 0 && parsed.warnings.length > 0) {
         setImportError(parsed.warnings[0]);
       } else {
         setImportStage("preview");
       }
     } catch (e: any) {
-      setImportError("Failed to parse: " + (e.message || e));
+      setImportError("Parse failed: " + (e.message || e));
     }
     setImportLoading(false);
   }, [importedFiles]);
 
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
+    if (!isWorkerConfigured()) {
+      toast("Backend not configured — cannot persist import", "bad");
+      return;
+    }
 
-    // Save to local state
-    setState(prev => {
-      const newTxs = [...prev.txs];
-      const newLots = [...prev.lots];
-      const newHoldings = [...prev.holdings];
+    setImportStage("committing");
+    setImportErrorMsg("");
+
+    const counts: ImportCounts = { parsed: importResult.rows.length, accepted: 0, rejected: 0, persisted: 0, skippedDuplicate: 0, failed: 0 };
+
+    try {
+      const assets = await getAssetCatalog();
+      const missingSymbols = new Set<string>();
+      const batchPayload: any[] = [];
+
       for (const row of importResult.rows) {
         const txId = uid();
         const assetSym = normalizeImportedSymbol(row.symbol);
@@ -316,17 +404,51 @@ for (const row of importResult.rows) {
   if (result.missingAsset) missingAssets.add(result.missingAsset);
 }
 
-    // Also record the imported file
-    try {
-      await createImportedFile({
-        file_name: fileName,
-        file_hash: fileHash,
-        exchange: importResult.exchange,
-        export_type: importResult.exportType,
-        row_count: importResult.rows.length,
-      });
+      counts.accepted = batchPayload.length;
+
+      if (batchPayload.length === 0) {
+        const missing = [...missingSymbols].slice(0, 6).join(", ");
+        setImportErrorMsg(missing ? `No rows accepted. Missing assets: ${missing}` : "No rows accepted.");
+        setImportStage("error");
+        setImportCounts(counts);
+        return;
+      }
+
+      for (let i = 0; i < batchPayload.length; i += 500) {
+        const result = await batchCreateTransactions(batchPayload.slice(i, i + 500));
+        counts.persisted += result.created;
+        counts.skippedDuplicate += result.skippedDuplicates;
+        counts.failed += result.errors;
+      }
+
+      try {
+        await createImportedFile({
+          file_name: fileName, file_hash: fileHash,
+          exchange: importResult.exchange, export_type: importResult.exportType,
+          row_count: counts.persisted,
+        });
+      } catch (err: any) {
+        if (!err.message?.includes("409")) console.warn("[import] Failed to record file:", err.message);
+      }
+
+      await rehydrateFromBackend();
+      setImportCounts(counts);
+
+      if (counts.failed > 0) {
+        setImportErrorMsg(`${counts.failed} row(s) failed. ${counts.persisted} persisted successfully.`);
+        setImportStage(counts.persisted > 0 ? "done" : "error");
+      } else {
+        setImportStage("done");
+      }
+
+      const missingText = missingSymbols.size > 0 ? ` · ${missingSymbols.size} rejected (unknown asset)` : "";
+      toast(`Imported ${counts.persisted} trades (${counts.skippedDuplicate} duplicates skipped)${missingText}`,
+        counts.failed > 0 || missingSymbols.size > 0 ? "bad" : "good");
     } catch (err: any) {
-      console.warn("[import] Failed to record imported file:", err.message);
+      setImportErrorMsg(`Backend save failed: ${err.message || "Unknown error"}`);
+      setImportStage("error");
+      setImportCounts(counts);
+      toast("Import failed — backend error", "bad");
     }
 
     const summary = missingAssets.size > 0 ? `Imported ${importResult.rows.length} trades, ${synced} synced, local only for: ${[...missingAssets].join(", ")}` : `Imported ${importResult.rows.length} trades (${synced} synced)`; toast(summary, "good");
@@ -336,19 +458,88 @@ for (const row of importResult.rows) {
   const resetImport = () => {
     setImportStage("upload");
     setImportResult(null);
+    setImportCounts(null);
+    setImportErrorMsg("");
     setFileName("");
     setFileHash("");
     setImportError("");
     if (fileRef.current) fileRef.current.value = "";
   };
 
-  const txs = state.txs.slice().sort((a, b) => b.ts - a.ts).slice(0, 200);
+  // ── Total cost for preview ────────────────────────────────────────────────
+
+  const previewTotal = (() => {
+    if (!importResult) return { buys: 0, sells: 0 };
+    let buys = 0, sells = 0;
+    for (const r of importResult.rows) {
+      if (r.side === "buy") buys++;
+      else if (r.side === "sell") sells++;
+    }
+    return { buys, sells };
+  })();
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // RENDER
+  // ─────────────────────────────────────────────────────────────────────────
 
   return (
-    <>
-      {/* Top row: Manual Entry + CSV Import side by side */}
-      <div className="ledger-top-grid" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10, marginBottom: 10 }}>
-        {/* Manual Entry */}
+    <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+      {/* ── Sync error banner ── */}
+      {state.syncStatus === "error" && (
+        <div style={{
+          display: "flex", alignItems: "center", gap: 12, padding: "10px 16px",
+          background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)",
+          borderRadius: "var(--lt-radius)", fontSize: 13, color: "var(--bad)",
+        }}>
+          <span>⚠ Backend sync error: {state.syncError || "Unknown"}. Data may be stale.</span>
+          <button className="btn secondary" onClick={rehydrateFromBackend}
+            style={{ marginLeft: "auto", fontSize: 11, padding: "4px 10px" }}>Retry Sync</button>
+        </div>
+      )}
+
+      {/* ── Stats Row ── */}
+      <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+        <StatCard label="TOTAL TXS" value={stats.total} sub={`${stats.uniqueAssets} assets`} />
+        <StatCard label="BUYS" value={stats.buys} sub={`$${(stats.totalBuyValue / 1000).toFixed(0)}K invested`} accent="var(--good)" />
+        <StatCard label="SELLS" value={stats.sells} sub={`$${(stats.totalSellValue / 1000).toFixed(0)}K out`} accent="var(--bad)" />
+        <StatCard label="IMPORTED FILES" value={importedFiles.length} sub="CSV imports" />
+      </div>
+
+      {/* ── Tab Bar ── */}
+      <div style={{
+        display: "flex", gap: 0, background: "var(--panel2)",
+        border: "1px solid var(--line)", borderRadius: "var(--lt-radius)", padding: 4,
+        width: "fit-content",
+      }}>
+        {([
+          { id: "journal", label: "📋 Journal", badge: stats.total },
+          { id: "add",     label: "✚ Add Transaction" },
+          { id: "import",  label: "📥 Import CSV" },
+        ] as const).map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            style={{
+              padding: "7px 16px", borderRadius: "calc(var(--lt-radius) - 2px)",
+              border: "none", cursor: "pointer", fontSize: 12, fontWeight: 700,
+              display: "flex", alignItems: "center", gap: 6, transition: "var(--lt-tr)",
+              background: tab === t.id ? "var(--brand)" : "transparent",
+              color: tab === t.id ? "#fff" : "var(--muted)",
+            }}>
+            {t.label}
+            {"badge" in t && t.badge > 0 && (
+              <span style={{
+                fontSize: 10, fontWeight: 900, background: tab === t.id ? "rgba(255,255,255,0.25)" : "var(--brand3)",
+                color: tab === t.id ? "#fff" : "var(--brand)", borderRadius: 999, padding: "1px 6px",
+              }}>{t.badge}</span>
+            )}
+          </button>
+        ))}
+      </div>
+
+      {/* ═══════════════════════════════════════════════════
+           TAB: JOURNAL
+      ═══════════════════════════════════════════════════ */}
+      {tab === "journal" && (
         <div className="panel">
           <div className="panel-head"><h2>+ Manual Entry</h2>{saving && <span className="pill">Syncingâ€¦</span>}</div>
           <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
@@ -371,20 +562,49 @@ for (const row of importResult.rows) {
               <button className="btn" onClick={save} disabled={saving}>Save Transaction</button>
             </div>
           </div>
-        </div>
 
-        {/* CSV Import */}
+          {/* Import history footer */}
+          {importedFiles.length > 0 && (
+            <div style={{ padding: "10px 16px", borderTop: "1px solid var(--line)", display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: "var(--muted)", fontWeight: 700 }}>IMPORTED FILES:</span>
+              {importedFiles.map((f: any, i: number) => (
+                <span key={i} style={{
+                  fontSize: 10, padding: "2px 8px", borderRadius: 999,
+                  background: "var(--panel2)", border: "1px solid var(--line)", color: "var(--muted)",
+                }}>
+                  {EXCHANGE_LABELS[f.exchange] || f.exchange} · {f.rowCount} rows
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
+           TAB: ADD TRANSACTION
+      ═══════════════════════════════════════════════════ */}
+      {tab === "add" && (
         <div className="panel">
           <div className="panel-head">
             <h2>ðŸ“¥ CSV Import</h2>
             <span className="pill">Spot Trades</span>
           </div>
           <div className="panel-body">
-            {importStage === "upload" && (
-              <>
-                <div className="import-exchanges" style={{ marginBottom: 8 }}>
-                  {["binance", "bybit", "okx", "gate"].map(ex => (
-                    <span key={ex} className="pill">{EXCHANGE_LABELS[ex]}</span>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
+
+              {/* Type */}
+              <div className="form-field" style={{ gridColumn: "1/-1" }}>
+                <label className="form-label">Transaction Type</label>
+                <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                  {TX_TYPES.map(tt => (
+                    <button key={tt.value} onClick={() => setTxType(tt.value)} style={{
+                      padding: "7px 16px", borderRadius: "var(--lt-radius-sm)", border: "1px solid",
+                      borderColor: txType === tt.value ? tt.color : "var(--line)",
+                      background: txType === tt.value ? `${tt.color}18` : "transparent",
+                      color: txType === tt.value ? tt.color : "var(--muted)",
+                      cursor: "pointer", fontSize: 12, fontWeight: txType === tt.value ? 800 : 500,
+                      transition: "var(--lt-tr)",
+                    }}>{tt.label}</button>
                   ))}
                 </div>
                 <div
@@ -426,9 +646,24 @@ for (const row of importResult.rows) {
                 <button className="btn" onClick={resetImport} style={{ marginTop: 8 }}>Import Another</button>
               </>
             )}
+
+            <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
+              <button className="btn" onClick={save} disabled={saving || !asset || !qty}>
+                {saving ? "Saving…" : "Save Transaction"}
+              </button>
+              <button className="btn secondary" onClick={() => { setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote(""); }}>
+                Clear
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
+
+      {/* ═══════════════════════════════════════════════════
+           TAB: CSV IMPORT
+      ═══════════════════════════════════════════════════ */}
+      {tab === "import" && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
       {/* Transaction Ledger */}
       <div className="panel">
@@ -492,14 +727,106 @@ for (const row of importResult.rows) {
                         </td>
                       </>
                     )}
-                  </tr>
-                )) : <tr><td colSpan={9} className="muted">No transactions yet. Use Manual Entry or CSV Import above.</td></tr>}
-              </tbody>
-            </table>
+                  </div>
+
+                  {importResult.warnings.length > 0 && (
+                    <div style={{ marginBottom: 12 }}>
+                      {importResult.warnings.map((w, i) => (
+                        <div key={i} style={{
+                          padding: "8px 12px", borderRadius: "var(--lt-radius-sm)",
+                          background: "rgba(217,119,6,0.08)", border: "1px solid rgba(217,119,6,0.25)",
+                          color: "var(--warn)", fontSize: 12, marginBottom: 4,
+                        }}>⚠ {w}</div>
+                      ))}
+                    </div>
+                  )}
+
+                  <div style={{ fontSize: 13, color: "var(--muted)", marginBottom: 16 }}>
+                    <strong style={{ color: "var(--text)" }}>{fileName}</strong> · {EXCHANGE_LABELS[importResult.exchange] || importResult.exchange}
+                    {" · "}{importResult.exportType}
+                  </div>
+
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn" onClick={commitImport}>
+                      Commit {importResult.rowCount} Trades →
+                    </button>
+                    <button className="btn secondary" onClick={resetImport}>Cancel</button>
+                  </div>
+                </div>
+              )}
+
+              {/* STAGE: COMMITTING */}
+              {importStage === "committing" && (
+                <div style={{ textAlign: "center", padding: "32px 24px" }}>
+                  <div style={{ fontSize: 36, marginBottom: 12 }}>⏳</div>
+                  <div style={{ fontSize: 16, fontWeight: 700, marginBottom: 6 }}>Persisting to backend…</div>
+                  <div style={{ fontSize: 13, color: "var(--muted)" }}>Do not close this page.</div>
+                </div>
+              )}
+
+              {/* STAGE: DONE */}
+              {importStage === "done" && importCounts && (
+                <div>
+                  <div style={{
+                    fontSize: 40, textAlign: "center", marginBottom: 12,
+                    padding: "16px 0",
+                  }}>✅</div>
+                  <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                    <StatCard label="PARSED" value={importCounts.parsed} />
+                    <StatCard label="ACCEPTED" value={importCounts.accepted} />
+                    <StatCard label="PERSISTED" value={importCounts.persisted} accent="var(--good)" />
+                    {importCounts.skippedDuplicate > 0 && (
+                      <StatCard label="DUPLICATES" value={importCounts.skippedDuplicate} />
+                    )}
+                    {importCounts.rejected > 0 && (
+                      <StatCard label="REJECTED" value={importCounts.rejected} accent="var(--bad)" />
+                    )}
+                    {importCounts.failed > 0 && (
+                      <StatCard label="FAILED" value={importCounts.failed} accent="var(--bad)" />
+                    )}
+                  </div>
+                  {importErrorMsg && (
+                    <div style={{ marginBottom: 12, padding: "10px 14px", borderRadius: "var(--lt-radius-sm)", background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)", color: "var(--bad)", fontSize: 12 }}>
+                      {importErrorMsg}
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn" onClick={resetImport}>Import Another File</button>
+                    <button className="btn secondary" onClick={() => setTab("journal")}>View Journal</button>
+                  </div>
+                </div>
+              )}
+
+              {/* STAGE: ERROR */}
+              {importStage === "error" && (
+                <div>
+                  <div style={{
+                    marginBottom: 16, padding: "16px", borderRadius: "var(--lt-radius)",
+                    background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)",
+                    color: "var(--bad)",
+                  }}>
+                    <div style={{ fontWeight: 700, marginBottom: 4 }}>Import Failed</div>
+                    <div style={{ fontSize: 13 }}>{importErrorMsg || "Unknown error"}</div>
+                  </div>
+                  {importCounts && (
+                    <div style={{ display: "flex", gap: 10, flexWrap: "wrap", marginBottom: 16 }}>
+                      <StatCard label="PARSED" value={importCounts.parsed} />
+                      <StatCard label="ACCEPTED" value={importCounts.accepted} />
+                      <StatCard label="PERSISTED" value={importCounts.persisted} accent="var(--good)" />
+                      <StatCard label="FAILED" value={importCounts.failed} accent="var(--bad)" />
+                    </div>
+                  )}
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <button className="btn" onClick={commitImport}>Retry</button>
+                    <button className="btn secondary" onClick={resetImport}>Start Over</button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 }
 

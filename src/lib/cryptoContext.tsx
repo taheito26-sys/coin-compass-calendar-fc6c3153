@@ -1,10 +1,23 @@
-import React, { createContext, useContext, useState, useCallback, useEffect, forwardRef } from "react";
+import React, { createContext, useContext, useState, useCallback, useEffect, useRef, forwardRef } from "react";
+import { useAuth } from "@clerk/react";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
+import {
+  fetchImportedFiles,
+  fetchTransactions,
+  fetchUserPreferences,
+  saveUserPreferences,
+  isWorkerConfigured,
+  setAuthTokenProvider,
+} from "@/lib/api";
+import { getAssetCatalog, resolveAssetSymbol } from "@/lib/assetResolver";
+import { runMigration } from "@/lib/migration";
+import type { ApiTransaction } from "@/lib/api";
 
 interface CryptoCtx {
   state: CryptoState;
   setState: (updater: (prev: CryptoState) => CryptoState) => void;
   refresh: (force?: boolean) => Promise<void>;
+  rehydrateFromBackend: () => Promise<void>;
   toast: (msg: string, type?: string) => void;
   toastMsg: { msg: string; type: string } | null;
 }
@@ -13,6 +26,7 @@ const fallbackCtx: CryptoCtx = {
   state: defaultState(),
   setState: () => {},
   refresh: async () => {},
+  rehydrateFromBackend: async () => {},
   toast: () => {},
   toastMsg: null,
 };
@@ -20,14 +34,66 @@ const fallbackCtx: CryptoCtx = {
 const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
+/** Map backend ApiTransaction[] to CryptoTx[] using asset catalog */
+function mapTransactions(
+  transactions: ApiTransaction[],
+  assetById: Map<string, { symbol: string; binance_symbol: string | null }>,
+) {
+  return transactions
+    .map((tx) => {
+      const asset = assetById.get(tx.asset_id);
+      const symbol = resolveAssetSymbol(asset?.symbol || asset?.binance_symbol || "");
+      if (!symbol) return null;
+
+      const ts = Date.parse(tx.timestamp);
+      if (!Number.isFinite(ts)) return null;
+
+      const qty = Number(tx.qty || 0);
+      const price = Number(tx.unit_price || 0);
+      const fee = Number(tx.fee_amount || 0);
+
+      return {
+        id: tx.id,
+        ts,
+        type: tx.type,
+        asset: symbol,
+        qty,
+        price,
+        total: qty * price,
+        fee,
+        feeAsset: tx.fee_currency || "USD",
+        accountId: "acc_main",
+        note: tx.note || "",
+        lots: "",
+      };
+    })
+    .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
+}
+
 export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.ReactNode }>(function CryptoProvider({ children }, _ref) {
   const [state, setStateRaw] = useState<CryptoState>(loadState);
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
+  const lastHydratedUserRef = useRef<string | null>(null);
+
+  // Clerk auth — no try/catch, Clerk must be available
+  const { isSignedIn, getToken, userId } = useAuth();
+
+  // Wire auth token provider when Clerk state changes
+  useEffect(() => {
+    setAuthTokenProvider(async () => {
+      if (!isSignedIn) return null;
+      try {
+        return await getToken();
+      } catch {
+        return null;
+      }
+    });
+  }, [isSignedIn, getToken]);
 
   const setState = useCallback((updater: (prev: CryptoState) => CryptoState) => {
-    setStateRaw(prev => {
+    setStateRaw((prev) => {
       const next = updater(prev);
-      saveState(next);
+      saveState(next); // saves UI prefs only
       return next;
     });
   }, []);
@@ -47,12 +113,213 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     setTimeout(() => setToast(null), 3000);
   }, []);
 
+  /**
+   * Full rehydration from backend.
+   * Fetches all canonical data and replaces in-memory state.
+   */
+  const rehydrateFromBackend = useCallback(async () => {
+    if (!isWorkerConfigured() || !isSignedIn) return;
+
+    setStateRaw((prev) => ({ ...prev, syncStatus: "loading" as const }));
+
+    try {
+      const [assets, transactions, importedFiles, userPrefs] = await Promise.all([
+        getAssetCatalog(true),
+        fetchTransactions(),
+        fetchImportedFiles().catch(() => []),
+        fetchUserPreferences().catch(() => ({} as Record<string, string>)),
+      ]);
+
+      const assetById = new Map(assets.map((a) => [a.id, a]));
+      const canonicalTxs = mapTransactions(transactions, assetById);
+
+      const canonicalImported = importedFiles.map((file: any) => ({
+        name: file.file_name,
+        hash: file.file_hash,
+        importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
+        exchange: file.exchange,
+        exportType: file.export_type,
+        rowCount: Number(file.row_count || 0),
+      }));
+
+      const prefUpdates: Partial<CryptoState> = {};
+      if (userPrefs.base) prefUpdates.base = userPrefs.base;
+      if (userPrefs.method) prefUpdates.method = userPrefs.method;
+      if (userPrefs.layout) prefUpdates.layout = userPrefs.layout;
+      if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
+
+      setStateRaw((prev) => {
+        const next = {
+          ...prev,
+          ...prefUpdates,
+          txs: canonicalTxs,
+          importedFiles: canonicalImported,
+          syncStatus: "synced" as const,
+          syncError: undefined,
+        };
+        saveState(next);
+        return next;
+      });
+    } catch (err) {
+      console.error("[crypto-context] Rehydration failed:", err);
+      setStateRaw((prev) => ({
+        ...prev,
+        syncStatus: "error" as const,
+        syncError: err instanceof Error ? err.message : "Backend unreachable",
+      }));
+    }
+  }, [isSignedIn]);
+
+  /**
+   * Hydration effect — runs on auth identity change.
+   * Clears stale data when user changes and rehydrates from backend.
+   */
+  useEffect(() => {
+    if (!isWorkerConfigured()) return;
+    if (!isSignedIn || !userId) {
+      // User signed out — clear business data, keep UI prefs
+      if (lastHydratedUserRef.current !== null) {
+        lastHydratedUserRef.current = null;
+        setStateRaw((prev) => ({
+          ...prev,
+          txs: [],
+          importedFiles: [],
+          syncStatus: "idle" as const,
+          syncError: undefined,
+        }));
+      }
+      return;
+    }
+
+    // If same user already hydrated, skip
+    if (lastHydratedUserRef.current === userId) return;
+    lastHydratedUserRef.current = userId;
+
+    let cancelled = false;
+
+    (async () => {
+      setStateRaw((prev) => ({ ...prev, syncStatus: "loading" as const }));
+
+      try {
+        const [assets, transactions, importedFiles, userPrefs] = await Promise.all([
+          getAssetCatalog(true),
+          fetchTransactions(),
+          fetchImportedFiles().catch(() => []),
+          fetchUserPreferences().catch(() => ({} as Record<string, string>)),
+        ]);
+
+        if (cancelled) return;
+
+        const assetById = new Map(assets.map((a) => [a.id, a]));
+        const canonicalTxs = mapTransactions(transactions, assetById);
+
+        const canonicalImported = importedFiles.map((file: any) => ({
+          name: file.file_name,
+          hash: file.file_hash,
+          importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
+          exchange: file.exchange,
+          exportType: file.export_type,
+          rowCount: Number(file.row_count || 0),
+        }));
+
+        const prefUpdates: Partial<CryptoState> = {};
+        if (userPrefs.base) prefUpdates.base = userPrefs.base;
+        if (userPrefs.method) prefUpdates.method = userPrefs.method;
+        if (userPrefs.layout) prefUpdates.layout = userPrefs.layout;
+        if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
+
+        if (!cancelled) {
+          setStateRaw((prev) => {
+            const next = {
+              ...prev,
+              ...prefUpdates,
+              txs: canonicalTxs,
+              importedFiles: canonicalImported,
+              syncStatus: "synced" as const,
+              syncError: undefined,
+            };
+            saveState(next);
+            return next;
+          });
+        }
+
+        // Run migration (idempotent, uses external_id dedup)
+        const migrationResult = await runMigration();
+        if (migrationResult?.migrated && migrationResult.txsMigrated > 0 && !cancelled) {
+          console.info(`[migration] Migrated ${migrationResult.txsMigrated} txs, ${migrationResult.filesMigrated} files, ${migrationResult.txsSkippedDuplicate} skipped duplicates`);
+          // Re-fetch after migration to get canonical state
+          const newTxs = await fetchTransactions();
+          const newImported = await fetchImportedFiles().catch(() => []);
+          if (!cancelled) {
+            setStateRaw((prev) => ({
+              ...prev,
+              txs: mapTransactions(newTxs, assetById),
+              importedFiles: newImported.map((file: any) => ({
+                name: file.file_name,
+                hash: file.file_hash,
+                importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
+                exchange: file.exchange,
+                exportType: file.export_type,
+                rowCount: Number(file.row_count || 0),
+              })),
+              syncStatus: "synced" as const,
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("[crypto-context] Backend hydration failed:", err);
+        if (!cancelled) {
+          setStateRaw((prev) => ({
+            ...prev,
+            syncStatus: "error" as const,
+            syncError: err instanceof Error ? err.message : "Backend unreachable",
+          }));
+        }
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [isSignedIn, userId]);
+
+  // Sync preferences to backend when they change
+  const prevPrefsRef = useRef<string>("");
+  useEffect(() => {
+    if (!isSignedIn || !isWorkerConfigured()) return;
+    if (state.syncStatus !== "synced") return;
+
+    const currentPrefs = JSON.stringify({
+      base: state.base,
+      method: state.method,
+      layout: state.layout,
+      theme: state.theme,
+    });
+
+    if (prevPrefsRef.current === currentPrefs) return;
+    if (prevPrefsRef.current === "") {
+      prevPrefsRef.current = currentPrefs;
+      return;
+    }
+
+    prevPrefsRef.current = currentPrefs;
+
+    const timer = setTimeout(() => {
+      saveUserPreferences({
+        base: state.base,
+        method: state.method,
+        layout: state.layout,
+        theme: state.theme,
+      }).catch((err) => {
+        console.warn("[crypto-context] Failed to sync preferences:", err);
+      });
+    }, 1000);
+
+    return () => clearTimeout(timer);
+  }, [state.base, state.method, state.layout, state.theme, state.syncStatus, isSignedIn]);
+
   // Apply layout/theme to body
   useEffect(() => {
     document.body.setAttribute("data-layout", state.layout);
     document.body.setAttribute("data-theme", state.theme);
-    // Let the CSS layout font take effect by not overriding --app-font
-    // unless the layout doesn't set --lt-font
     const layoutFonts: Record<string, string> = {
       flux: "'Inter', sans-serif",
       cipher: "'JetBrains Mono', monospace",
@@ -66,15 +333,11 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     document.documentElement.style.setProperty("--app-font", layoutFonts[state.layout] || "'Inter', sans-serif");
   }, [state.layout, state.theme]);
 
-  // Skip auto refresh on mount — useLivePrices handles polling
-  // This avoids duplicate CoinGecko calls causing 429s
-
   return (
-    <Ctx.Provider value={{ state, setState, refresh, toast, toastMsg }}>
+    <Ctx.Provider value={{ state, setState, refresh, rehydrateFromBackend, toast, toastMsg }}>
       {children}
     </Ctx.Provider>
   );
 });
 
 CryptoProvider.displayName = "CryptoProvider";
-

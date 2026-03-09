@@ -1,20 +1,56 @@
-// Worker API base URL — set via VITE_WORKER_API_URL secret
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "").replace(/\/$/, "");
+// Worker API base URL — prefer VITE_WORKER_API_URL, fallback to known production Worker
+const DEFAULT_WORKER_BASE = "https://cryptotracker-api.taheito26.workers.dev";
+
+function resolveWorkerBase(raw: string | undefined): string {
+  const candidate = (raw || "").trim();
+  if (!candidate) return DEFAULT_WORKER_BASE;
+
+  try {
+    const parsed = new URL(candidate);
+    if (parsed.protocol === "http:" || parsed.protocol === "https:") {
+      return candidate.replace(/\/$/, "");
+    }
+  } catch {
+    // fall through to default
+  }
+
+  return DEFAULT_WORKER_BASE;
+}
+
+const WORKER_BASE = resolveWorkerBase(import.meta.env.VITE_WORKER_API_URL);
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
+
+export function isWorkerConfigured(): boolean {
+  return Boolean(WORKER_BASE);
+}
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>) {
   tokenProvider = provider;
 }
 
 async function getAuthToken(): Promise<string | null> {
-  if (!tokenProvider) return null;
-  return tokenProvider();
+  if (tokenProvider) return tokenProvider();
+
+  if (typeof window !== "undefined") {
+    const maybeClerk = (window as Window & {
+      Clerk?: { session?: { getToken?: () => Promise<string | null> } };
+    }).Clerk;
+    if (maybeClerk?.session?.getToken) {
+      try {
+        return await maybeClerk.session.getToken();
+      } catch {
+        return null;
+      }
+    }
+  }
+
+  return null;
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  if (!WORKER_BASE) {
-    throw new Error("VITE_WORKER_API_URL is not configured.");
+  if (!isWorkerConfigured()) {
+    throw new Error("Worker API is not configured (missing VITE_WORKER_API_URL)");
   }
 
   const token = await getAuthToken();
@@ -23,14 +59,21 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const response = await fetch(`${WORKER_BASE}${path}`, {
-    ...options,
-    headers: {
-      ...headers,
-      ...((options?.headers as Record<string, string>) || {}),
-    },
-    signal: options?.signal ?? AbortSignal.timeout(15000),
-  });
+  let response: Response;
+  try {
+    response = await fetch(`${WORKER_BASE}${path}`, {
+      ...options,
+      headers: {
+        ...headers,
+        ...((options?.headers as Record<string, string>) || {}),
+      },
+      signal: options?.signal ?? AbortSignal.timeout(15000),
+    });
+  } catch (err: any) {
+    throw new Error(
+      `Network error calling Worker API (${WORKER_BASE}${path}). Check Worker URL, deployment, and CORS ALLOWED_ORIGINS. Root: ${err?.message || 'Failed to fetch'}`,
+    );
+  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => `HTTP ${response.status}`);
@@ -39,6 +82,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
 
   return response.json() as Promise<T>;
 }
+
+// ─── Types ─────────────────────────────────────────────────
 
 export interface ApiAsset {
   id: string;
@@ -84,46 +129,18 @@ export interface ApiPricesResponse {
   stale?: boolean;
 }
 
+// ─── Asset operations ──────────────────────────────────────
+
 export async function fetchAssets(): Promise<ApiAsset[]> {
   const response = await apiFetch<{ assets: ApiAsset[] }>("/api/assets");
   return response.assets;
 }
 
+// ─── Transaction operations ────────────────────────────────
+
 export async function fetchTransactions(): Promise<ApiTransaction[]> {
   const response = await apiFetch<{ transactions: ApiTransaction[] }>("/api/transactions");
   return response.transactions;
-}
-
-export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEntry>; ts: number; stale: boolean }> {
-  const response = await apiFetch<ApiPricesResponse>("/api/prices");
-  return {
-    prices: response.prices ?? {},
-    ts: response.ts ?? Date.now(),
-    stale: response.stale ?? false,
-  };
-}
-
-export async function fetchTrackingPreference(assetId?: string): Promise<{ tracking_mode: string } | null> {
-  const query = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
-  const response = await apiFetch<{ preference: { tracking_mode: string } | null }>(`/api/tracking-preferences${query}`);
-  return response.preference;
-}
-
-export async function fetchImportedFiles(): Promise<any[]> {
-  const response = await apiFetch<{ files: any[] }>("/api/imported-files");
-  return response.files;
-}
-
-export async function isWorkerAvailable(): Promise<boolean> {
-  if (!WORKER_BASE) return false;
-  try {
-    const response = await fetch(`${WORKER_BASE}/api/status`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 export interface CreateTransactionInput {
@@ -148,11 +165,7 @@ export async function createTransaction(input: CreateTransactionInput): Promise<
   });
   return response.transaction;
 }
-export async function deleteTransaction(transactionId: string): Promise<void> {
-  await apiFetch<{ ok: boolean }>(`/api/transactions/${transactionId}`, {
-    method: "DELETE",
-  });
-}
+
 export async function updateTransaction(
   transactionId: string,
   updates: Partial<CreateTransactionInput>,
@@ -163,6 +176,69 @@ export async function updateTransaction(
   });
   return response.transaction;
 }
+
+export async function deleteTransaction(transactionId: string): Promise<void> {
+  await apiFetch<{ ok: boolean }>(`/api/transactions/${transactionId}`, {
+    method: "DELETE",
+  });
+}
+
+export interface BatchCreateResult {
+  created: number;
+  skippedDuplicates: number;
+  errors: number;
+  errorDetails: Array<{ index: number; reason: string }>;
+  transactions: ApiTransaction[];
+}
+
+export async function batchCreateTransactions(
+  transactions: CreateTransactionInput[],
+): Promise<BatchCreateResult> {
+  const response = await apiFetch<BatchCreateResult>("/api/transactions/batch", {
+    method: "POST",
+    body: JSON.stringify({ transactions }),
+    signal: AbortSignal.timeout(60000),
+  });
+  return response;
+}
+
+// ─── Price operations ──────────────────────────────────────
+
+export async function fetchPrices(): Promise<{ prices: Record<string, ApiPriceEntry>; ts: number; stale: boolean }> {
+  const response = await apiFetch<ApiPricesResponse>("/api/prices");
+  return {
+    prices: response.prices ?? {},
+    ts: response.ts ?? Date.now(),
+    stale: response.stale ?? false,
+  };
+}
+
+// ─── Tracking preferences ──────────────────────────────────
+
+export async function fetchTrackingPreference(assetId?: string): Promise<{ tracking_mode: string } | null> {
+  const query = assetId ? `?asset_id=${encodeURIComponent(assetId)}` : "";
+  const response = await apiFetch<{ preference: { tracking_mode: string } | null }>(`/api/tracking-preferences${query}`);
+  return response.preference;
+}
+
+export async function setTrackingPreference(trackingMode: string, assetId?: string): Promise<any> {
+  const response = await apiFetch<{ preference: any }>("/api/tracking-preferences", {
+    method: "PUT",
+    body: JSON.stringify({
+      tracking_mode: trackingMode,
+      asset_id: assetId ?? null,
+    }),
+  });
+  return response.preference;
+}
+
+// ─── Imported files ────────────────────────────────────────
+
+export async function fetchImportedFiles(): Promise<any[]> {
+  const response = await apiFetch<{ files: any[] }>("/api/imported-files");
+  return response.files;
+}
+
 export interface CreateImportedFileInput {
   file_name: string;
   file_hash: string;
@@ -178,13 +254,31 @@ export async function createImportedFile(input: CreateImportedFileInput): Promis
   });
   return response.file;
 }
-export async function setTrackingPreference(trackingMode: string, assetId?: string): Promise<any> {
-  const response = await apiFetch<{ preference: any }>("/api/tracking-preferences", {
+
+// ─── User preferences ─────────────────────────────────────
+
+export async function fetchUserPreferences(): Promise<Record<string, string>> {
+  const response = await apiFetch<{ preferences: Record<string, string> }>("/api/preferences");
+  return response.preferences;
+}
+
+export async function saveUserPreferences(prefs: Record<string, string>): Promise<void> {
+  await apiFetch<{ ok: boolean }>("/api/preferences", {
     method: "PUT",
-    body: JSON.stringify({
-      tracking_mode: trackingMode,
-      asset_id: assetId ?? null,
-    }),
+    body: JSON.stringify(prefs),
   });
-  return response.preference;
+}
+
+// ─── Health check ──────────────────────────────────────────
+
+export async function isWorkerAvailable(): Promise<boolean> {
+  if (!WORKER_BASE) return false;
+  try {
+    const response = await fetch(`${WORKER_BASE}/api/status`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    return response.ok;
+  } catch {
+    return false;
+  }
 }
