@@ -1,5 +1,5 @@
 import type { ApiAsset } from "@/lib/api";
-import { fetchAssets, isWorkerConfigured } from "@/lib/api";
+import { fetchAssets, createAsset, isWorkerConfigured } from "@/lib/api";
 import { extractBaseFromPair, matchAssetBySymbol, normalizeSymbol } from "@/lib/symbolAliases";
 
 const ASSET_CACHE_MS = 60_000;
@@ -21,7 +21,6 @@ export async function getAssetCatalog(force = false): Promise<ApiAsset[]> {
 
 export function resolveAssetSymbol(rawSymbol: string): string {
   const trimmed = rawSymbol.trim();
-  // Always try extractBaseFromPair — it handles both separated (ETH/USDT) and concatenated (SOLUSD) pairs
   const base = extractBaseFromPair(trimmed);
   return normalizeSymbol(base);
 }
@@ -30,4 +29,26 @@ export function resolveAssetId(rawSymbol: string, assets: ApiAsset[]): { assetId
   const symbol = resolveAssetSymbol(rawSymbol);
   const assetId = matchAssetBySymbol(symbol, assets);
   return { assetId, symbol };
+}
+
+/**
+ * Resolve asset ID, auto-creating the asset in the backend if missing.
+ * Returns the asset ID (never null if worker is configured and reachable).
+ */
+export async function resolveOrCreateAsset(rawSymbol: string): Promise<{ assetId: string; symbol: string }> {
+  const symbol = resolveAssetSymbol(rawSymbol);
+  const assets = await getAssetCatalog();
+  const existingId = matchAssetBySymbol(symbol, assets);
+
+  if (existingId) {
+    return { assetId: existingId, symbol };
+  }
+
+  // Auto-create the asset
+  const { asset } = await createAsset({ symbol, name: symbol });
+
+  // Invalidate cache so subsequent calls see the new asset
+  assetCacheTs = 0;
+
+  return { assetId: asset.id, symbol };
 }
