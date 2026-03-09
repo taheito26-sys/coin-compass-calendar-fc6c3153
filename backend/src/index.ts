@@ -3,6 +3,7 @@ import type { Env } from "./types";
 import { corsMiddleware } from "./middleware/cors";
 import assetsRoute from "./routes/assets";
 import pricesRoute from "./routes/prices";
+import marketDataRoute from "./routes/market-data";
 import transactionsRoute from "./routes/transactions";
 import trackingRoute from "./routes/tracking";
 import importedFilesRoute from "./routes/imported-files";
@@ -18,6 +19,7 @@ app.use("*", corsMiddleware);
 // Routes
 app.route("/api/assets", assetsRoute);
 app.route("/api/prices", pricesRoute);
+app.route("/api/market-data", marketDataRoute);
 app.route("/api/transactions", transactionsRoute);
 app.route("/api/tracking-preferences", trackingRoute);
 app.route("/api/imported-files", importedFilesRoute);
