@@ -413,8 +413,7 @@ export default function LedgerPage() {
       }
 
       if (batchPayload.length === 0) {
-        const missing = [...missingSymbols].slice(0, 6).join(", ");
-        setImportErrorMsg(missing ? `No rows accepted. Unknown assets: ${missing}` : "No rows accepted.");
+        setImportErrorMsg("No rows accepted.");
         setImportStage("error");
         setImportCounts(counts);
         return;
@@ -447,9 +446,9 @@ export default function LedgerPage() {
         setImportStage("error");
       } else {
         setImportStage("done");
-        const missText = missingSymbols.size > 0 ? ` · ${missingSymbols.size} unknown assets` : "";
-        toast(`Imported ${counts.persisted} trades (${counts.skippedDuplicate} dupes skipped)${missText}`,
-          counts.failed > 0 || missingSymbols.size > 0 ? "bad" : "good");
+        const createdText = autoCreated.length > 0 ? ` · ${autoCreated.length} new assets created` : "";
+        toast(`Imported ${counts.persisted} trades (${counts.skippedDuplicate} dupes skipped)${createdText}`,
+          counts.failed > 0 ? "bad" : "good");
       }
     } catch (err: any) {
       setImportErrorMsg(`Backend error: ${err?.message ?? "Unknown"}`);
