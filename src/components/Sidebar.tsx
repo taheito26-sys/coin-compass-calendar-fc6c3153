@@ -47,12 +47,6 @@ export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav
                     borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
                   }}>NEW</span>
                 )}
-                {p.id === "connections" && (
-                  <span style={{
-                    fontSize: 7, fontWeight: 900, background: "var(--t5, #0ea5e9)", color: "#fff",
-                    borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
-                  }}>NEW</span>
-                )}
               </div>
               <small>{p.sub}</small>
             </div>
