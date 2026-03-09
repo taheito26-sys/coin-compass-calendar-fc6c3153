@@ -1,5 +1,7 @@
-import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
-import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
+﻿import { useCrypto } from "@/lib/cryptoContext";
+import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { usePortfolio } from "@/hooks/usePortfolio";
+import { mergePositionSources } from "@/lib/mergePositions";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useSparklineData } from "@/hooks/useSparklineData";
 import { useIsMobile } from "@/hooks/use-mobile";
@@ -79,22 +81,58 @@ function renderChangePill(val: number) {
 
 /* ── Main ── */
 export default function PortfolioPage() {
-  const portfolio = useUnifiedPortfolio();
-  const { getPrice } = useLivePrices();
-  const isMobile = useIsMobile();
+  const portfolio = usePortfolio();
+const { state, refresh } = useCrypto();
+const { coins: liveCoinsList, loading: pricesLoading, getPrice } = useLivePrices();
+const localD = cryptoDerived(state);
 
-  const [viewMode, setViewMode] = useState<ViewMode>(loadViewMode);
-  const [sortCol, setSortCol] = useState<string>("total");
-  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
-  const [visibleCols, setVisibleCols] = useState<Set<string>>(loadVisibleCols);
-  const [colOrder, setColOrder] = useState<string[]>(loadColOrder);
-  const [showColConfig, setShowColConfig] = useState(false);
-  const [dragCol, setDragCol] = useState<string | null>(null);
-  const [drilldownSym, setDrilldownSym] = useState<string | null>(null);
-  const [filterSyms, setFilterSyms] = useState<Set<string>>(new Set());
-  const [expandedAssets, setExpandedAssets] = useState<Set<string>>(new Set());
+const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
+const hasLocalPortfolio =
+  state.txs.length > 0 ||
+  (state.importedFiles?.length ?? 0) > 0 ||
+  localD.rows.length > 0;
 
-  const base = portfolio.base;
+const base = state.base || "USD";
+
+const mergedBaseRows = useMemo(() => {
+  const map = new Map<
+    string,
+    {
+      sym: string;
+      name: string;
+      qty: number;
+      cost: number;
+      priceHint: number | null;
+    }
+  >();
+
+  if (workerReady && portfolio.positions.length > 0) {
+    for (const p of portfolio.positions) {
+      map.set(p.symbol, {
+        sym: p.symbol,
+        name: p.name || p.symbol,
+        qty: p.qty,
+        cost: p.cost,
+        priceHint: p.price ?? null,
+      });
+    }
+  }
+
+  for (const r of localD.rows) {
+    const existing = map.get(r.sym);
+    map.set(r.sym, {
+      sym: r.sym,
+      name: existing?.name || r.sym,
+      qty: r.qty,
+      cost: r.cost,
+      priceHint: r.price ?? existing?.priceHint ?? null,
+    });
+  }
+
+  return [...map.values()];
+}, [workerReady, portfolio.positions, localD.rows]);
+
+const usingLocalFirst = hasLocalPortfolio && localD.rows.length > 0;
 
   // Persist
   useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); }, [viewMode]);
@@ -170,16 +208,18 @@ export default function PortfolioPage() {
 
   const SortTh = ({ col, label }: { col: string; label: string }) => (
     <th onClick={() => toggleSort(col)} style={{ cursor: "pointer", userSelect: "none" }}>
-      {label} {sortCol === col ? (sortDir === "asc" ? "↑" : "↓") : ""}
+      {label} {sortCol === col ? (sortDir === "asc" ? "â†‘" : "â†“") : ""}
     </th>
   );
 
-  /* ── Build cell map for a parent row ── */
-  function buildCellMap(pos: DisplayRow, i: number, isLotView: boolean): Record<string, React.ReactNode> {
-    const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
-    const expandIcon = isLotView && pos.lots.length > 0
-      ? (expandedAssets.has(pos.sym) ? "▾" : "▸")
-      : null;
+  const renderChangePill = (val: number) => {
+    if (val === 0) return <span className="mono muted">â€”</span>;
+    return (
+      <span className={`mono ${val > 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+        {val > 0 ? "â–²" : "â–¼"} {Math.abs(val).toFixed(2)}%
+      </span>
+    );
+  };
 
     return {
       rank: <td key="rank" className="mono muted">{i + 1}</td>,
@@ -331,34 +371,12 @@ export default function PortfolioPage() {
     );
   }
 
-  /* ── Mobile asset card ── */
-  function MobileAssetCard({ pos, i }: { pos: DisplayRow; i: number }) {
-    const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
-    const isExpanded = expandedAssets.has(pos.sym);
-    const isLot = viewMode === "lot";
-
-    return (
-      <div key={pos.sym} style={{
-        background: "var(--panel)", border: "1px solid var(--line)", borderRadius: 8,
-        padding: 12, marginBottom: 8,
-      }}>
-        {/* Header */}
-        <div
-          onClick={() => isLot ? toggleExpand(pos.sym) : setDrilldownSym(pos.sym)}
-          style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer", marginBottom: 8 }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            {isLot && pos.lots.length > 0 && (
-              <span style={{ fontSize: 10, color: "var(--muted)" }}>{isExpanded ? "▾" : "▸"}</span>
-            )}
-            <span className="mono" style={{ fontWeight: 900, fontSize: 14 }}>{pos.sym}</span>
-            {isLot && <span className="muted" style={{ fontSize: 10 }}>{pos.lots.length} lots</span>}
-          </div>
-          <div style={{ textAlign: "right" }}>
-            <div className="mono" style={{ fontWeight: 700 }}>{fmtTotal(pos.total)}</div>
-            <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
-              {pos.pnlPct >= 0 ? "▲" : "▼"} {Math.abs(pos.pnlPct).toFixed(2)}%
-            </div>
+  return (
+    <>
+      {!portfolio.loading && !portfolio.authenticated && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body muted" style={{ fontSize: 12 }}>
+            âš  Not signed in â€” showing local data only.
           </div>
         </div>
         {/* Details grid */}
@@ -424,38 +442,19 @@ export default function PortfolioPage() {
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
-        {/* View mode toggle */}
-        <div style={{ display: "flex", borderRadius: 6, overflow: "hidden", border: "1px solid var(--line)" }}>
-          {(["dca", "lot"] as ViewMode[]).map(mode => (
-            <button
-              key={mode}
-              className={`btn ${viewMode === mode ? "" : "secondary"}`}
-              onClick={() => setViewMode(mode)}
-              style={{
-                padding: "6px 12px", fontSize: 11, borderRadius: 0, fontWeight: viewMode === mode ? 800 : 400,
-                background: viewMode === mode ? "var(--brand)" : "transparent",
-                color: viewMode === mode ? "var(--brand-fg, #fff)" : "var(--fg)",
-                border: "none",
-              }}
-            >
-              {mode === "dca" ? "DCA View" : "Lot View"}
-            </button>
-          ))}
-        </div>
-
-        <AssetFilter allSymbols={allSymbols} selected={filterSyms} onChange={setFilterSyms} />
-
+        <button className="btn secondary" onClick={handleRefresh} style={{ padding: "6px 10px", fontSize: 11 }}>â†» Refresh</button>
         <button className="btn secondary" onClick={() => setShowColConfig(!showColConfig)} style={{ padding: "6px 10px", fontSize: 11 }}>
-          ⚙ Columns
+          âš™ Columns
         </button>
-        <span className="pill">Live prices · Top 500</span>
+        {useWorker && <span className="pill" style={{ background: "var(--brand3)", color: "var(--brand)" }}>Worker âœ“</span>}
+        <span className="pill">Live prices Â· Top 500</span>
       </div>
 
       {/* Column configurator */}
       {showColConfig && (
         <div className="panel" style={{ marginBottom: 8 }}>
           <div className="panel-body" style={{ padding: 10 }}>
-            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder · Click to toggle</div>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder Â· Click to toggle</div>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
               {colOrder.map(key => {
                 const col = ALL_COLUMNS.find(c => c.key === key);
@@ -491,7 +490,7 @@ export default function PortfolioPage() {
                       userSelect: "none",
                     }}
                   >
-                    <span style={{ cursor: "grab", marginRight: 2 }}>⠿</span>
+                    <span style={{ cursor: "grab", marginRight: 2 }}>â ¿</span>
                     <input type="checkbox" checked={visibleCols.has(col.key)} onChange={() => toggleCol(col.key)} style={{ display: "none" }} />
                     {col.label}
                   </label>
@@ -511,76 +510,85 @@ export default function PortfolioPage() {
           </span>
         </div>
         <div className="panel-body" style={{ padding: 0, overflow: "auto" }}>
-          {isMobile ? (
-            /* ── MOBILE: Card layout ── */
-            <div style={{ padding: 8 }}>
-              {sorted.length > 0 ? sorted.map((pos, i) => (
-                <MobileAssetCard key={pos.sym} pos={pos} i={i} />
-              )) : (
-                <div className="muted" style={{ padding: 20, textAlign: "center" }}>No assets. Import trades in the Ledger.</div>
-              )}
-            </div>
-          ) : (
-            /* ── DESKTOP: Table layout ── */
-            <div className="tableWrap">
-              <table>
-                <thead>
-                  <tr>
-                    {visibleKeys.map(key => {
-                      const col = ALL_COLUMNS.find(c => c.key === key)!;
-                      const sortable = ["price", "total", "allocation", "avg", "pnl", "qty", "realizedPnl"].includes(key);
-                      return sortable
-                        ? <SortTh key={key} col={key} label={col.label} />
-                        : <th key={key}>{col.label}</th>;
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {sorted.length > 0 ? sorted.map((pos, i) => {
-                    const cellMap = buildCellMap(pos, i, viewMode === "lot");
-                    const isExpanded = expandedAssets.has(pos.sym);
-                    const lotRows = viewMode === "lot" && isExpanded
-                      ? pos.lots.slice().sort((a, b) => a.ts - b.ts)
-                      : [];
-
-                    return (
-                      <Fragment key={pos.sym}>
-                        <tr
-                          onClick={() => viewMode === "lot" ? toggleExpand(pos.sym) : setDrilldownSym(pos.sym)}
-                          style={{
-                            cursor: "pointer",
-                            fontWeight: viewMode === "lot" ? 700 : undefined,
-                            borderBottom: viewMode === "lot" && isExpanded ? "none" : undefined,
-                          }}
-                        >
-                          {visibleKeys.map(k => cellMap[k])}
-                        </tr>
-                        {lotRows.map(lot => {
-                          const lotCells = buildLotCells(lot, pos.price);
-                          return (
-                            <tr
-                              key={lot.id}
-                              onClick={() => setDrilldownSym(pos.sym)}
-                              style={{
-                                cursor: "pointer",
-                                background: "var(--panel2)",
-                                fontSize: 12,
-                                borderBottom: "1px solid var(--line)",
-                              }}
-                            >
-                              {visibleKeys.map(k => lotCells[k])}
-                            </tr>
-                          );
-                        })}
-                      </Fragment>
-                    );
-                  }) : (
-                    <tr><td colSpan={20} className="muted">No assets. Import trades in the Ledger.</td></tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          )}
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  {colOrder.filter(k => visibleCols.has(k)).map(key => {
+                    const col = ALL_COLUMNS.find(c => c.key === key)!;
+                    const sortable = ["price", "total", "allocation", "avg", "pnl", "qty"].includes(key);
+                    return sortable
+                      ? <SortTh key={key} col={key} label={col.label} />
+                      : <th key={key}>{col.label}</th>;
+                  })}
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.length > 0 ? sorted.map((pos, i) => {
+                  const alloc = totalMV > 0 ? (pos.total / totalMV) * 100 : 0;
+                  const cellMap: Record<string, React.ReactNode> = {
+                    rank: <td key="rank" className="mono muted">{i + 1}</td>,
+                    asset: (
+                      <td key="asset">
+                        <span className="mono" style={{ fontWeight: 900 }}>{pos.sym}</span>
+                        {pos.name !== pos.sym && <span className="muted" style={{ marginLeft: 6, fontSize: 10 }}>Â· {pos.name}</span>}
+                      </td>
+                    ),
+                    sparkline: <td key="sparkline"><Sparkline data={sparkData.get(pos.coinId) || []} positive={pos.change7d >= 0} /></td>,
+                    amount: <td key="amount" className="mono">{fmtQty(pos.qty)}</td>,
+                    change1h: <td key="change1h">{renderChangePill(pos.change1h)}</td>,
+                    change24h: <td key="change24h">{renderChangePill(pos.change24h)}</td>,
+                    change7d: <td key="change7d">{renderChangePill(pos.change7d)}</td>,
+                    price: <td key="price" className="mono">{pos.price !== null ? "$" + fmtPx(pos.price) : "â€”"}</td>,
+                    total: <td key="total" className="mono" style={{ fontWeight: 700 }}>{fmtFiat(pos.total, base)}</td>,
+                    allocation: (
+                      <td key="allocation">
+                        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                          <div style={{ width: 40, height: 6, borderRadius: 3, background: "var(--line)", overflow: "hidden" }}>
+                            <div style={{ width: `${Math.min(alloc, 100)}%`, height: "100%", borderRadius: 3, background: "var(--brand)" }} />
+                          </div>
+                          <span className="mono" style={{ fontSize: 11 }}>{alloc.toFixed(1)}%</span>
+                        </div>
+                      </td>
+                    ),
+                    avg: <td key="avg" className="mono">{pos.avg > 0 ? "$" + fmtPx(pos.avg) : "â€”"}</td>,
+                    avgSell: <td key="avgSell" className="mono muted">â€”</td>,
+                    pnl: (
+                      <td key="pnl" style={{ textAlign: "right" }}>
+                        <div style={{ fontWeight: 900, fontFamily: "var(--lt-font-mono)", color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)" }}>
+                          {(pos.pnlAbs >= 0 ? "+" : "") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </div>
+                        <div style={{ fontSize: 10, color: pos.pnlPct >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 600 }}>
+                          {pos.pnlPct >= 0 ? "â–²" : "â–¼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                        </div>
+                      </td>
+                    ),
+                    pnlPct: (
+                      <td key="pnlPct">
+                        <span className={`mono ${pos.pnlPct >= 0 ? "good" : "bad"}`} style={{ fontWeight: 700, fontSize: 11 }}>
+                          {pos.pnlPct >= 0 ? "â–²" : "â–¼"} {Math.abs(pos.pnlPct).toFixed(2)}%
+                        </span>
+                      </td>
+                    ),
+                    profitAbs: (
+                      <td key="profitAbs" className="mono" style={{ color: pos.pnlAbs >= 0 ? "var(--good)" : "var(--bad)", fontWeight: 700 }}>
+                        {(pos.pnlAbs >= 0 ? "+" : "-") + "$" + Math.abs(pos.pnlAbs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      </td>
+                    ),
+                    marketCap: <td key="marketCap" className="mono">{formatCompact(pos.marketCap)}</td>,
+                    volume: <td key="volume" className="mono">{formatCompact(pos.volume)}</td>,
+                  };
+                  return (
+                    <tr key={pos.sym}>
+                      {colOrder.filter(k => visibleCols.has(k)).map(k => cellMap[k])}
+                    </tr>
+                  );
+                }) : (
+                  <tr><td colSpan={20} className="muted">No assets. Import trades in the Ledger.</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -590,3 +598,6 @@ export default function PortfolioPage() {
     </>
   );
 }
+
+
+

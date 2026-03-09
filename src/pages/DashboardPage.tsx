@@ -1,7 +1,7 @@
-import { useCrypto } from "@/lib/cryptoContext";
-import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
-import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useLivePrices } from "@/hooks/useLivePrices";
+﻿import { useCrypto } from "@/lib/cryptoContext";
+import { cryptoDerived, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
+import { usePortfolio } from "@/hooks/usePortfolio";
+import { mergePositionSources } from "@/lib/mergePositions";
 import { useMemo } from "react";
 
 const COIN_COLORS = [
@@ -106,9 +106,39 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
 
-  const { positions, totalMV, totalCost, totalPnl, totalPnlPct, realizedPnl, assetCount, txCount } = portfolio;
-  const base = portfolio.base;
-  const method = portfolio.method;
+  // Merged local-first dataset
+  const workerReady = portfolio.authenticated && !portfolio.error && !portfolio.loading;
+  const hasWorkerData = workerReady && portfolio.positions.length > 0;
+
+  const rows = useMemo(() => {
+    return mergePositionSources(localD.rows, portfolio.positions, hasWorkerData);
+  }, [localD.rows, portfolio.positions, hasWorkerData]);
+
+  const hasLocalOnly = rows.some(r => r.source === "local");
+
+  // Compute totals from merged dataset
+  const totalMV = rows.reduce((s, r) => s + (r.mv ?? 0), 0);
+  const totalCost = rows.reduce((s, r) => s + r.cost, 0);
+  const totalPnl = totalMV - totalCost;
+  const totalPnlPct = totalCost > 0 ? (totalPnl / totalCost) * 100 : 0;
+  const assetCount = rows.length;
+  const base = state.base || "USD";
+  const method = state.method || "FIFO";
+
+  // Rows for table/charts â€” use whichever source actually has data
+  const rows = useMemo(() => {
+    if (useWorker) {
+      return portfolio.positions.map(p => ({
+        sym: p.symbol,
+        qty: p.qty,
+        cost: p.cost,
+        price: p.price,
+        mv: p.mv,
+        unreal: p.pnlAbs,
+      }));
+    }
+    return localD.rows;
+  }, [useWorker, portfolio.positions, localD.rows]);
 
   // Coin allocation slices
   const coinSlices = useMemo((): DonutSlice[] => {
@@ -208,7 +238,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
         <div className="kpi-card">
           <div className="kpi-head">
-            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "▲" : "▼"}</span>
+            <span className={`kpi-badge ${totalPnl >= 0 ? "+" : "-"}`}>{totalPnl >= 0 ? "Ã¢â€“Â²" : "Ã¢â€“Â¼"}</span>
           </div>
           <div className="kpi-lbl">UNREALIZED P&L</div>
           <div className={`kpi-val ${totalPnl >= 0 ? "good" : "bad"}`}>
@@ -227,7 +257,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
         <div className="kpi-card">
           <div className="kpi-lbl">TOTAL COST</div>
-          <div className="kpi-val">{fmtTotal(totalCost)}</div>
+          <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
           <div className="kpi-sub">{txCount} transactions</div>
         </div>
         <div className="kpi-card">
@@ -432,3 +462,8 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     </>
   );
 }
+
+
+
+
+

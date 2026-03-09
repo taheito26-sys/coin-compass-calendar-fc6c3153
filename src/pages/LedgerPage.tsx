@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useMemo } from "react";
+﻿import { useState, useRef, useCallback } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { importCSV, hashFile } from "@/lib/importers";
@@ -24,37 +24,86 @@ const EXCHANGE_LABELS: Record<string, string> = {
   gate: "Gate.io",
 };
 
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-const HEX32_RE = /^[0-9a-f]{32}$/i;
-function isBackendId(id: string): boolean {
-  return UUID_RE.test(id) || HEX32_RE.test(id);
-}
+type AssetRecord = Awaited<ReturnType<typeof fetchAssets>>[number];
 
-const TX_TYPES = [
-  { value: "buy", label: "Buy", color: "var(--good)" },
-  { value: "sell", label: "Sell", color: "var(--bad)" },
-  { value: "transfer_in", label: "Transfer In", color: "var(--t5)" },
-  { value: "transfer_out", label: "Transfer Out", color: "var(--warn)" },
-  { value: "reward", label: "Reward", color: "var(--t2)" },
-  { value: "adjustment", label: "Adjustment", color: "var(--muted)" },
-];
-
-const TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
-  buy:           { label: "BUY",          color: "var(--good)", icon: "↑" },
-  sell:          { label: "SELL",         color: "var(--bad)",  icon: "↓" },
-  transfer_in:   { label: "IN",           color: "var(--t5)",   icon: "→" },
-  transfer_out:  { label: "OUT",          color: "var(--warn)", icon: "←" },
-  reward:        { label: "REWARD",       color: "var(--t2)",   icon: "★" },
-  adjustment:    { label: "ADJ",          color: "var(--muted)",icon: "≈" },
+const SYMBOL_ALIASES: Record<string, string> = {
+  XBT: "BTC",
+  BCC: "BCH",
+  BCHABC: "BCH",
+  MIOTA: "IOTA",
 };
 
-interface ImportCounts {
-  parsed: number;
-  accepted: number;
-  rejected: number;
-  persisted: number;
-  skippedDuplicate: number;
-  failed: number;
+function normalizeImportedSymbol(symbol: string): string {
+  const normalized = extractBase(symbol)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "");
+  return SYMBOL_ALIASES[normalized] || normalized;
+}
+
+function findAssetId(symbol: string, assets: AssetRecord[]): string | null {
+  const candidates = new Set<string>([
+    symbol.toUpperCase(),
+    normalizeImportedSymbol(symbol),
+  ]);
+
+  for (const asset of assets) {
+    const assetSymbol = asset.symbol.toUpperCase();
+    const binanceBase = asset.binance_symbol
+      ? normalizeImportedSymbol(asset.binance_symbol)
+      : "";
+
+    if (candidates.has(assetSymbol) || (binanceBase && candidates.has(binanceBase))) {
+      return asset.id;
+    }
+  }
+
+  return null;
+}
+
+async function saveTransactionViaApi(
+  tx: {
+    type: string;
+    asset: string;
+    qty: number;
+    price: number;
+    fee: number;
+    venue: string;
+    note: string;
+    ts: number;
+    externalId?: string;
+  },
+  assets?: AssetRecord[],
+  source: "manual" | "import" = "manual",
+): Promise<{ ok: boolean; source: string; missingAsset?: string }> {
+  const assetCatalog = assets ?? (await fetchAssets().catch(() => [] as AssetRecord[]));
+  const normalizedAsset = normalizeImportedSymbol(tx.asset);
+  const assetId = findAssetId(normalizedAsset, assetCatalog);
+
+  if (!assetId) {
+    console.warn(`[ledger] Asset ${normalizedAsset} not found in assets table`);
+    return { ok: false, source: "local-only", missingAsset: normalizedAsset };
+  }
+
+  try {
+    await createTransaction({
+      asset_id: assetId,
+      timestamp: new Date(tx.ts).toISOString(),
+      type: tx.type,
+      qty: tx.qty,
+      unit_price: tx.price || 0,
+      fee_amount: tx.fee || 0,
+      fee_currency: "USD",
+      venue: tx.venue || undefined,
+      note: tx.note || undefined,
+      external_id: tx.externalId,
+      source,
+    });
+
+    return { ok: true, source: "worker" };
+  } catch (err: any) {
+    console.error("[ledger] Save failed:", err);
+    return { ok: false, source: "error" };
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
@@ -133,44 +182,11 @@ export default function LedgerPage() {
 
   const importedFiles = state.importedFiles || [];
 
-  // ── Derived data ──────────────────────────────────────────────────────────
-
-  const allTxs = useMemo(() =>
-    state.txs.slice().sort((a, b) => b.ts - a.ts),
-  [state.txs]);
-
-  const filteredTxs = useMemo(() => {
-    return allTxs.filter(t => {
-      if (filterType && t.type !== filterType) return false;
-      const q = searchQ.toLowerCase();
-      if (q && !t.asset.toLowerCase().includes(q) && !(t.note || "").toLowerCase().includes(q)) return false;
-      return true;
-    }).slice(0, 300);
-  }, [allTxs, filterType, searchQ]);
-
-  const stats = useMemo(() => {
-    const buys = allTxs.filter(t => t.type === "buy");
-    const sells = allTxs.filter(t => t.type === "sell");
-    const totalBuyValue = buys.reduce((s, t) => s + t.qty * t.price, 0);
-    const totalSellValue = sells.reduce((s, t) => s + t.qty * t.price, 0);
-    const uniqueAssets = new Set(allTxs.map(t => t.asset)).size;
-    return { total: allTxs.length, buys: buys.length, sells: sells.length, uniqueAssets, totalBuyValue, totalSellValue };
-  }, [allTxs]);
-
-  // ── Save manual entry ────────────────────────────────────────────────────
-
+  // Manual save â€” writes to both localStorage AND Worker
   const save = async () => {
-    const normalizedAsset = resolveAssetSymbol(asset);
-    const q = parseFloat(qty);
-    const p = parseFloat(price) || 0;
-    const f = parseFloat(fee) || 0;
-
-    if (!normalizedAsset || !(q > 0)) {
-      toast("Asset and quantity are required", "bad");
-      return;
-    }
-
-    setSaving(true);
+    const a = normalizeImportedSymbol(asset.trim()); const q = parseFloat(qty); const p = parseFloat(price); const f = parseFloat(fee) || 0;
+    if (!a || !(q > 0)) { toast("Asset and qty required", "bad"); return; }
+    const total = (type === "buy" || type === "sell") ? q * p : 0;
     const ts = Date.now();
 
     try {
@@ -212,13 +228,21 @@ export default function LedgerPage() {
         toast("Saved locally (Worker API not configured)", "bad");
       }
 
-      setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
-      // Auto-jump to journal after save
-      setTab("journal");
-    } catch (err: any) {
-      toast(err?.message || "Failed to save transaction", "bad");
-    } finally {
-      setSaving(false);
+    // Save to backend via Worker API
+    setSaving(true);
+const assetCatalog = await fetchAssets().catch(() => [] as AssetRecord[]);
+const result = await saveTransactionViaApi(
+  { type, asset: a, qty: q, price: p, fee: f, venue, note, ts },
+  assetCatalog,
+  "manual",
+);
+setSaving(false);
+
+    setAsset(""); setQty(""); setPrice(""); setFee("0"); setVenue(""); setNote("");
+    if (result.ok) {
+      toast(`Transaction saved âœ“ (via ${result.source})`, "good");
+    } else {
+      toast("Transaction saved locally only (backend sync failed)", "good");
     }
   };
 
@@ -245,23 +269,12 @@ export default function LedgerPage() {
     const nextPrice = Number.isFinite(parseFloat(editPrice)) ? parseFloat(editPrice) : existing.price;
 
     try {
-      if (isWorkerConfigured() && isBackendId(editId)) {
-        const assets = await getAssetCatalog();
-        const { assetId } = resolveAssetId(normalizedAsset, assets);
-        if (!assetId) { toast(`Unknown asset: ${normalizedAsset}`, "bad"); return; }
-        await updateTransaction(editId, { asset_id: assetId, type: nextType, qty: nextQty, unit_price: nextPrice });
-        await rehydrateFromBackend();
-        toast("Transaction updated ✓", "good");
-      } else {
-        setState(prev => ({
-          ...prev,
-          txs: prev.txs.map(t => t.id === editId
-            ? { ...t, asset: normalizedAsset, qty: nextQty, price: nextPrice, type: nextType, total: nextQty * nextPrice }
-            : t),
-        }));
-        toast("Updated (local-only)", "bad");
-      }
-      setEditId(null);
+      await updateTransaction(editId, {
+        type: editType,
+        qty: newQty || undefined,
+        unit_price: newPrice || undefined,
+      });
+      toast("Transaction updated âœ“", "good");
     } catch (err: any) {
       toast(err?.message || "Failed to update", "bad");
     }
@@ -270,14 +283,8 @@ export default function LedgerPage() {
   const deleteTx = async (id: string) => {
     if (!confirm("Delete this transaction? This will recalculate your portfolio.")) return;
     try {
-      if (isWorkerConfigured() && isBackendId(id)) {
-        await deleteTransaction(id);
-        await rehydrateFromBackend();
-        toast("Deleted ✓", "good");
-      } else {
-        setState(prev => ({ ...prev, txs: prev.txs.filter(t => t.id !== id) }));
-        toast("Deleted (local-only)", "good");
-      }
+      await deleteTransaction(id);
+      toast("Transaction deleted âœ“", "good");
     } catch (err: any) {
       toast(err?.message || "Failed to delete", "bad");
     }
@@ -343,27 +350,59 @@ export default function LedgerPage() {
       const batchPayload: any[] = [];
 
       for (const row of importResult.rows) {
-        const { assetId, symbol } = resolveAssetId(row.symbol, assets);
-        if (!assetId) { missingSymbols.add(symbol); counts.rejected++; continue; }
-
-        const externalId = row.externalId
-          ? `${row.exchange}:${row.externalId}`
-          : `${row.exchange}:${row.timestamp}:${symbol}:${row.side}:${row.qty}:${row.unitPrice}`;
-
-        batchPayload.push({
-          asset_id: assetId,
-          timestamp: new Date(row.timestamp).toISOString(),
-          type: row.side,
-          qty: row.qty,
-          unit_price: row.unitPrice,
-          fee_amount: row.feeAmount,
-          fee_currency: row.feeAsset || state.base,
-          venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
-          note: row.externalId ? `Import: ${row.externalId}` : "",
-          source: "csv-import",
-          external_id: externalId,
-        });
+        const txId = uid();
+        const assetSym = normalizeImportedSymbol(row.symbol);
+        const tx = {
+          id: txId, ts: row.timestamp, type: row.side, asset: assetSym,
+          qty: row.qty, price: row.unitPrice, total: row.grossValue,
+          fee: row.feeAmount, feeAsset: row.feeAsset || prev.base,
+          accountId: "acc_main", note: `Import: ${EXCHANGE_LABELS[row.exchange]} ${row.externalId}`, lots: "",
+        };
+        newTxs.push(tx);
+        if (row.side === "buy") {
+          const unitCost = row.qty > 0 ? (row.grossValue + row.feeAmount) / row.qty : 0;
+          newLots.push({ id: "lot_" + uid().slice(0, 10), ts: row.timestamp, asset: assetSym, qty: row.qty, qtyRem: row.qty, unitCost, cost: unitCost * row.qty, accountId: "acc_main", tag: "buy", note: `Import: ${EXCHANGE_LABELS[row.exchange]}` });
+          newHoldings.push({ id: uid(), asset: assetSym, buyPrice: row.unitPrice, quantity: row.qty, date: row.timestamp, exchange: EXCHANGE_LABELS[row.exchange], note: `Imported from ${fileName}` });
+        } else if (row.side === "sell") {
+          const lots = newLots.filter(l => l.asset.toUpperCase() === assetSym && (l.qtyRem || 0) > 0).sort((a, b) => a.ts - b.ts);
+          let rem = row.qty, cost = 0;
+          for (const l of lots) { if (rem <= 0) break; const take = Math.min(l.qtyRem, rem); l.qtyRem -= take; rem -= take; cost += take * l.unitCost; }
+          (tx as any).realized = row.grossValue - row.feeAmount - cost; (tx as any).cost = cost;
+        }
       }
+      return {
+        ...prev, txs: newTxs, lots: newLots, holdings: newHoldings,
+        importedFiles: [...(prev.importedFiles || []), { name: fileName, hash: fileHash, importedAt: Date.now(), exchange: importResult.exchange, exportType: importResult.exportType, rowCount: importResult.rows.length }],
+      };
+    });
+
+    // Sync each imported row to backend via API client
+    const assetCatalog = await fetchAssets().catch(() => [] as AssetRecord[]);
+const missingAssets = new Set<string>();
+let synced = 0;
+
+for (const row of importResult.rows) {
+  const assetSym = normalizeImportedSymbol(row.symbol);
+
+  const result = await saveTransactionViaApi(
+    {
+      type: row.side,
+      asset: assetSym,
+      qty: row.qty,
+      price: row.unitPrice,
+      fee: row.feeAmount,
+      venue: EXCHANGE_LABELS[row.exchange] || row.exchange,
+      note: `Import: ${row.externalId}`,
+      ts: row.timestamp,
+      externalId: row.externalId,
+    },
+    assetCatalog,
+    "import",
+  );
+
+  if (result.ok) synced++;
+  if (result.missingAsset) missingAssets.add(result.missingAsset);
+}
 
       counts.accepted = batchPayload.length;
 
@@ -411,6 +450,9 @@ export default function LedgerPage() {
       setImportCounts(counts);
       toast("Import failed — backend error", "bad");
     }
+
+    const summary = missingAssets.size > 0 ? `Imported ${importResult.rows.length} trades, ${synced} synced, local only for: ${[...missingAssets].join(", ")}` : `Imported ${importResult.rows.length} trades (${synced} synced)`; toast(summary, "good");
+    setImportStage("done");
   };
 
   const resetImport = () => {
@@ -499,157 +541,26 @@ export default function LedgerPage() {
       ═══════════════════════════════════════════════════ */}
       {tab === "journal" && (
         <div className="panel">
-          <div className="panel-head">
-            <h2>Transaction Journal</h2>
-            {state.syncStatus === "loading" && <span className="pill">Syncing…</span>}
-          </div>
-
-          {/* Filters */}
-          <div style={{ padding: "12px 16px", borderBottom: "1px solid var(--line)", display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              className="inp" placeholder="🔍 Search asset or note…"
-              value={searchQ} onChange={e => setSearchQ(e.target.value)}
-              style={{ minWidth: 200, flex: 1 }}
-            />
-            <select className="inp" value={filterType} onChange={e => setFilterType(e.target.value)}
-              style={{ minWidth: 130 }}>
-              <option value="">All Types</option>
-              {TX_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
-            </select>
-            {(searchQ || filterType) && (
-              <button className="btn secondary" style={{ fontSize: 11, padding: "4px 10px" }}
-                onClick={() => { setSearchQ(""); setFilterType(""); }}>Clear</button>
-            )}
-            <span className="pill" style={{ alignSelf: "center" }}>{filteredTxs.length} rows</span>
-          </div>
-
-          <div className="panel-body" style={{ padding: 0 }}>
-            {filteredTxs.length === 0 ? (
-              <div style={{ padding: 48, textAlign: "center" }}>
-                <div style={{ fontSize: 32, marginBottom: 12 }}>📋</div>
-                <div style={{ fontSize: 14, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
-                  {allTxs.length === 0 ? "No transactions yet" : "No results match your filter"}
-                </div>
-                <div style={{ fontSize: 12, color: "var(--muted)", marginBottom: 16 }}>
-                  {allTxs.length === 0
-                    ? "Add your first trade manually or import a CSV from Binance, Bybit, OKX, or Gate.io"
-                    : "Try a different search term or clear the filter"}
-                </div>
-                {allTxs.length === 0 && (
-                  <div style={{ display: "flex", gap: 8, justifyContent: "center" }}>
-                    <button className="btn" onClick={() => setTab("add")}>✚ Add Transaction</button>
-                    <button className="btn secondary" onClick={() => setTab("import")}>📥 Import CSV</button>
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="tableWrap">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>DATE</th>
-                      <th>TYPE</th>
-                      <th>ASSET</th>
-                      <th>QTY</th>
-                      <th>PRICE</th>
-                      <th>TOTAL</th>
-                      <th>FEE</th>
-                      <th>VENUE</th>
-                      <th>NOTE</th>
-                      <th></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredTxs.map(t => (
-                      <tr key={t.id} style={{ transition: "background 0.12s" }}>
-                        {editId === t.id ? (
-                          <>
-                            <td className="mono" style={{ color: "var(--muted)", fontSize: 11 }}>
-                              {new Date(t.ts).toLocaleDateString()}
-                            </td>
-                            <td>
-                              <select className="inp" value={editType} onChange={e => setEditType(e.target.value)}
-                                style={{ width: 90, padding: "2px 4px", fontSize: 11 }}>
-                                {TX_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
-                              </select>
-                            </td>
-                            <td>
-                              <input className="inp" value={editAsset} onChange={e => setEditAsset(e.target.value)}
-                                style={{ width: 70, padding: "2px 4px", fontSize: 11 }} />
-                            </td>
-                            <td>
-                              <input className="inp" type="number" value={editQty} onChange={e => setEditQty(e.target.value)}
-                                style={{ width: 100, padding: "2px 4px", fontSize: 11 }} />
-                            </td>
-                            <td>
-                              <input className="inp" type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)}
-                                style={{ width: 90, padding: "2px 4px", fontSize: 11 }} />
-                            </td>
-                            <td className="mono muted">—</td>
-                            <td className="mono muted">—</td>
-                            <td className="mono muted">—</td>
-                            <td className="mono muted">—</td>
-                            <td>
-                              <div style={{ display: "flex", gap: 4 }}>
-                                <button onClick={saveEdit} style={{
-                                  background: "rgba(22,163,74,0.12)", border: "1px solid var(--good)",
-                                  borderRadius: "var(--lt-radius-sm)", padding: "4px 10px",
-                                  cursor: "pointer", color: "var(--good)", fontSize: 12, fontWeight: 700,
-                                }}>✓</button>
-                                <button onClick={cancelEdit} style={{
-                                  background: "none", border: "1px solid var(--line)",
-                                  borderRadius: "var(--lt-radius-sm)", padding: "4px 10px",
-                                  cursor: "pointer", color: "var(--muted)", fontSize: 12,
-                                }}>✕</button>
-                              </div>
-                            </td>
-                          </>
-                        ) : (
-                          <>
-                            <td className="mono" style={{ fontSize: 11, color: "var(--muted)", whiteSpace: "nowrap" }}>
-                              {new Date(t.ts).toLocaleString(undefined, {
-                                month: "short", day: "numeric", year: "2-digit",
-                                hour: "2-digit", minute: "2-digit"
-                              })}
-                            </td>
-                            <td><TypeBadge type={t.type} /></td>
-                            <td className="mono" style={{ fontWeight: 800, color: "var(--text)" }}>{t.asset}</td>
-                            <td className="mono">{fmtQty(t.qty)}</td>
-                            <td className="mono">{t.price > 0 ? fmtPx(t.price) : "—"}</td>
-                            <td className="mono" style={{ color: t.type === "buy" ? "var(--good)" : t.type === "sell" ? "var(--bad)" : "var(--muted)" }}>
-                              {(t.type === "buy" || t.type === "sell") && t.price > 0
-                                ? `$${fmtFiat(t.qty * t.price)}`
-                                : "—"}
-                            </td>
-                            <td className="mono muted">{t.fee > 0 ? fmtFiat(t.fee) : "—"}</td>
-                            <td className="mono muted" style={{ fontSize: 11 }}>{(t as any).venue || "—"}</td>
-                            <td className="mono muted" style={{ fontSize: 11, maxWidth: 120, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                              {t.note || "—"}
-                            </td>
-                            <td>
-                              <div style={{ display: "flex", gap: 4 }}>
-                                <button onClick={() => startEdit(t)} title="Edit" style={{
-                                  background: "none", border: "1px solid var(--line)",
-                                  borderRadius: "var(--lt-radius-sm)", padding: "4px 8px",
-                                  cursor: "pointer", color: "var(--muted)", fontSize: 13,
-                                  transition: "var(--lt-tr)",
-                                }}>✎</button>
-                                <button onClick={() => deleteTx(t.id)} title="Delete" style={{
-                                  background: "none", border: "1px solid var(--line)",
-                                  borderRadius: "var(--lt-radius-sm)", padding: "4px 8px",
-                                  cursor: "pointer", color: "var(--bad)", fontSize: 13,
-                                  transition: "var(--lt-tr)",
-                                }}>✕</button>
-                              </div>
-                            </td>
-                          </>
-                        )}
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
+          <div className="panel-head"><h2>+ Manual Entry</h2>{saving && <span className="pill">Syncingâ€¦</span>}</div>
+          <div className="panel-body" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div className="form-field">
+              <label className="form-label">Type</label>
+              <select className="inp" value={type} onChange={e => setType(e.target.value)}>
+                <option value="buy">Buy</option>
+                <option value="sell">Sell</option>
+                <option value="transfer_in">Transfer In</option>
+                <option value="transfer_out">Transfer Out</option>
+                <option value="reward">Reward</option>
+              </select>
+            </div>
+            <div className="form-field"><label className="form-label">Asset</label><CoinAutocomplete value={asset} onChange={setAsset} /></div>
+            <div className="form-field"><label className="form-label">Quantity</label><input className="inp" type="number" value={qty} onChange={e => setQty(e.target.value)} /></div>
+            <div className="form-field"><label className="form-label">Unit Price ({state.base})</label><input className="inp" type="number" value={price} onChange={e => setPrice(e.target.value)} /></div>
+            <div className="form-field"><label className="form-label">Venue</label><input className="inp" value={venue} onChange={e => setVenue(e.target.value)} placeholder="Binance, Coinbase..." /></div>
+            <div className="form-field"><label className="form-label">Tags</label><input className="inp" value={note} onChange={e => setNote(e.target.value)} placeholder="Optional" /></div>
+            <div style={{ gridColumn: "1/-1", display: "flex", gap: 8 }}>
+              <button className="btn" onClick={save} disabled={saving}>Save Transaction</button>
+            </div>
           </div>
 
           {/* Import history footer */}
@@ -675,8 +586,8 @@ export default function LedgerPage() {
       {tab === "add" && (
         <div className="panel">
           <div className="panel-head">
-            <h2>Add Transaction</h2>
-            {saving && <span className="pill">Saving…</span>}
+            <h2>ðŸ“¥ CSV Import</h2>
+            <span className="pill">Spot Trades</span>
           </div>
           <div className="panel-body">
             <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14 }}>
@@ -696,61 +607,44 @@ export default function LedgerPage() {
                     }}>{tt.label}</button>
                   ))}
                 </div>
-              </div>
-
-              {/* Asset */}
-              <div className="form-field">
-                <label className="form-label">Asset *</label>
-                <CoinAutocomplete value={asset} onChange={setAsset} />
-              </div>
-
-              {/* Quantity */}
-              <div className="form-field">
-                <label className="form-label">Quantity *</label>
-                <input className="inp" type="number" placeholder="0.00" value={qty} onChange={e => setQty(e.target.value)} />
-              </div>
-
-              {/* Unit Price */}
-              <div className="form-field">
-                <label className="form-label">Unit Price ({state.base})</label>
-                <input className="inp" type="number" placeholder="0.00" value={price} onChange={e => setPrice(e.target.value)} />
-              </div>
-
-              {/* Fee */}
-              <div className="form-field">
-                <label className="form-label">Fee ({state.base})</label>
-                <input className="inp" type="number" placeholder="0.00" value={fee} onChange={e => setFee(e.target.value)} />
-              </div>
-
-              {/* Venue */}
-              <div className="form-field">
-                <label className="form-label">Venue / Exchange</label>
-                <input className="inp" placeholder="Binance, Coinbase…" value={venue} onChange={e => setVenue(e.target.value)} />
-              </div>
-
-              {/* Note */}
-              <div className="form-field">
-                <label className="form-label">Note (optional)</label>
-                <input className="inp" placeholder="Add a tag or note…" value={note} onChange={e => setNote(e.target.value)} />
-              </div>
-            </div>
-
-            {/* Preview row */}
-            {asset && qty && price && (
-              <div style={{
-                marginTop: 16, padding: "12px 16px", borderRadius: "var(--lt-radius)",
-                background: "var(--panel2)", border: "1px solid var(--line)",
-                display: "flex", gap: 16, alignItems: "center", fontSize: 13,
-              }}>
-                <TypeBadge type={txType} />
-                <span style={{ fontWeight: 700 }}>{parseFloat(qty) || 0} {resolveAssetSymbol(asset) || asset}</span>
-                <span style={{ color: "var(--muted)" }}>@</span>
-                <span>${parseFloat(price) || 0}</span>
-                <span style={{ color: "var(--muted)" }}>→</span>
-                <span style={{ fontWeight: 800, color: "var(--good)" }}>
-                  ${((parseFloat(qty) || 0) * (parseFloat(price) || 0)).toLocaleString(undefined, { maximumFractionDigits: 2 })} total
-                </span>
-              </div>
+                <div
+                  className="import-drop"
+                  style={{ minHeight: 100 }}
+                  onDragOver={e => e.preventDefault()}
+                  onDrop={e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: "none" }} onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
+                  {importLoading ? <div className="muted">Parsingâ€¦</div> : (
+                    <>
+                      <svg viewBox="0 0 24 24" fill="none" width="28" height="28"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M17 8l-5-5-5 5M12 3v12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <div style={{ marginTop: 4, fontSize: 12 }}>Drop CSV or click to browse</div>
+                    </>
+                  )}
+                </div>
+                {importError && <div className="import-error">{importError}</div>}
+              </>
+            )}
+            {importStage === "preview" && importResult && (
+              <>
+                <div className="import-summary" style={{ marginBottom: 8 }}>
+                  <div className="import-stat"><div className="import-stat-val good">{importResult.rowCount}</div><div className="import-stat-lbl">Parsed</div></div>
+                  <div className="import-stat"><div className="import-stat-val" style={{ color: importResult.skippedCount > 0 ? "var(--bad)" : "var(--muted)" }}>{importResult.skippedCount}</div><div className="import-stat-lbl">Skipped</div></div>
+                </div>
+                {importResult.warnings.length > 0 && (
+                  <div className="import-warnings">{importResult.warnings.map((w, i) => <div key={i} className="import-warning">âš  {w}</div>)}</div>
+                )}
+                <div style={{ display: "flex", gap: 8 }}>
+                  <button className="btn secondary" onClick={resetImport}>Cancel</button>
+                  <button className="btn" onClick={commitImport}>Commit {importResult.rowCount} Trades</button>
+                </div>
+              </>
+            )}
+            {importStage === "done" && importResult && (
+              <>
+                <p><strong>{importResult.rowCount}</strong> trades from <strong>{EXCHANGE_LABELS[importResult.exchange]}</strong> committed âœ“</p>
+                <button className="btn" onClick={resetImport} style={{ marginTop: 8 }}>Import Another</button>
+              </>
             )}
 
             <div style={{ marginTop: 16, display: "flex", gap: 8 }}>
@@ -771,113 +665,67 @@ export default function LedgerPage() {
       {tab === "import" && (
         <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
 
-          {/* Supported exchanges */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            {Object.entries(EXCHANGE_LABELS).map(([key, label]) => (
-              <div key={key} style={{
-                padding: "8px 16px", borderRadius: "var(--lt-radius)",
-                background: "var(--panel)", border: "1px solid var(--line)",
-                fontSize: 13, fontWeight: 700, color: "var(--text)",
-                display: "flex", alignItems: "center", gap: 6,
-              }}>
-                <span style={{ fontSize: 8, color: "var(--good)" }}>●</span>
-                {label}
-                <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 500 }}>Spot</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="panel">
-            <div className="panel-head">
-              <h2>📥 CSV Import</h2>
-              <span className="pill">Spot Trades Only</span>
-            </div>
-            <div className="panel-body">
-
-              {/* STAGE: UPLOAD */}
-              {importStage === "upload" && (
-                <>
-                  <div
-                    onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-                    onDragLeave={() => setDragOver(false)}
-                    onDrop={e => {
-                      e.preventDefault(); setDragOver(false);
-                      const f = e.dataTransfer.files[0];
-                      if (f) handleFile(f);
-                    }}
-                    onClick={() => fileRef.current?.click()}
-                    style={{
-                      border: `2px dashed ${dragOver ? "var(--brand)" : "var(--line)"}`,
-                      borderRadius: "var(--lt-radius)",
-                      padding: "48px 24px",
-                      textAlign: "center",
-                      cursor: "pointer",
-                      background: dragOver ? "var(--brand3)" : "var(--panel2)",
-                      transition: "var(--lt-tr)",
-                    }}
-                  >
-                    <input ref={fileRef} type="file" accept=".csv,.txt" style={{ display: "none" }}
-                      onChange={e => { const f = e.target.files?.[0]; if (f) handleFile(f); }} />
-
-                    {importLoading ? (
-                      <div>
-                        <div style={{ fontSize: 28, marginBottom: 8 }}>⏳</div>
-                        <div style={{ fontSize: 14, color: "var(--muted)" }}>Parsing CSV…</div>
-                      </div>
+      {/* Transaction Ledger */}
+      <div className="panel">
+        <div className="panel-head"><h2>Transaction Ledger</h2><span className="pill">{txs.length} entries</span></div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          <div className="tableWrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>DATE</th>
+                  <th>TYPE</th>
+                  <th>ASSET</th>
+                  <th>QTY</th>
+                  <th>UNIT PRICE</th>
+                  <th>FEE</th>
+                  <th>VENUE</th>
+                  <th>TAGS</th>
+                  <th>ACTIONS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {txs.length ? txs.map(t => (
+                  <tr key={t.id}>
+                    {editId === t.id ? (
+                      <>
+                        <td className="mono">{new Date(t.ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td>
+                          <select className="inp" value={editType} onChange={e => setEditType(e.target.value)} style={{ width: 80, padding: "2px 4px", fontSize: 11 }}>
+                            <option value="buy">BUY</option>
+                            <option value="sell">SELL</option>
+                          </select>
+                        </td>
+                        <td><input className="inp" value={editAsset} onChange={e => setEditAsset(e.target.value)} style={{ width: 60, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td><input className="inp" type="number" value={editQty} onChange={e => setEditQty(e.target.value)} style={{ width: 90, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td><input className="inp" type="number" value={editPrice} onChange={e => setEditPrice(e.target.value)} style={{ width: 80, padding: "2px 4px", fontSize: 11 }} /></td>
+                        <td className="mono muted">â€”</td>
+                        <td className="mono muted">â€”</td>
+                        <td className="mono muted">â€”</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={saveEdit} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--good)", fontSize: 12 }}>âœ“</button>
+                            <button onClick={() => setEditId(null)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--muted)", fontSize: 12 }}>âœ•</button>
+                          </div>
+                        </td>
+                      </>
                     ) : (
-                      <div>
-                        <div style={{ fontSize: 40, marginBottom: 8 }}>📂</div>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>
-                          Drop your CSV here
-                        </div>
-                        <div style={{ fontSize: 13, color: "var(--muted)" }}>
-                          or click to browse · .csv and .txt supported
-                        </div>
-                      </div>
-                    )}
-                  </div>
-
-                  {importError && (
-                    <div style={{
-                      marginTop: 12, padding: "12px 16px", borderRadius: "var(--lt-radius)",
-                      background: "rgba(220,38,38,0.08)", border: "1px solid rgba(220,38,38,0.25)",
-                      color: "var(--bad)", fontSize: 13,
-                    }}>
-                      ⚠ {importError}
-                    </div>
-                  )}
-
-                  <div style={{ marginTop: 16, padding: "12px 16px", background: "var(--panel2)", borderRadius: "var(--lt-radius)", border: "1px solid var(--line)" }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: "var(--muted)", marginBottom: 8, letterSpacing: "0.06em" }}>HOW TO EXPORT</div>
-                    <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8 }}>
-                      {[
-                        { name: "Binance", path: "Orders → Spot → Trade History → Export" },
-                        { name: "Bybit", path: "Assets → Trade History → Export" },
-                        { name: "OKX", path: "Trade → Order History → Export CSV" },
-                        { name: "Gate.io", path: "My Trades → Export" },
-                      ].map(e => (
-                        <div key={e.name} style={{ fontSize: 11 }}>
-                          <div style={{ fontWeight: 700, color: "var(--text)", marginBottom: 2 }}>{e.name}</div>
-                          <div style={{ color: "var(--muted)" }}>{e.path}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </>
-              )}
-
-              {/* STAGE: PREVIEW */}
-              {importStage === "preview" && importResult && (
-                <div>
-                  <div style={{ display: "flex", gap: 10, marginBottom: 16, flexWrap: "wrap" }}>
-                    <StatCard label="PARSED" value={importResult.rowCount} />
-                    <StatCard label="SKIPPED" value={importResult.skippedCount} accent={importResult.skippedCount > 0 ? "var(--warn)" : undefined} />
-                    <StatCard label="BUYS" value={previewTotal.buys} accent="var(--good)" />
-                    <StatCard label="SELLS" value={previewTotal.sells} accent="var(--bad)" />
-                    {importResult.dateRange && (
-                      <StatCard label="DATE RANGE"
-                        value={new Date(importResult.dateRange[0]).toLocaleDateString()}
-                        sub={`→ ${new Date(importResult.dateRange[1]).toLocaleDateString()}`} />
+                      <>
+                        <td className="mono">{new Date(t.ts).toLocaleString(undefined, { month: "short", day: "numeric", year: "2-digit", hour: "2-digit", minute: "2-digit" })}</td>
+                        <td className={`mono ${t.type === "sell" ? "bad" : t.type === "buy" ? "good" : ""}`} style={{ fontWeight: 900 }}>{t.type.toUpperCase()}</td>
+                        <td className="mono" style={{ fontWeight: 900 }}>{t.asset}</td>
+                        <td className="mono">{fmtQty(t.qty)}</td>
+                        <td className="mono">{t.type === "buy" || t.type === "sell" ? "$" + fmtPx(t.price) : "â€”"}</td>
+                        <td className="mono muted">{t.fee > 0 ? fmtFiat(t.fee, state.base) : "â€”"}</td>
+                        <td className="mono muted">{(t as any).venue || "â€”"}</td>
+                        <td className="mono muted" style={{ maxWidth: 100, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{t.note || "â€”"}</td>
+                        <td>
+                          <div style={{ display: "flex", gap: 4 }}>
+                            <button onClick={() => startEdit(t)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--text)", fontSize: 13 }}>âœŽ</button>
+                            <button onClick={() => deleteTx(t.id)} style={{ background: "none", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "4px 8px", cursor: "pointer", color: "var(--bad)", fontSize: 13 }}>ðŸ—‘</button>
+                          </div>
+                        </td>
+                      </>
                     )}
                   </div>
 
@@ -981,3 +829,18 @@ export default function LedgerPage() {
     </div>
   );
 }
+
+function extractBase(symbol: string): string {
+  const clean = symbol.replace(/[_\-/]/g, "");
+  const stables = ["USDT", "USDC", "BUSD", "TUSD", "DAI", "FDUSD", "EUR", "GBP", "USD", "QAR", "BTC", "ETH", "BNB"];
+  for (const q of stables) {
+    if (clean.endsWith(q) && clean.length > q.length) return clean.slice(0, -q.length);
+  }
+  return clean;
+}
+
+
+
+
+
+
