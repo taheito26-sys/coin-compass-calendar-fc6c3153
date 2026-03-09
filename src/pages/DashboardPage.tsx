@@ -6,6 +6,7 @@ import { useMemo, useState } from "react";
 import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
 import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
 import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
+import BenchmarkChart from "@/components/dashboard/BenchmarkChart";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -17,7 +18,6 @@ const COIN_COLORS = [
 
 const LAYOUT_KEY = "dashboard_card_layout";
 
-// All possible dashboard cards
 interface CardDef {
   id: string;
   label: string;
@@ -33,9 +33,12 @@ const ALL_CARDS: CardDef[] = [
   { id: "fearGreed", label: "Fear & Greed" },
   { id: "movers", label: "Top Movers" },
   { id: "watchlist", label: "Watchlist" },
+  { id: "benchmark", label: "Portfolio vs Benchmarks", colSpan: 2 },
   { id: "riskBreakdown", label: "Per-Asset Risk", colSpan: 2 },
   { id: "positions", label: "Top Positions", colSpan: 2 },
 ];
+
+// ─── Layout helpers ─────────────────────────────────────────────────────────
 
 function getDefaultLayout(): string[] {
   return ALL_CARDS.map(c => c.id);
@@ -46,23 +49,19 @@ function loadLayout(): string[] {
     const saved = localStorage.getItem(LAYOUT_KEY);
     if (saved) {
       const parsed = JSON.parse(saved) as string[];
-      // Ensure all cards exist
       const valid = parsed.filter(id => ALL_CARDS.some(c => c.id === id));
-      // Add any missing cards
       for (const c of ALL_CARDS) {
         if (!valid.includes(c.id)) valid.push(c.id);
       }
       return valid;
     }
-  } catch {}
+  } catch { }
   return getDefaultLayout();
 }
 
 function saveLayout(layout: string[]) {
   localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
 }
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
 
 interface DonutSlice {
   label: string;
@@ -150,8 +149,6 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
   );
 }
 
-// ─── Drag Handle ──────────────────────────────────────────────────────────────
-
 function DragHandle({ editing }: { editing: boolean }) {
   if (!editing) return null;
   return (
@@ -184,23 +181,13 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
   const txCount     = state.txs.length;
   const realizedPnl = useMemo(() => positions.reduce((s, p) => s + p.realizedPnl, 0), [positions]);
 
-  // Layout management
   const [cardOrder, setCardOrder] = useState<string[]>(loadLayout);
   const [editing, setEditing] = useState(false);
   const [draggedId, setDraggedId] = useState<string | null>(null);
   const [dragOverId, setDragOverId] = useState<string | null>(null);
 
-  const handleDragStart = (id: string) => {
-    setDraggedId(id);
-  };
-
-  const handleDragOver = (e: React.DragEvent, id: string) => {
-    e.preventDefault();
-    if (draggedId && draggedId !== id) {
-      setDragOverId(id);
-    }
-  };
-
+  const handleDragStart = (id: string) => { setDraggedId(id); };
+  const handleDragOver = (e: React.DragEvent, id: string) => { e.preventDefault(); if (draggedId && draggedId !== id) setDragOverId(id); };
   const handleDrop = (id: string) => {
     if (!draggedId || draggedId === id) return;
     setCardOrder(prev => {
@@ -216,32 +203,16 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     setDraggedId(null);
     setDragOverId(null);
   };
-
-  const handleDragEnd = () => {
-    setDraggedId(null);
-    setDragOverId(null);
-  };
-
-  const resetLayout = () => {
-    const def = getDefaultLayout();
-    setCardOrder(def);
-    saveLayout(def);
-  };
-
-  // ─── Data ─────────────────────────────────────────────────────────────────
+  const handleDragEnd = () => { setDraggedId(null); setDragOverId(null); };
+  const resetLayout = () => { const def = getDefaultLayout(); setCardOrder(def); saveLayout(def); };
 
   const coinSlices = useMemo((): DonutSlice[] => {
     if (totalMV <= 0) return [];
-    const topCoins = positions
-      .filter(r => {
-        const live = getPrice(r.sym);
-        return (live?.current_price ?? r.price ?? 0) * r.qty > 0;
-      }).slice(0, 12);
-
-    const topTotal = topCoins.reduce((s, r) => {
+    const topCoins = positions.filter(r => {
       const live = getPrice(r.sym);
-      return s + (live?.current_price ?? r.price ?? 0) * r.qty;
-    }, 0);
+      return (live?.current_price ?? r.price ?? 0) * r.qty > 0;
+    }).slice(0, 12);
+    const topTotal = topCoins.reduce((s, r) => { const live = getPrice(r.sym); return s + (live?.current_price ?? r.price ?? 0) * r.qty; }, 0);
     const rest = totalMV - topTotal;
     const slices = topCoins.map((r, i) => {
       const live = getPrice(r.sym);
@@ -269,15 +240,9 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
   const watchlistData = useMemo(() => {
     return state.watch.map(sym => {
       const live = getPrice(sym);
-      return {
-        sym, price: live?.current_price ?? null,
-        change24h: live?.price_change_percentage_24h_in_currency ?? null,
-        change7d: live?.price_change_percentage_7d_in_currency ?? null,
-      };
+      return { sym, price: live?.current_price ?? null, change24h: live?.price_change_percentage_24h_in_currency ?? null, change7d: live?.price_change_percentage_7d_in_currency ?? null };
     });
   }, [state.watch, getPrice]);
-
-  
 
   const { topGainers, topLosers } = useMemo(() => {
     const withPnl = positions.map(r => {
@@ -288,10 +253,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       return { sym: r.sym, pnlPct, pnlAbs: unreal };
     }).filter(r => r.pnlAbs !== 0);
     const sorted = [...withPnl].sort((a, b) => b.pnlPct - a.pnlPct);
-    return {
-      topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3),
-      topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse(),
-    };
+    return { topGainers: sorted.filter(x => x.pnlPct > 0).slice(0, 3), topLosers: sorted.filter(x => x.pnlPct < 0).slice(-3).reverse() };
   }, [positions, getPrice]);
 
   const topCoin = coinSlices.length > 0 ? coinSlices[0] : null;
@@ -305,8 +267,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       return { ...r, price, mv, unreal, avg: r.avg };
     });
   }, [positions, getPrice]);
-
-  // ─── Card Renderers ───────────────────────────────────────────────────────
 
   const renderCard = (id: string) => {
     const def = ALL_CARDS.find(c => c.id === id);
@@ -369,6 +329,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       case "histValue": return <HistoricalNetValue />;
       case "fearGreed": return <FearGreedGauge />;
       case "riskBreakdown": return <PerAssetRiskBreakdown />;
+      case "benchmark": return <BenchmarkChart />;
 
       case "movers":
         return (
@@ -467,17 +428,14 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     }
   };
 
-  // Group cards into rows of 2 (or 1 for colSpan:2 cards)
   const cardRows = useMemo(() => {
     const rows: string[][] = [];
     let currentRow: string[] = [];
     let currentSpan = 0;
-
     for (const id of cardOrder) {
       const def = ALL_CARDS.find(c => c.id === id);
       if (!def) continue;
       const span = def.colSpan || 1;
-
       if (span === 2) {
         if (currentRow.length > 0) rows.push(currentRow);
         rows.push([id]);
@@ -486,11 +444,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       } else {
         currentRow.push(id);
         currentSpan += span;
-        if (currentSpan >= 2) {
-          rows.push(currentRow);
-          currentRow = [];
-          currentSpan = 0;
-        }
+        if (currentSpan >= 2) { rows.push(currentRow); currentRow = []; currentSpan = 0; }
       }
     }
     if (currentRow.length > 0) rows.push(currentRow);
@@ -502,40 +456,20 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
       <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap", marginBottom: 8 }}>
         <span className="pill">{base}</span>
         <div style={{ flex: 1 }} />
-        <button
-          className={`btn tiny ${editing ? "" : "secondary"}`}
-          onClick={() => setEditing(!editing)}
-          style={editing ? { background: "var(--brand)", color: "#fff", border: "none" } : {}}
-        >
+        <button className={`btn tiny ${editing ? "" : "secondary"}`} onClick={() => setEditing(!editing)}
+          style={editing ? { background: "var(--brand)", color: "#fff", border: "none" } : {}}>
           {editing ? "✓ Done" : "⚙ Customize"}
         </button>
-        {editing && (
-          <button className="btn tiny secondary" onClick={resetLayout}>↺ Reset</button>
-        )}
+        {editing && <button className="btn tiny secondary" onClick={resetLayout}>↺ Reset</button>}
       </div>
 
       {cardRows.map((row, ri) => {
         const isFullWidth = row.length === 1 && (ALL_CARDS.find(c => c.id === row[0])?.colSpan === 2);
-
         if (isFullWidth) {
           const id = row[0];
           return (
-            <div
-              key={`row-${ri}`}
-              draggable={editing}
-              onDragStart={() => handleDragStart(id)}
-              onDragOver={e => handleDragOver(e, id)}
-              onDrop={() => handleDrop(id)}
-              onDragEnd={handleDragEnd}
-              style={{
-                marginBottom: 10,
-                opacity: draggedId === id ? 0.5 : 1,
-                outline: dragOverId === id ? "2px dashed var(--brand)" : "none",
-                outlineOffset: 2,
-                borderRadius: "var(--lt-radius-sm)",
-                transition: "opacity .15s",
-              }}
-            >
+            <div key={`row-${ri}`} draggable={editing} onDragStart={() => handleDragStart(id)} onDragOver={e => handleDragOver(e, id)} onDrop={() => handleDrop(id)} onDragEnd={handleDragEnd}
+              style={{ marginBottom: 10, opacity: draggedId === id ? 0.5 : 1, outline: dragOverId === id ? "2px dashed var(--brand)" : "none", outlineOffset: 2, borderRadius: "var(--lt-radius-sm)", transition: "opacity .15s" }}>
               {id === "kpis" && editing && (
                 <div style={{ fontSize: 9, color: "var(--muted)", marginBottom: 2, display: "flex", alignItems: "center", gap: 4 }}>
                   <span style={{ cursor: "grab", fontSize: 14 }}>⠿</span> KPI Summary
@@ -545,25 +479,11 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             </div>
           );
         }
-
         return (
           <div key={`row-${ri}`} className="dashboard-charts-grid">
             {row.map(id => (
-              <div
-                key={id}
-                draggable={editing}
-                onDragStart={() => handleDragStart(id)}
-                onDragOver={e => handleDragOver(e, id)}
-                onDrop={() => handleDrop(id)}
-                onDragEnd={handleDragEnd}
-                style={{
-                  opacity: draggedId === id ? 0.5 : 1,
-                  outline: dragOverId === id ? "2px dashed var(--brand)" : "none",
-                  outlineOffset: 2,
-                  borderRadius: "var(--lt-radius-sm)",
-                  transition: "opacity .15s",
-                }}
-              >
+              <div key={id} draggable={editing} onDragStart={() => handleDragStart(id)} onDragOver={e => handleDragOver(e, id)} onDrop={() => handleDrop(id)} onDragEnd={handleDragEnd}
+                style={{ opacity: draggedId === id ? 0.5 : 1, outline: dragOverId === id ? "2px dashed var(--brand)" : "none", outlineOffset: 2, borderRadius: "var(--lt-radius-sm)", transition: "opacity .15s" }}>
                 {renderCard(id)}
               </div>
             ))}

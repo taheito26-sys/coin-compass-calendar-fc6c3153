@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+import { useState } from "react";
 import { SignIn, UserButton, useAuth, useUser } from "@clerk/react";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
 import Sidebar from "@/components/Sidebar";
@@ -11,21 +11,17 @@ import SettingsPage from "@/pages/SettingsPage";
 import LedgerPage from "@/pages/LedgerPage";
 import ChartsPage from "@/pages/ChartsPage";
 import ToolsPage from "@/pages/ToolsPage";
-import HelpPage from "@/pages/HelpPage";
-import AlertsPage from "@/pages/AlertsPage";
 
 
 const PAGE_TITLES: Record<string, [string, string]> = {
   dashboard: ["Dashboard", "KPIs, Allocation, Heatmap"],
   assets: ["Portfolio", "Holdings, Lots, Alerts"],
   charts: ["Charts &amp; Analytics", "Performance, Risk, Comparison"],
-  alerts: ["Alerts", "Price Alerts, Channels, History"],
   ledger: ["Ledger", "Transactions, Import, Connect"],
   calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
   markets: ["Markets", "Live Prices, Watchlist"],
   tools: ["Tools", "Calculator, QR, Simulator"],
-  settings: ["Settings", "Theme, Data, Vault, Preferences"],
-  help: ["Help", "FAQ, Troubleshooting, Docs"],
+  settings: ["Settings", "Theme, Data, Vault, Alerts"],
 };
 
 function LoadingScreen() {
@@ -137,13 +133,11 @@ function AppShell({
             {page === "dashboard" && <DashboardPage onNav={setPage} />}
             {page === "assets" && <PortfolioPage />}
             {page === "charts" && <ChartsPage />}
-            {page === "alerts" && <AlertsPage />}
             {page === "ledger" && <LedgerPage />}
             {page === "calendar" && <CalendarPage />}
             {page === "markets" && <MarketsPage />}
             {page === "tools" && <ToolsPage />}
             {page === "settings" && <SettingsPage />}
-            {page === "help" && <HelpPage />}
           </div>
         </div>
       </div>
