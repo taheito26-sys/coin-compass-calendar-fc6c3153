@@ -273,7 +273,7 @@ export default function ChartsPage() {
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
                         <div>
                           <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{p.sym}</div>
-                          <div style={{ fontSize: 10, color: "var(--muted)" }}>{p.name}</div>
+                          <div style={{ fontSize: 10, color: "var(--muted)" }}>{assetMeta.get(p.sym)?.name || p.sym}</div>
                         </div>
                         <div style={{ textAlign: "right" }}>
                           <div style={{ fontWeight: 700, fontSize: 13, color: "var(--text)" }}>{fmtFiat(p.price || 0)}</div>
