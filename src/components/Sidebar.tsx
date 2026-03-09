@@ -2,7 +2,8 @@ import { useCrypto } from "@/lib/cryptoContext";
 
 const pages = [
   { id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation", icon: "M4 13h7V4H4v9Zm9 7h7V11h-7v9ZM4 20h7v-5H4v5Zm9-11h7V4h-7v5Z" },
-  { id: "assets", label: "Assets", sub: "Portfolio · Alerts · Ledger", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
+  { id: "assets", label: "Assets", sub: "Portfolio · Alerts", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
+  { id: "ledger", label: "Ledger", sub: "Transactions · Import", icon: "M4 4h16v16H4zM4 9h16M9 4v16" },
   { id: "calendar", label: "Calendar", sub: "Daily P&L", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" },
   { id: "markets", label: "Markets", sub: "Live Prices", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
   { id: "vault", label: "Vault", sub: "Snapshots · Backup", icon: "M12 2L3 7v10l9 5 9-5V7l-9-5ZM3 7l9 5M12 12l9-5M12 12v10" },

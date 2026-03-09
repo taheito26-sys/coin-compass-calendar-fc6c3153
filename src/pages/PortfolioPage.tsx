@@ -12,7 +12,6 @@ import type { DerivedLot } from "@/lib/derivePortfolio";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const AlertsPage = lazy(() => import("@/pages/AlertsPage"));
-const LedgerPage = lazy(() => import("@/pages/LedgerPage"));
 
 // ── View mode ──────────────────────────────────────────────────────────────
 
@@ -311,7 +310,7 @@ export default function PortfolioPage() {
         <TabsList className="mb-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
           <TabsTrigger value="portfolio" style={{ fontSize: 11 }}>Portfolio</TabsTrigger>
           <TabsTrigger value="alerts" style={{ fontSize: 11 }}>Alerts</TabsTrigger>
-          <TabsTrigger value="ledger" style={{ fontSize: 11 }}>Ledger</TabsTrigger>
+          
         </TabsList>
 
         <TabsContent value="portfolio" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
@@ -582,11 +581,6 @@ export default function PortfolioPage() {
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="ledger">
-          <Suspense fallback={<div className="muted" style={{ padding: 20, textAlign: "center" }}>Loading…</div>}>
-            <LedgerPage />
-          </Suspense>
-        </TabsContent>
       </Tabs>
 
       {drilldownSym && (
