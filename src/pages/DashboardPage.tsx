@@ -325,7 +325,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
           </div>
         );
 
-      case "histValue": return <HistoricalNetValue />;
       case "fearGreed": return <FearGreedGauge />;
       case "riskBreakdown": return <PerAssetRiskBreakdown />;
       case "benchmark": return <BenchmarkChart />;
