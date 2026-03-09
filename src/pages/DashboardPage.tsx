@@ -2,11 +2,10 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useMemo, useState } from "react";
 import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
 import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
-import ValueDistribution from "@/components/dashboard/ValueDistribution";
-import EventsAnalysis from "@/components/dashboard/EventsAnalysis";
+import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,10 +33,8 @@ const ALL_CARDS: CardDef[] = [
   { id: "fearGreed", label: "Fear & Greed" },
   { id: "movers", label: "Top Movers" },
   { id: "watchlist", label: "Watchlist" },
-  { id: "valDist", label: "Value Distribution" },
-  { id: "events", label: "Events Analysis" },
+  { id: "riskBreakdown", label: "Per-Asset Risk", colSpan: 2 },
   { id: "positions", label: "Top Positions", colSpan: 2 },
-  { id: "activity", label: "Recent Activity", colSpan: 2 },
 ];
 
 function getDefaultLayout(): string[] {
