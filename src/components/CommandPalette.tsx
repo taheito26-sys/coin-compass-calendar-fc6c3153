@@ -20,13 +20,15 @@ interface CmdItem {
 
 const PAGES: CmdItem[] = [
   { type: "page", id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation · Heatmap", icon: "📊" },
-  { type: "page", id: "assets", label: "Assets", sub: "Positions · P&L · Lots", icon: "💼" },
-  { type: "page", id: "analytics", label: "Analytics", sub: "Risk · Sharpe · Drawdown", icon: "📈" },
-  { type: "page", id: "calendar", label: "Calendar", sub: "Daily P&L · Per Coin", icon: "📅" },
+  { type: "page", id: "assets", label: "Portfolio", sub: "Positions · P&L · Lots", icon: "💼" },
+  { type: "page", id: "charts", label: "Charts & Analytics", sub: "Risk · Performance · Comparison", icon: "📈" },
+  { type: "page", id: "alerts", label: "Alerts", sub: "Price Alerts · Channels · History", icon: "🔔" },
+  { type: "page", id: "markets", label: "Markets", sub: "Live Prices · Watchlist", icon: "🌐" },
+  { type: "page", id: "tools", label: "Tools", sub: "Calculator · QR · DCA Sim", icon: "🧮" },
   { type: "page", id: "ledger", label: "Ledger", sub: "Journal · Import · Manual Entry", icon: "📒" },
-  { type: "page", id: "markets", label: "Markets", sub: "Live Prices · Bubbles", icon: "🌐" },
-  { type: "page", id: "connections", label: "Connections", sub: "Exchange APIs · Wallets", icon: "🔗" },
-  { type: "page", id: "settings", label: "Settings", sub: "Layout · Themes · Data", icon: "⚙️" },
+  { type: "page", id: "calendar", label: "Calendar", sub: "Daily P&L · Per Coin", icon: "📅" },
+  { type: "page", id: "settings", label: "Settings", sub: "Layout · Themes · Data · Vault", icon: "⚙️" },
+  { type: "page", id: "help", label: "Help", sub: "FAQ · Troubleshooting · Docs", icon: "❓" },
 ];
 
 export default function CommandPalette({ onNav }: { onNav: (page: string) => void }) {
@@ -76,14 +78,14 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
         const next = dark.includes(current) ? "t1" : "t4";
         setState(s => ({ ...s, theme: next }));
       }},
-    { type: "action", id: "export-data", label: "Export Portfolio Data", sub: "Navigate to Vault for backup", icon: "💾",
-      action: () => onNav("vault") },
+    { type: "action", id: "export-data", label: "Export Portfolio Data", sub: "Navigate to Settings for backup", icon: "💾",
+      action: () => onNav("settings") },
     { type: "action", id: "view-analytics", label: "View Risk Analytics", sub: "Sharpe ratio, volatility, drawdown", icon: "📈",
-      action: () => onNav("analytics") },
+      action: () => onNav("charts") },
     { type: "action", id: "import-csv", label: "Import CSV", sub: "Upload exchange trade history", icon: "📁",
       action: () => onNav("ledger") },
-    { type: "action", id: "manage-connections", label: "Manage Connections", sub: "Exchange API keys & wallets", icon: "🔗",
-      action: () => onNav("connections") },
+    { type: "action", id: "manage-alerts", label: "Manage Alerts", sub: "Price alerts & notification channels", icon: "🔔",
+      action: () => onNav("alerts") },
   ], [state.theme, onNav, setState]);
 
   const results = useMemo(() => {
