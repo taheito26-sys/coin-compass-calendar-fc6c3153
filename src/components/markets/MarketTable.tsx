@@ -248,18 +248,11 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
     return arr;
   }, [filtered, sortKey, sortDir]);
 
-  // Group columns for picker
-  const groups = useMemo(() => {
-    const g: Record<string, ColumnDef[]> = {};
-    ALL_COLUMNS.forEach(c => { (g[c.group] ??= []).push(c); });
-    return g;
-  }, []);
-
   return (
-    <div className="panel">
-      <div className="panel-head" style={{ gap: 8 }}>
-        <h2>{watchOnly ? "Watchlist" : "Cryptocurrency Prices"}</h2>
-        <div style={{ flex: 1 }} />
+    <>
+      {/* Toolbar — matches Assets page */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
+        <button className="btn secondary" onClick={() => setShowColPicker(p => !p)} style={{ padding: "6px 10px", fontSize: 11 }}>⚙ Columns</button>
         <input
           className="market-search-input"
           type="text"
@@ -267,122 +260,121 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
-        {/* Column picker toggle */}
-        <div style={{ position: "relative" }}>
-          <button
-            className="btn secondary"
-            onClick={() => setShowColPicker(p => !p)}
-            style={{ fontSize: 10, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}
-          >
-            ⚙ Columns
-          </button>
-          {showColPicker && (
-            <>
-              <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setShowColPicker(false)} />
-              <div style={{
-                position: "absolute", top: "100%", right: 0, marginTop: 4,
-                background: "var(--panel)", border: "1px solid var(--line)",
-                borderRadius: "var(--lt-radius-sm)", padding: 12,
-                zIndex: 99, minWidth: 220, maxHeight: 360, overflowY: "auto",
-                boxShadow: "0 8px 24px rgba(0,0,0,.3)",
-              }}>
-                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Show/Hide Columns</div>
-                {Object.entries(groups).map(([group, cols]) => (
-                  <div key={group} style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{group}</div>
-                    {cols.map(col => (
-                      <label key={col.key} style={{
-                        display: "flex", alignItems: "center", gap: 6,
-                        fontSize: 11, color: "var(--text)", cursor: "pointer",
-                        padding: "3px 0",
-                      }}>
-                        <input
-                          type="checkbox"
-                          checked={visibleCols.includes(col.key)}
-                          onChange={() => toggleCol(col.key)}
-                          style={{ accentColor: "var(--brand)" }}
-                        />
-                        {col.label}
-                      </label>
-                    ))}
-                  </div>
-                ))}
-                <button
-                  onClick={() => {
-                    const defaults = ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key);
-                    setVisibleCols(defaults);
-                    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(defaults));
-                  }}
-                  style={{
-                    marginTop: 4, fontSize: 9, padding: "3px 8px", borderRadius: 4,
-                    background: "none", border: "1px solid var(--line)", color: "var(--muted)", cursor: "pointer",
-                  }}
-                >
-                  Reset to defaults
-                </button>
-              </div>
-            </>
-          )}
-        </div>
         <span className="pill">{filtered.length} coins</span>
       </div>
-      <div className="panel-body" style={{ padding: 0 }}>
-        {watchOnly && filtered.length === 0 ? (
-          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
-            <div style={{ fontSize: 28, marginBottom: 8 }}>☆</div>
-            <div style={{ fontSize: 13, fontWeight: 600 }}>No coins in your watchlist</div>
-            <div style={{ fontSize: 11, marginTop: 4 }}>Star coins in the Table view to add them here</div>
+
+      {/* Column configurator — same draggable pill design as Assets page */}
+      {showColPicker && (
+        <div className="panel" style={{ marginBottom: 8 }}>
+          <div className="panel-body" style={{ padding: 10 }}>
+            <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 6 }}>Drag to reorder · Click to toggle</div>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+              {colOrder.map(key => {
+                const col = ALL_COLUMNS.find(c => c.key === key);
+                if (!col) return null;
+                const active = visibleCols.includes(col.key);
+                return (
+                  <span
+                    key={col.key}
+                    draggable
+                    onDragStart={() => setDragCol(col.key)}
+                    onDragOver={e => e.preventDefault()}
+                    onDrop={() => {
+                      if (dragCol && dragCol !== col.key) {
+                        const next = [...colOrder];
+                        const fromIdx = next.indexOf(dragCol);
+                        const toIdx = next.indexOf(col.key);
+                        next.splice(fromIdx, 1);
+                        next.splice(toIdx, 0, dragCol);
+                        saveColOrder(next);
+                      }
+                      setDragCol(null);
+                    }}
+                    onDragEnd={() => setDragCol(null)}
+                    onClick={() => toggleCol(col.key)}
+                    style={{
+                      display: "inline-flex", alignItems: "center", gap: 4, fontSize: 11,
+                      padding: "4px 8px", borderRadius: 6, cursor: "grab",
+                      background: active ? "var(--brand3)" : "var(--panel2)",
+                      border: `1px solid ${dragCol === col.key ? "var(--brand)" : active ? "var(--brand)" : "var(--line)"}`,
+                      color: active ? "var(--brand)" : "var(--muted)",
+                      fontWeight: active ? 700 : 400,
+                      opacity: dragCol === col.key ? 0.5 : 1,
+                      userSelect: "none",
+                    }}
+                  >
+                    <span style={{ cursor: "grab", marginRight: 2 }}>⠿</span>
+                    {col.label}
+                  </span>
+                );
+              })}
+            </div>
           </div>
-        ) : (
-          <div className="tableWrap" style={{ maxHeight: "calc(100dvh - 280px)", overflow: "auto" }}>
-            <table className="market-table">
-              <thead>
-                <tr>
-                  <th style={{ width: 32 }}></th>
-                  {columns.map(col => (
-                    <th
-                      key={col.key}
-                      onClick={() => col.sortValue && toggleSort(col.key)}
-                      style={{
-                        cursor: col.sortValue ? "pointer" : "default",
-                        userSelect: "none",
-                        textAlign: col.align || "left",
-                        width: col.width,
-                      }}
-                    >
-                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-                        {col.label}
-                        {sortKey === col.key && (
-                          <span style={{ fontSize: 9, opacity: 0.7 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
-                        )}
-                      </span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {sorted.map(coin => (
-                  <tr key={coin.id} className="market-row">
-                    <td>
-                      <span
-                        className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
-                        onClick={() => toggleWatch(coin.symbol)}
-                      >
-                        {isWatched(coin.symbol) ? "★" : "☆"}
-                      </span>
-                    </td>
+        </div>
+      )}
+
+      <div className="panel">
+        <div className="panel-head" style={{ gap: 8 }}>
+          <h2>{watchOnly ? "Watchlist" : "Cryptocurrency Prices"}</h2>
+        </div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          {watchOnly && filtered.length === 0 ? (
+            <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>☆</div>
+              <div style={{ fontSize: 13, fontWeight: 600 }}>No coins in your watchlist</div>
+              <div style={{ fontSize: 11, marginTop: 4 }}>Star coins in the Table view to add them here</div>
+            </div>
+          ) : (
+            <div className="tableWrap" style={{ maxHeight: "calc(100dvh - 280px)", overflow: "auto" }}>
+              <table className="market-table">
+                <thead>
+                  <tr>
+                    <th style={{ width: 32 }}></th>
                     {columns.map(col => (
-                      <td key={col.key} style={{ textAlign: col.align || "left" }}>
-                        {col.render(coin, { sparklines, isWatched: isWatched(coin.symbol) })}
-                      </td>
+                      <th
+                        key={col.key}
+                        onClick={() => col.sortValue && toggleSort(col.key)}
+                        style={{
+                          cursor: col.sortValue ? "pointer" : "default",
+                          userSelect: "none",
+                          textAlign: col.align || "left",
+                          width: col.width,
+                        }}
+                      >
+                        <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                          {col.label}
+                          {sortKey === col.key && (
+                            <span style={{ fontSize: 9, opacity: 0.7 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+                          )}
+                        </span>
+                      </th>
                     ))}
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+                </thead>
+                <tbody>
+                  {sorted.map(coin => (
+                    <tr key={coin.id} className="market-row">
+                      <td>
+                        <span
+                          className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
+                          onClick={() => toggleWatch(coin.symbol)}
+                        >
+                          {isWatched(coin.symbol) ? "★" : "☆"}
+                        </span>
+                      </td>
+                      {columns.map(col => (
+                        <td key={col.key} style={{ textAlign: col.align || "left" }}>
+                          {col.render(coin, { sparklines, isWatched: isWatched(coin.symbol) })}
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
