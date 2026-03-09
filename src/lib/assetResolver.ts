@@ -21,7 +21,8 @@ export async function getAssetCatalog(force = false): Promise<ApiAsset[]> {
 
 export function resolveAssetSymbol(rawSymbol: string): string {
   const trimmed = rawSymbol.trim();
-  const base = /[\/_-]/.test(trimmed) ? extractBaseFromPair(trimmed) : normalizeSymbol(trimmed);
+  // Always try extractBaseFromPair — it handles both separated (ETH/USDT) and concatenated (SOLUSD) pairs
+  const base = extractBaseFromPair(trimmed);
   return normalizeSymbol(base);
 }
 
