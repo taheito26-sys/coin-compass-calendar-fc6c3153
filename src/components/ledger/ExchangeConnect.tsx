@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { isWorkerConfigured } from "@/lib/api";
 import { useCrypto } from "@/lib/cryptoContext";
 
@@ -12,7 +12,6 @@ interface ExchangeDef {
   needsPassphrase?: boolean;
   docsUrl: string;
   features: string[];
-  apiKeyLabel?: string;
   instructions: string[];
 }
 
@@ -92,8 +91,10 @@ interface Connection {
   sync_count: number;
 }
 
+const AUTO_SYNC_KEY = "exchange_auto_sync";
+const AUTO_SYNC_INTERVAL_KEY = "exchange_auto_sync_interval";
+
 async function apiFetch(path: string, options: RequestInit = {}) {
-  // Get Clerk token
   let token = "";
   try {
     const w = window as any;
@@ -127,6 +128,18 @@ export default function ExchangeConnect() {
   const [testResult, setTestResult] = useState<{ ok: boolean; message: string } | null>(null);
   const [syncResult, setSyncResult] = useState<{ ok: boolean; synced: number; skipped: number } | null>(null);
 
+  // Sync All state
+  const [syncingAll, setSyncingAll] = useState(false);
+  const [syncAllProgress, setSyncAllProgress] = useState<{ current: number; total: number; exchange: string } | null>(null);
+  const [syncAllResults, setSyncAllResults] = useState<{ exchange: string; synced: number; skipped: number; error?: string }[]>([]);
+
+  // Auto-sync state
+  const [autoSyncEnabled, setAutoSyncEnabled] = useState(() => localStorage.getItem(AUTO_SYNC_KEY) === "true");
+  const [autoSyncInterval, setAutoSyncInterval] = useState(() => parseInt(localStorage.getItem(AUTO_SYNC_INTERVAL_KEY) || "30"));
+  const autoSyncTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const [lastAutoSync, setLastAutoSync] = useState<Date | null>(null);
+  const [nextAutoSync, setNextAutoSync] = useState<Date | null>(null);
+
   const loadConnections = useCallback(async () => {
     if (!isWorkerConfigured()) { setLoading(false); return; }
     try {
@@ -141,6 +154,7 @@ export default function ExchangeConnect() {
 
   useEffect(() => { loadConnections(); }, [loadConnections]);
 
+  const connectedExchanges = connections.map(c => c.exchange);
   const isConnected = (exId: string) => connections.some(c => c.exchange === exId);
   const getConnection = (exId: string) => connections.find(c => c.exchange === exId);
 
@@ -189,25 +203,93 @@ export default function ExchangeConnect() {
     setTesting(null);
   };
 
-  const syncExchange = async (exId: string) => {
-    setSyncing(exId);
+  const syncExchange = async (exId: string, silent = false) => {
+    if (!silent) setSyncing(exId);
     setSyncResult(null);
     try {
       const res = await apiFetch(`/api/exchange-sync/sync/${exId}`, { method: "POST" });
       const data = await res.json() as any;
       if (data.ok) {
-        setSyncResult({ ok: true, synced: data.synced, skipped: data.skipped });
-        toast(`Synced ${data.synced} trades from ${exId} (${data.skipped} skipped)`, "good");
-        await rehydrateFromBackend();
-        await loadConnections();
+        if (!silent) {
+          setSyncResult({ ok: true, synced: data.synced, skipped: data.skipped });
+          toast(`Synced ${data.synced} trades from ${exId} (${data.skipped} skipped)`, "good");
+        }
+        return { ok: true, synced: data.synced || 0, skipped: data.skipped || 0 };
       } else {
-        setSyncResult({ ok: false, synced: 0, skipped: 0 });
-        toast(data.error || "Sync failed", "bad");
+        if (!silent) {
+          setSyncResult({ ok: false, synced: 0, skipped: 0 });
+          toast(data.error || "Sync failed", "bad");
+        }
+        return { ok: false, synced: 0, skipped: 0, error: data.error || "Sync failed" };
       }
     } catch (err: any) {
-      toast(err?.message || "Sync failed", "bad");
+      if (!silent) toast(err?.message || "Sync failed", "bad");
+      return { ok: false, synced: 0, skipped: 0, error: err?.message || "Network error" };
+    } finally {
+      if (!silent) setSyncing(null);
     }
-    setSyncing(null);
+  };
+
+  // Sync All
+  const syncAll = async () => {
+    if (connectedExchanges.length === 0) return;
+    setSyncingAll(true);
+    setSyncAllResults([]);
+    const results: typeof syncAllResults = [];
+
+    for (let i = 0; i < connectedExchanges.length; i++) {
+      const exId = connectedExchanges[i];
+      setSyncAllProgress({ current: i + 1, total: connectedExchanges.length, exchange: exId });
+      const result = await syncExchange(exId, true);
+      results.push({ exchange: exId, synced: result.synced, skipped: result.skipped, error: result.error });
+      setSyncAllResults([...results]);
+    }
+
+    const totalSynced = results.reduce((s, r) => s + r.synced, 0);
+    const totalErrors = results.filter(r => r.error).length;
+    if (totalErrors === 0) {
+      toast(`✓ All exchanges synced — ${totalSynced} new trades`, "good");
+    } else {
+      toast(`Synced with ${totalErrors} error(s) — ${totalSynced} new trades`, "bad");
+    }
+
+    await rehydrateFromBackend();
+    await loadConnections();
+    setSyncingAll(false);
+    setSyncAllProgress(null);
+    setLastAutoSync(new Date());
+  };
+
+  // Auto-sync
+  useEffect(() => {
+    if (autoSyncTimerRef.current) clearInterval(autoSyncTimerRef.current);
+
+    if (autoSyncEnabled && connectedExchanges.length > 0) {
+      const ms = autoSyncInterval * 60 * 1000;
+      setNextAutoSync(new Date(Date.now() + ms));
+
+      autoSyncTimerRef.current = setInterval(() => {
+        syncAll();
+        setNextAutoSync(new Date(Date.now() + ms));
+      }, ms);
+    } else {
+      setNextAutoSync(null);
+    }
+
+    return () => {
+      if (autoSyncTimerRef.current) clearInterval(autoSyncTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoSyncEnabled, autoSyncInterval, connectedExchanges.length]);
+
+  const toggleAutoSync = (enabled: boolean) => {
+    setAutoSyncEnabled(enabled);
+    localStorage.setItem(AUTO_SYNC_KEY, String(enabled));
+  };
+
+  const changeAutoSyncInterval = (mins: number) => {
+    setAutoSyncInterval(mins);
+    localStorage.setItem(AUTO_SYNC_INTERVAL_KEY, String(mins));
   };
 
   const deleteConnection = async (exId: string) => {
@@ -234,6 +316,7 @@ export default function ExchangeConnect() {
   }
 
   const activeDef = EXCHANGES.find(e => e.id === selectedExchange);
+  const hasConnections = connectedExchanges.length > 0;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -245,13 +328,140 @@ export default function ExchangeConnect() {
         display: "flex", alignItems: "center", gap: 10,
       }}>
         <span style={{ fontSize: 18 }}>🔒</span>
-        <div>
+        <div style={{ flex: 1 }}>
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)" }}>Read-Only API Keys</div>
           <div style={{ fontSize: 10, color: "var(--muted)" }}>
             Only read permissions are used. Your funds are safe. Keys are stored securely on the backend.
           </div>
         </div>
       </div>
+
+      {/* Sync All + Auto-sync controls */}
+      {hasConnections && (
+        <div className="card" style={{
+          padding: "10px 14px",
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+          border: "1px solid var(--line)",
+        }}>
+          {/* Sync All */}
+          <button
+            className="btn"
+            onClick={syncAll}
+            disabled={syncingAll}
+            style={{
+              background: "var(--brand)", color: "#fff", border: "none",
+              borderRadius: 6, fontSize: 11, padding: "6px 14px",
+              fontWeight: 700, display: "flex", alignItems: "center", gap: 5,
+            }}
+          >
+            {syncingAll ? "⏳" : "🔄"} {syncingAll ? "Syncing All…" : `Sync All (${connectedExchanges.length})`}
+          </button>
+
+          {/* Sync All progress bar */}
+          {syncAllProgress && (
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <div style={{
+                width: 100, height: 6, borderRadius: 3,
+                background: "var(--panel2)", overflow: "hidden",
+              }}>
+                <div style={{
+                  width: `${(syncAllProgress.current / syncAllProgress.total) * 100}%`,
+                  height: "100%", background: "var(--brand)",
+                  borderRadius: 3, transition: "width .3s",
+                }} />
+              </div>
+              <span style={{ fontSize: 10, color: "var(--muted)" }}>
+                {syncAllProgress.current}/{syncAllProgress.total} — {syncAllProgress.exchange}
+              </span>
+            </div>
+          )}
+
+          <div style={{ flex: 1 }} />
+
+          {/* Auto-sync toggle */}
+          <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+            <span style={{ fontSize: 10, color: "var(--muted)", fontWeight: 600 }}>Auto-sync</span>
+            <button
+              onClick={() => toggleAutoSync(!autoSyncEnabled)}
+              style={{
+                width: 36, height: 20, borderRadius: 10, border: "none", cursor: "pointer",
+                background: autoSyncEnabled ? "var(--good)" : "var(--panel2)",
+                position: "relative", transition: "background .2s",
+              }}
+            >
+              <span style={{
+                position: "absolute", top: 2,
+                left: autoSyncEnabled ? 18 : 2,
+                width: 16, height: 16, borderRadius: "50%",
+                background: "#fff", transition: "left .2s",
+                boxShadow: "0 1px 3px rgba(0,0,0,.2)",
+              }} />
+            </button>
+            {autoSyncEnabled && (
+              <select
+                value={autoSyncInterval}
+                onChange={e => changeAutoSyncInterval(Number(e.target.value))}
+                style={{
+                  fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                  background: "var(--input)", border: "1px solid var(--line)",
+                  color: "var(--text)", cursor: "pointer",
+                }}
+              >
+                <option value={15}>15 min</option>
+                <option value={30}>30 min</option>
+                <option value={60}>1 hour</option>
+                <option value={120}>2 hours</option>
+              </select>
+            )}
+          </div>
+
+          {/* Status text */}
+          {(lastAutoSync || nextAutoSync) && (
+            <div style={{ width: "100%", fontSize: 9, color: "var(--muted)", marginTop: 2 }}>
+              {lastAutoSync && <span>Last synced: {lastAutoSync.toLocaleTimeString()}</span>}
+              {lastAutoSync && nextAutoSync && <span> · </span>}
+              {nextAutoSync && autoSyncEnabled && <span>Next: {nextAutoSync.toLocaleTimeString()}</span>}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Sync All results */}
+      {syncAllResults.length > 0 && !syncingAll && (
+        <div className="card" style={{
+          padding: "8px 12px", border: "1px solid var(--line)",
+        }}>
+          <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 6 }}>Sync Results</div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 3 }}>
+            {syncAllResults.map(r => (
+              <div key={r.exchange} style={{
+                display: "flex", alignItems: "center", gap: 8, fontSize: 11,
+              }}>
+                <span style={{ fontWeight: 700, minWidth: 70 }}>
+                  {EXCHANGES.find(e => e.id === r.exchange)?.icon} {r.exchange}
+                </span>
+                {r.error ? (
+                  <span style={{ color: "var(--bad)" }}>⚠ {r.error}</span>
+                ) : (
+                  <span style={{ color: "var(--good)" }}>
+                    ✓ {r.synced} synced, {r.skipped} skipped
+                  </span>
+                )}
+              </div>
+            ))}
+          </div>
+          <button
+            onClick={() => setSyncAllResults([])}
+            style={{
+              marginTop: 6, fontSize: 9, padding: "2px 8px", borderRadius: 4,
+              background: "none", border: "1px solid var(--line)", color: "var(--muted)",
+              cursor: "pointer",
+            }}
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
 
       {/* Exchange Grid */}
       <div style={{
@@ -262,12 +472,12 @@ export default function ExchangeConnect() {
         {EXCHANGES.map(ex => {
           const conn = getConnection(ex.id);
           const connected = !!conn;
-          const isSyncing = syncing === ex.id;
+          const isSyncing = syncing === ex.id || (syncingAll && syncAllProgress?.exchange === ex.id);
           const isTesting = testing === ex.id;
 
           return (
             <div key={ex.id} className="card" style={{
-              padding: 14, cursor: "pointer",
+              padding: 14, cursor: connected ? "default" : "pointer",
               border: selectedExchange === ex.id ? "2px solid var(--brand)" : connected ? "1px solid var(--good)" : "1px solid var(--line)",
               transition: "all .15s", opacity: isSyncing ? 0.7 : 1,
             }}
@@ -308,7 +518,7 @@ export default function ExchangeConnect() {
 
               {connected && (
                 <div style={{ display: "flex", gap: 4, marginTop: 8 }} onClick={e => e.stopPropagation()}>
-                  <button className="btn" onClick={() => syncExchange(ex.id)} disabled={isSyncing}
+                  <button className="btn" onClick={() => syncExchange(ex.id)} disabled={!!syncing || syncingAll}
                     style={{ fontSize: 10, padding: "4px 10px", background: "var(--brand)", color: "#fff", border: "none", borderRadius: 6 }}>
                     {isSyncing ? "⏳ Syncing…" : "🔄 Sync"}
                   </button>
@@ -358,7 +568,6 @@ export default function ExchangeConnect() {
             <button className="btn secondary" style={{ fontSize: 10 }} onClick={() => setSelectedExchange(null)}>✕ Close</button>
           </div>
           <div className="panel-body">
-            {/* Instructions */}
             <div style={{
               marginBottom: 14, padding: 12, background: "var(--panel2)",
               borderRadius: "var(--lt-radius-sm)", border: "1px solid var(--line)",
@@ -375,7 +584,6 @@ export default function ExchangeConnect() {
               </a>
             </div>
 
-            {/* Credential inputs */}
             <div style={{ display: "grid", gap: 10, maxWidth: 400 }}>
               <div className="form-field">
                 <label className="form-label">API Key</label>
