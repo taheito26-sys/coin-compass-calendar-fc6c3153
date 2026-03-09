@@ -1262,3 +1262,17 @@ table { table-layout: auto; }
   color: var(--warn);
   font-size: 11px;
 }
+
+/* ── Zen Mode ── */
+.zen-mode .kpi-val,
+.zen-mode .mono:not(.good):not(.bad),
+.zen-mode td.mono {
+  filter: blur(8px);
+  user-select: none;
+}
+.zen-mode .kpi-val.good,
+.zen-mode .kpi-val.bad,
+.zen-mode .good,
+.zen-mode .bad { filter: none; }
+.zen-mode .zen-hide { display: none !important; }
+.zen-mode .zen-show { display: inline !important; }

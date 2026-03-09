@@ -2,7 +2,11 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
+import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
+import ValueDistribution from "@/components/dashboard/ValueDistribution";
+import EventsAnalysis from "@/components/dashboard/EventsAnalysis";
 
 const COIN_COLORS = [
   "#f97316", "#3b82f6", "#8b5cf6", "#ef4444", "#22c55e",
@@ -103,6 +107,7 @@ function HeatmapBlock({ sym, value, pct, color }: { sym: string; value: string; 
 }
 
 export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
+  const [returnPeriod, setReturnPeriod] = useState<string>("max");
   const { state } = useCrypto();
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
@@ -314,6 +319,12 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
         </div>
       </div>
 
+      {/* Historical Net Value + Fear & Greed */}
+      <div className="dashboard-charts-grid">
+        <HistoricalNetValue />
+        <FearGreedGauge />
+      </div>
+
       {/* Gainers/Losers + Watchlist */}
       <div className="dashboard-charts-grid">
         <div className="panel">
@@ -393,6 +404,12 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
             )}
           </div>
         </div>
+      </div>
+
+      {/* Value Distribution + Events Analysis */}
+      <div className="dashboard-charts-grid">
+        <ValueDistribution />
+        <EventsAnalysis />
       </div>
 
       {/* Bottom: Top Positions + Recent Activity */}
