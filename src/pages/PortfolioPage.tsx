@@ -125,7 +125,6 @@ export default function PortfolioPage() {
   const [showColConfig,  setShowColConfig]  = useState(false);
   const [dragCol,        setDragCol]        = useState<string | null>(null);
   const [drilldownSym,   setDrilldownSym]   = useState<string | null>(null);
-  const [activeTab,      setActiveTab]      = useState("portfolio");
 
   // Persist UI prefs
   useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); },  [viewMode]);
