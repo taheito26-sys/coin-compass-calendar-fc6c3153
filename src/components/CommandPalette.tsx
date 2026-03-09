@@ -78,14 +78,14 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
         const next = dark.includes(current) ? "t1" : "t4";
         setState(s => ({ ...s, theme: next }));
       }},
-    { type: "action", id: "export-data", label: "Export Portfolio Data", sub: "Navigate to Vault for backup", icon: "💾",
-      action: () => onNav("vault") },
+    { type: "action", id: "export-data", label: "Export Portfolio Data", sub: "Navigate to Settings for backup", icon: "💾",
+      action: () => onNav("settings") },
     { type: "action", id: "view-analytics", label: "View Risk Analytics", sub: "Sharpe ratio, volatility, drawdown", icon: "📈",
-      action: () => onNav("analytics") },
+      action: () => onNav("charts") },
     { type: "action", id: "import-csv", label: "Import CSV", sub: "Upload exchange trade history", icon: "📁",
       action: () => onNav("ledger") },
-    { type: "action", id: "manage-connections", label: "Manage Connections", sub: "Exchange API keys & wallets", icon: "🔗",
-      action: () => onNav("connections") },
+    { type: "action", id: "manage-alerts", label: "Manage Alerts", sub: "Price alerts & notification channels", icon: "🔔",
+      action: () => onNav("alerts") },
   ], [state.theme, onNav, setState]);
 
   const results = useMemo(() => {
