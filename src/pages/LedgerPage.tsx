@@ -15,7 +15,7 @@ import {
   lookupImportRows,
   recordImportBatch,
 } from "@/lib/api";
-import { getAssetCatalog, resolveAssetId } from "@/lib/assetResolver";
+import { getAssetCatalog, resolveAssetId, resolveOrCreateAsset } from "@/lib/assetResolver";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
