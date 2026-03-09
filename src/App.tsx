@@ -22,7 +22,7 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   calendar: ["Calendar", "Daily P&amp;L, Per Coin"],
   ledger: ["Ledger", "Journal, Manual Entry, CSV Import"],
   markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
-  connections: ["Connections", "Exchange APIs, Wallet Tracking"],
+  
   reports: ["Reports", "Tax P&amp;L, FIFO/LIFO/HIFO, Export"],
   alerts: ["Alerts", "Price Alerts, Notifications"],
   vault: ["Vault", "Snapshots, Backups, Export"],
