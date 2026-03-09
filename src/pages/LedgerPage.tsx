@@ -473,6 +473,8 @@ export default function LedgerPage() {
     setFileName("");
     setFileHash("");
     setImportError("");
+    setIsDeltaImport(false);
+    setDeltaCount(0);
     if (fileRef.current) fileRef.current.value = "";
   };
 
