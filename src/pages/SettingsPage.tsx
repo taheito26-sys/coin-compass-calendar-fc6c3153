@@ -1,5 +1,7 @@
 import { forwardRef, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
+import { uid, fmtPx } from "@/lib/cryptoState";
+import { cryptoDerived } from "@/lib/cryptoState";
 
 // ── Layout & theme metadata ───────────────────────────────────────────────
 
@@ -20,7 +22,6 @@ interface ThemeColors {
   line: string;
 }
 
-/** Color swatches per layout+theme for visual preview */
 const TC: Record<string, Record<string, ThemeColors>> = {
   flux: {
     t1: { brand:"#4f46e5", brand2:"#7c3aed", bg:"#f8faff", panel:"#ffffff", text:"#0f172a", good:"#16a34a", bad:"#dc2626", muted:"#64748b", line:"#e2e8f0" },
@@ -108,7 +109,7 @@ const REFRESH_INTERVALS = [
   { id: "600", name: "10 minutes" },
 ];
 
-// ── Layout Card with hardcoded preview colors ─────────────────────────────
+// ── Layout Card ─────────────────────────────────────────────────────
 
 function LayoutCard({ layout, active, currentTheme, onClick }: {
   layout: typeof LAYOUTS[0]; active: boolean; currentTheme: string; onClick: () => void;
@@ -117,40 +118,25 @@ function LayoutCard({ layout, active, currentTheme, onClick }: {
   if (!c) return null;
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        cursor: "pointer",
-        borderRadius: 10,
-        border: active ? `2px solid var(--brand)` : "2px solid var(--line)",
-        padding: 10,
-        background: active ? "var(--brand3)" : "var(--panel2)",
-        boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
-        transition: "all 0.15s ease",
-        position: "relative",
-        overflow: "hidden",
-      }}
-    >
-      {/* Mini layout preview using hardcoded theme colors */}
+    <div onClick={onClick} style={{
+      cursor: "pointer", borderRadius: 10,
+      border: active ? `2px solid var(--brand)` : "2px solid var(--line)",
+      padding: 10, background: active ? "var(--brand3)" : "var(--panel2)",
+      boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
+      transition: "all 0.15s ease", position: "relative", overflow: "hidden",
+    }}>
       <div style={{
         height: 56, borderRadius: 6, marginBottom: 8, overflow: "hidden",
         background: c.bg, border: "1px solid " + c.line,
         display: "flex", gap: 3, padding: 4,
       }}>
-        {/* Sidebar */}
-        <div style={{
-          width: 14, borderRadius: 3, background: c.panel,
-          display: "flex", flexDirection: "column", gap: 3, padding: 3,
-        }}>
+        <div style={{ width: 14, borderRadius: 3, background: c.panel, display: "flex", flexDirection: "column", gap: 3, padding: 3 }}>
           <div style={{ height: 3, borderRadius: 1, background: c.brand }} />
           <div style={{ height: 3, borderRadius: 1, background: c.muted, opacity: 0.4 }} />
           <div style={{ height: 3, borderRadius: 1, background: c.muted, opacity: 0.3 }} />
         </div>
-        {/* Main content area */}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
-          {/* Topbar */}
           <div style={{ height: 7, borderRadius: 2, background: c.panel }} />
-          {/* KPI row */}
           <div style={{ display: "flex", gap: 3, flex: 1 }}>
             <div style={{ flex: 1, borderRadius: 3, background: c.panel, display: "flex", flexDirection: "column", padding: 2, justifyContent: "center" }}>
               <div style={{ height: 2, width: "60%", background: c.muted, borderRadius: 1, marginBottom: 2 }} />
@@ -165,29 +151,18 @@ function LayoutCard({ layout, active, currentTheme, onClick }: {
               <div style={{ height: 4, width: "50%", background: c.bad, borderRadius: 1 }} />
             </div>
           </div>
-          {/* Table area */}
           <div style={{ height: 12, borderRadius: 3, background: c.panel }} />
         </div>
       </div>
-
       <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text)" }}>{layout.name}</div>
       <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{layout.desc}</div>
       <div style={{ fontSize: 8, color: "var(--muted2)", marginTop: 2, fontStyle: "italic" }}>{layout.font}</div>
-
       {active && (
-        <div style={{
-          position: "absolute", top: 6, right: 6,
-          width: 16, height: 16, borderRadius: "50%",
-          background: "var(--brand)", color: "#fff",
-          display: "flex", alignItems: "center", justifyContent: "center",
-          fontSize: 10, fontWeight: 900,
-        }}>✓</div>
+        <div style={{ position: "absolute", top: 6, right: 6, width: 16, height: 16, borderRadius: "50%", background: "var(--brand)", color: "#fff", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 10, fontWeight: 900 }}>✓</div>
       )}
     </div>
   );
 }
-
-// ── Theme Button with hardcoded colors ─────────────────────────────────────
 
 function ThemeButton({ themeId, layoutId, active, onClick }: {
   themeId: string; layoutId: string; active: boolean; onClick: () => void;
@@ -196,50 +171,72 @@ function ThemeButton({ themeId, layoutId, active, onClick }: {
   if (!c) return null;
 
   return (
-    <div
-      onClick={onClick}
-      style={{
-        cursor: "pointer",
-        borderRadius: 10,
-        border: active ? "2px solid var(--brand)" : "2px solid var(--line)",
-        padding: 10,
-        background: active ? "var(--brand3)" : "var(--panel2)",
-        boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
-        transition: "all 0.15s ease",
-        display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-      }}
-    >
-      {/* Color palette circles */}
+    <div onClick={onClick} style={{
+      cursor: "pointer", borderRadius: 10,
+      border: active ? "2px solid var(--brand)" : "2px solid var(--line)",
+      padding: 10, background: active ? "var(--brand3)" : "var(--panel2)",
+      boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
+      transition: "all 0.15s ease", display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+    }}>
       <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
         <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.brand, border: "1px solid rgba(128,128,128,0.2)" }} />
         <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.brand2, border: "1px solid rgba(128,128,128,0.2)" }} />
         <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.good, border: "1px solid rgba(128,128,128,0.2)" }} />
         <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.bad, border: "1px solid rgba(128,128,128,0.2)" }} />
       </div>
-
-      {/* Mini bar with bg+panel */}
-      <div style={{
-        width: "100%", height: 20, borderRadius: 4, overflow: "hidden",
-        background: c.bg, border: "1px solid " + c.line,
-        display: "flex", alignItems: "center", gap: 4, padding: "0 6px",
-      }}>
+      <div style={{ width: "100%", height: 20, borderRadius: 4, overflow: "hidden", background: c.bg, border: "1px solid " + c.line, display: "flex", alignItems: "center", gap: 4, padding: "0 6px" }}>
         <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.brand }} />
         <div style={{ flex: 1, height: 3, borderRadius: 2, background: c.text, opacity: 0.2 }} />
         <div style={{ width: 14, height: 3, borderRadius: 2, background: c.good }} />
       </div>
-
       <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text)" }}>Theme {themeId.slice(1)}</div>
     </div>
   );
 }
 
+// ── Alerts Types ──────────────────────────────────────────────────
+type AlertType = "price_above" | "price_below";
 
 // ── Main Page ─────────────────────────────────────────────────────────────
 
 const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
-
   const activeLayout = LAYOUTS.find(l => l.id === state.layout);
+
+  // Alert editing state
+  const [editId, setEditId] = useState<string | null>(null);
+  const [editSym, setEditSym] = useState("");
+  const [editThreshold, setEditThreshold] = useState("");
+  const [editType, setEditType] = useState<AlertType>("price_above");
+
+  const alerts = state.alerts || [];
+
+  const addAlert = () => {
+    const d = cryptoDerived(state);
+    const sym = d.rows[0]?.sym || "BTC";
+    setState(prev => ({
+      ...prev,
+      alerts: [{ id: uid(), type: "price_above", sym, threshold: 100000, active: true, createdAt: Date.now(), triggeredAt: null }, ...prev.alerts]
+    }));
+    toast("Alert added — edit threshold", "good");
+  };
+
+  const startEdit = (a: any) => {
+    setEditId(a.id);
+    setEditSym(a.sym || "");
+    setEditThreshold(String(a.threshold));
+    setEditType(a.type || "price_above");
+  };
+
+  const saveEdit = () => {
+    if (!editId) return;
+    setState(p => ({
+      ...p,
+      alerts: p.alerts.map(a => a.id === editId ? { ...a, sym: editSym.toUpperCase(), threshold: parseFloat(editThreshold) || 0, type: editType } : a)
+    }));
+    setEditId(null);
+    toast("Alert updated", "good");
+  };
 
   return (
     <div style={{ minWidth: 0, overflowX: "hidden" }}>
@@ -249,13 +246,8 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         <div className="panel-body">
           <div className="lt-grid">
             {LAYOUTS.map(l => (
-              <LayoutCard
-                key={l.id}
-                layout={l}
-                active={state.layout === l.id}
-                currentTheme={state.theme}
-                onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
-              />
+              <LayoutCard key={l.id} layout={l} active={state.layout === l.id} currentTheme={state.theme}
+                onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }} />
             ))}
           </div>
         </div>
@@ -267,13 +259,8 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         <div className="panel-body">
           <div className="theme-colors">
             {THEMES.map(t => (
-              <ThemeButton
-                key={t}
-                themeId={t}
-                layoutId={state.layout}
-                active={state.theme === t}
-                onClick={() => { setState(p => ({ ...p, theme: t })); toast("Theme: " + t, "good"); }}
-              />
+              <ThemeButton key={t} themeId={t} layoutId={state.layout} active={state.theme === t}
+                onClick={() => { setState(p => ({ ...p, theme: t })); toast("Theme: " + t, "good"); }} />
             ))}
           </div>
         </div>
@@ -353,46 +340,84 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         </div>
       </div>
 
-      {/* Data Management + Stats */}
-      <div className="settings-row" style={{ marginTop: 10 }}>
-        <div className="panel" style={{ minWidth: 0 }}>
-          <div className="panel-head"><h2>Data Management</h2></div>
-          <div className="panel-body">
-            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-              <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
-                const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-                const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "crypto-backup.json"; a.click();
-                toast("Exported ✓", "good");
-              }}>📥 Export Backup</button>
-              <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
-                const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json";
-                inp.onchange = async () => {
-                  const file = inp.files?.[0]; if (!file) return;
-                  try { const data = JSON.parse(await file.text()); setState(() => data); toast("Restored from backup ✓", "good"); }
-                  catch { toast("Invalid backup file", "bad"); }
-                };
-                inp.click();
-              }}>📤 Import Backup</button>
-            </div>
-            <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
-              <button className="btn danger" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
-                if (confirm("Clear ALL transactions, lots, and holdings? This cannot be undone.")) {
-                  setState(p => ({ ...p, txs: [], lots: [], holdings: [], importedFiles: [], calendarEntries: [] }));
-                  toast("All data cleared", "bad");
-                }
-              }}>🗑 Clear All Data</button>
-            </div>
+      {/* Price Alerts */}
+      <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
+        <div className="panel-head">
+          <h2>🔔 Price Alerts</h2>
+          <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+            <span className="pill">{alerts.length} total</span>
+            <button className="btn tiny" onClick={addAlert}>+ Add</button>
           </div>
         </div>
-        <div className="panel" style={{ minWidth: 0 }}>
-          <div className="panel-head"><h2>Data Stats</h2></div>
-          <div className="panel-body">
-            <div className="vault-stats">
-              <div className="cal-stat"><div className="kpi-lbl">Transactions</div><div className="kpi-val">{state.txs.length}</div></div>
-              <div className="cal-stat"><div className="kpi-lbl">Lots</div><div className="kpi-val">{state.lots.length}</div></div>
-              <div className="cal-stat"><div className="kpi-lbl">Holdings</div><div className="kpi-val">{state.holdings.length}</div></div>
-              <div className="cal-stat"><div className="kpi-lbl">Imports</div><div className="kpi-val">{(state.importedFiles || []).length}</div></div>
-            </div>
+        <div className="panel-body" style={{ padding: 0 }}>
+          <div className="tableWrap"><table>
+            <thead><tr><th>Type</th><th>Symbol</th><th style={{ textAlign: "right" }}>Threshold</th><th>Status</th><th style={{ textAlign: "right" }}>Actions</th></tr></thead>
+            <tbody>
+              {alerts.length ? alerts.map(a => (
+                editId === a.id ? (
+                  <tr key={a.id} style={{ background: "var(--brand3)" }}>
+                    <td>
+                      <select className="inp" value={editType} onChange={e => setEditType(e.target.value as AlertType)} style={{ fontSize: 11, padding: 4 }}>
+                        <option value="price_above">PRICE ABOVE</option>
+                        <option value="price_below">PRICE BELOW</option>
+                      </select>
+                    </td>
+                    <td><input className="inp" value={editSym} onChange={e => setEditSym(e.target.value)} style={{ width: 60, fontSize: 11, padding: 4 }} /></td>
+                    <td style={{ textAlign: "right" }}><input className="inp" value={editThreshold} onChange={e => setEditThreshold(e.target.value)} style={{ width: 90, fontSize: 11, padding: 4, textAlign: "right" }} /></td>
+                    <td></td>
+                    <td style={{ textAlign: "right", display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button className="btn tiny" onClick={saveEdit}>Save</button>
+                      <button className="btn tiny secondary" onClick={() => setEditId(null)}>Cancel</button>
+                    </td>
+                  </tr>
+                ) : (
+                  <tr key={a.id}>
+                    <td style={{ fontWeight: 900 }}>{(a.type || "").replace("_", " ").toUpperCase()}</td>
+                    <td>{a.sym || "—"}</td>
+                    <td style={{ textAlign: "right" }}>{fmtPx(a.threshold)} {state.base}</td>
+                    <td>{a.active ? <span className="pill good">Active</span> : <span className="pill">Disabled</span>}</td>
+                    <td style={{ textAlign: "right", display: "flex", gap: 4, justifyContent: "flex-end" }}>
+                      <button className="btn tiny secondary" onClick={() => startEdit(a)}>Edit</button>
+                      <button className="btn tiny secondary" onClick={() => setState(p => ({ ...p, alerts: p.alerts.map(x => x.id === a.id ? { ...x, active: !x.active } : x) }))}>
+                        {a.active ? "Disable" : "Enable"}
+                      </button>
+                      <button className="btn tiny secondary" onClick={() => setState(p => ({ ...p, alerts: p.alerts.filter(x => x.id !== a.id) }))}>Del</button>
+                    </td>
+                  </tr>
+                )
+              )) : <tr><td colSpan={5} className="muted">No alerts yet. Click "+ Add" to get started.</td></tr>}
+            </tbody>
+          </table></div>
+        </div>
+      </div>
+
+      {/* Data Management */}
+      <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
+        <div className="panel-head"><h2>Data Management</h2></div>
+        <div className="panel-body">
+          <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+            <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
+              const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
+              const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "crypto-backup.json"; a.click();
+              toast("Exported ✓", "good");
+            }}>📥 Export Backup</button>
+            <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
+              const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json";
+              inp.onchange = async () => {
+                const file = inp.files?.[0]; if (!file) return;
+                try { const data = JSON.parse(await file.text()); setState(() => data); toast("Restored from backup ✓", "good"); }
+                catch { toast("Invalid backup file", "bad"); }
+              };
+              inp.click();
+            }}>📤 Import Backup</button>
+          </div>
+          <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
+            <button className="btn danger" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
+              if (confirm("Clear ALL transactions, lots, and holdings? This cannot be undone.")) {
+                setState(p => ({ ...p, txs: [], lots: [], holdings: [], importedFiles: [], calendarEntries: [] }));
+                toast("All data cleared", "bad");
+              }
+            }}>🗑 Clear All Data</button>
           </div>
         </div>
       </div>
@@ -403,7 +428,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
   );
 });
 
-// ── Vault Section (merged from VaultPage) ─────────────────────────
+// ── Vault Section ─────────────────────────────────────────────────
 const DB_NAME = "cryptotracker_vault";
 const STORE = "snapshots";
 interface Snapshot { id: string; label: string; ts: number; size: number; }

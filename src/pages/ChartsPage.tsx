@@ -9,6 +9,7 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { fmtFiat, fmtQty } from "@/lib/cryptoState";
 import { useSparklineData } from "@/hooks/useSparklineData";
+import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
 
 // ── Risk helpers ──────────────────────────────────────────────────
 function computeReturns(prices: number[]): number[] {
@@ -39,7 +40,7 @@ function genBench(base: number, days: number, ret: number, vol: number) {
   const h = [base]; for (let i = 1; i < days; i++) h.push(h[i - 1] * (1 + ret / 365 + (Math.random() - 0.5) * vol * 2 / Math.sqrt(365))); return h;
 }
 
-type Tab = "overview" | "price" | "benchmark" | "correlation";
+type Tab = "overview" | "price" | "correlation";
 
 // ── SVG chart with crosshair ────────────────────────────────────
 function InteractiveChart({ data, width = 600, height = 200, color = "var(--brand)", label }: {
@@ -109,10 +110,8 @@ export default function ChartsPage() {
   const [period, setPeriod] = useState(90);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
 
-  // Build a sym→coingeckoId map from state.txs assets (available via state)
   const assetMeta = useMemo(() => {
     const map = new Map<string, { coingeckoId: string; name: string }>();
-    // Use the KNOWN_IDS from priceProvider as fallback
     const KNOWN: Record<string, string> = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", BNB: "binancecoin", XRP: "ripple", ADA: "cardano", AVAX: "avalanche-2", DOT: "polkadot", DOGE: "dogecoin", MATIC: "matic-network", LINK: "chainlink", UNI: "uniswap", ATOM: "cosmos", LTC: "litecoin", NEAR: "near" };
     for (const p of portfolio.positions) {
       const cgId = KNOWN[p.sym.toUpperCase()] || p.sym.toLowerCase();
@@ -139,18 +138,13 @@ export default function ChartsPage() {
     const assetReturns: Record<string, number[]> = {};
     for (const p of positions.slice(0, 8)) assetReturns[p.sym] = computeReturns(genBench(p.price || 100, period, 0.3, 0.6));
 
-    const btcH = genBench(65000, period, 0.5, 0.7);
-    const ethH = genBench(3500, period, 0.4, 0.8);
-    const sp500H = genBench(5200, period, 0.12, 0.15);
-
-    return { hist, returns, vol, sharpe, mdd, totalReturn, winRate, hhi, assetReturns, btcH, ethH, sp500H, totalMV, positionSyms: positions.map(p => p.sym) };
+    return { hist, returns, vol, sharpe, mdd, totalReturn, winRate, hhi, assetReturns, totalMV, positionSyms: positions.map(p => p.sym) };
   }, [portfolio.positions, period]);
 
   const noData = portfolio.positions.length === 0;
   const tabs: { key: Tab; label: string; icon: string }[] = [
     { key: "overview", label: "Overview", icon: "📊" },
     { key: "price", label: "Price Charts", icon: "📈" },
-    { key: "benchmark", label: "Benchmark", icon: "⚖️" },
     { key: "correlation", label: "Correlation", icon: "🔗" },
   ];
 
@@ -211,13 +205,8 @@ export default function ChartsPage() {
                 ))}
               </div>
 
-              {/* Portfolio value chart */}
-              <div className="card" style={{ padding: 16, marginBottom: 16 }}>
-                <InteractiveChart data={metrics.hist} label="PORTFOLIO VALUE" />
-              </div>
-
               {/* Per-asset table */}
-              <div className="card" style={{ padding: 16 }}>
+              <div className="card" style={{ padding: 16, marginBottom: 16 }}>
                 <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 12 }}>Per-Asset Breakdown</div>
                 <div style={{ overflowX: "auto" }}>
                   <table style={{ width: "100%", fontSize: 11, borderCollapse: "collapse" }}>
@@ -244,6 +233,9 @@ export default function ChartsPage() {
                   </table>
                 </div>
               </div>
+
+              {/* Per-Asset Risk Breakdown */}
+              <PerAssetRiskBreakdown />
             </>
           )}
 
@@ -302,20 +294,6 @@ export default function ChartsPage() {
                 </div>
               )}
             </>
-          )}
-
-          {/* BENCHMARK TAB */}
-          {tab === "benchmark" && (
-            <div className="card" style={{ padding: 16 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)", marginBottom: 4 }}>Portfolio vs Benchmarks</div>
-              <div style={{ fontSize: 10, color: "var(--muted)", marginBottom: 16 }}>Normalized percentage change comparison</div>
-              <ComparisonChart series={[
-                { label: "Portfolio", data: metrics.hist, color: "var(--brand)" },
-                { label: "Bitcoin", data: metrics.btcH, color: "#f7931a" },
-                { label: "Ethereum", data: metrics.ethH, color: "#627eea" },
-                { label: "S&P 500", data: metrics.sp500H, color: "#4ade80" },
-              ]} />
-            </div>
           )}
 
           {/* CORRELATION TAB */}
