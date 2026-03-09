@@ -40,12 +40,6 @@ export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav
                     borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
                   }}>{alertCount}</span>
                 )}
-                {p.id === "analytics" && (
-                  <span style={{
-                    fontSize: 7, fontWeight: 900, background: "var(--t2, #7c3aed)", color: "#fff",
-                    borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
-                  }}>NEW</span>
-                )}
               </div>
               <small>{p.sub}</small>
             </div>
