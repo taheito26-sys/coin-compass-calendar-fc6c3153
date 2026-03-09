@@ -23,6 +23,7 @@ const PAGE_TITLES: Record<string, [string, string]> = {
   ledger: ["Ledger", "Journal, Manual Entry, CSV Import"],
   markets: ["Live Markets", "Bubbles, Prices, Watchlist"],
   connections: ["Connections", "Exchange APIs, Wallet Tracking"],
+  reports: ["Reports", "Tax P&amp;L, FIFO/LIFO/HIFO, Export"],
   alerts: ["Alerts", "Price Alerts, Notifications"],
   vault: ["Vault", "Snapshots, Backups, Export"],
   settings: ["Settings", "Layout, Themes, Data"],
