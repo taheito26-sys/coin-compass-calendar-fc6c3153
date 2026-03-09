@@ -4,77 +4,83 @@ import { useCrypto } from "@/lib/cryptoContext";
 // ── Layout & theme metadata ───────────────────────────────────────────────
 
 const LAYOUTS = [
-  { id: "flux",   name: "Flux",   desc: "Modern SaaS",    font: "Inter" },
-  { id: "cipher", name: "Cipher", desc: "Dark Terminal",  font: "JetBrains Mono" },
-  { id: "vector", name: "Vector", desc: "Corporate",      font: "Plus Jakarta Sans" },
-  { id: "aurora", name: "Aurora", desc: "Gradient SaaS",  font: "Plus Jakarta Sans" },
-  { id: "carbon", name: "Carbon", desc: "Dark Monitor",   font: "JetBrains Mono" },
-  { id: "prism",  name: "Prism",  desc: "Bold Fintech",   font: "Space Grotesk" },
-  { id: "noir",   name: "Noir",   desc: "Luxury Dark",    font: "Inter" },
-  { id: "pulse",  name: "Pulse",  desc: "Neon Crypto",    font: "DM Sans" },
+  { id: "flux",   name: "Flux",   desc: "Modern SaaS",    font: "Inter",              dark: false },
+  { id: "cipher", name: "Cipher", desc: "Dark Terminal",  font: "JetBrains Mono",     dark: true  },
+  { id: "vector", name: "Vector", desc: "Corporate",      font: "Plus Jakarta Sans",  dark: false },
+  { id: "aurora", name: "Aurora", desc: "Gradient SaaS",  font: "Plus Jakarta Sans",  dark: false },
+  { id: "carbon", name: "Carbon", desc: "Dark Monitor",   font: "JetBrains Mono",     dark: true  },
+  { id: "prism",  name: "Prism",  desc: "Bold Fintech",   font: "Space Grotesk",      dark: false },
+  { id: "noir",   name: "Noir",   desc: "Luxury Dark",    font: "Inter",              dark: true  },
+  { id: "pulse",  name: "Pulse",  desc: "Neon Crypto",    font: "DM Sans",            dark: true  },
 ];
 
+interface ThemeColors {
+  brand: string; brand2: string; bg: string; panel: string;
+  text: string; good: string; bad: string; muted: string;
+  line: string;
+}
+
 /** Color swatches per layout+theme for visual preview */
-const THEME_COLORS: Record<string, Record<string, { brand: string; brand2: string; bg: string; panel: string; text: string; good: string; bad: string }>> = {
+const TC: Record<string, Record<string, ThemeColors>> = {
   flux: {
-    t1: { brand: "#4f46e5", brand2: "#7c3aed", bg: "#f8faff", panel: "#ffffff", text: "#0f172a", good: "#16a34a", bad: "#dc2626" },
-    t2: { brand: "#0d9488", brand2: "#059669", bg: "#f0fdf9", panel: "#ffffff", text: "#0f2922", good: "#15803d", bad: "#dc2626" },
-    t3: { brand: "#e11d48", brand2: "#db2777", bg: "#fff1f5", panel: "#ffffff", text: "#2d0014", good: "#15803d", bad: "#b91c1c" },
-    t4: { brand: "#d97706", brand2: "#b45309", bg: "#fffbf0", panel: "#ffffff", text: "#1c1400", good: "#15803d", bad: "#dc2626" },
-    t5: { brand: "#334155", brand2: "#1e293b", bg: "#f8fafc", panel: "#ffffff", text: "#0f172a", good: "#15803d", bad: "#dc2626" },
+    t1: { brand:"#4f46e5", brand2:"#7c3aed", bg:"#f8faff", panel:"#ffffff", text:"#0f172a", good:"#16a34a", bad:"#dc2626", muted:"#64748b", line:"#e2e8f0" },
+    t2: { brand:"#0d9488", brand2:"#059669", bg:"#f0fdf9", panel:"#ffffff", text:"#0f2922", good:"#15803d", bad:"#dc2626", muted:"#4d7c6f", line:"#d1e8e0" },
+    t3: { brand:"#e11d48", brand2:"#db2777", bg:"#fff1f5", panel:"#ffffff", text:"#2d0014", good:"#15803d", bad:"#b91c1c", muted:"#8b3560", line:"#f5d0dc" },
+    t4: { brand:"#d97706", brand2:"#b45309", bg:"#fffbf0", panel:"#ffffff", text:"#1c1400", good:"#15803d", bad:"#dc2626", muted:"#78600a", line:"#f0e0c0" },
+    t5: { brand:"#334155", brand2:"#1e293b", bg:"#f8fafc", panel:"#ffffff", text:"#0f172a", good:"#15803d", bad:"#dc2626", muted:"#475569", line:"#e2e8f0" },
   },
   cipher: {
-    t1: { brand: "#00ff64", brand2: "#00cc50", bg: "#000000", panel: "#0a0a0a", text: "#e0ffd4", good: "#00ff64", bad: "#ff4040" },
-    t2: { brand: "#0096ff", brand2: "#0064cc", bg: "#000b1a", panel: "#001428", text: "#b8d8ff", good: "#00d4aa", bad: "#ff4455" },
-    t3: { brand: "#aa44ff", brand2: "#8800ee", bg: "#0d0015", panel: "#150022", text: "#e8ccff", good: "#44ff88", bad: "#ff4466" },
-    t4: { brand: "#ff8c00", brand2: "#ff6600", bg: "#1a0800", panel: "#260c00", text: "#ffd4a0", good: "#44ff88", bad: "#ff3300" },
-    t5: { brand: "#6478ff", brand2: "#4455ee", bg: "#0a0a14", panel: "#10101e", text: "#c8d0ff", good: "#44ffaa", bad: "#ff5566" },
+    t1: { brand:"#00ff64", brand2:"#00cc50", bg:"#000000", panel:"#0a0a0a", text:"#e0ffd4", good:"#00ff64", bad:"#ff4040", muted:"#5a8c50", line:"#1a2a18" },
+    t2: { brand:"#0096ff", brand2:"#0064cc", bg:"#000b1a", panel:"#001428", text:"#b8d8ff", good:"#00d4aa", bad:"#ff4455", muted:"#4a7fa8", line:"#0a2540" },
+    t3: { brand:"#aa44ff", brand2:"#8800ee", bg:"#0d0015", panel:"#150022", text:"#e8ccff", good:"#44ff88", bad:"#ff4466", muted:"#7a4aa0", line:"#2a0048" },
+    t4: { brand:"#ff8c00", brand2:"#ff6600", bg:"#1a0800", panel:"#260c00", text:"#ffd4a0", good:"#44ff88", bad:"#ff3300", muted:"#a06030", line:"#402000" },
+    t5: { brand:"#6478ff", brand2:"#4455ee", bg:"#0a0a14", panel:"#10101e", text:"#c8d0ff", good:"#44ffaa", bad:"#ff5566", muted:"#5a60a0", line:"#202038" },
   },
   vector: {
-    t1: { brand: "#1363df", brand2: "#0a4cbc", bg: "#f0f4f8", panel: "#ffffff", text: "#1a2b3d", good: "#0d7e38", bad: "#c0392b" },
-    t2: { brand: "#0f62fe", brand2: "#0043ce", bg: "#f4f4f4", panel: "#ffffff", text: "#161616", good: "#198038", bad: "#da1e28" },
-    t3: { brand: "#2d6a00", brand2: "#1a4800", bg: "#f5f5f0", panel: "#ffffff", text: "#1e1e14", good: "#2d6a00", bad: "#c42b1c" },
-    t4: { brand: "#7c3aed", brand2: "#5b21b6", bg: "#fafafa", panel: "#ffffff", text: "#18181b", good: "#15803d", bad: "#be123c" },
-    t5: { brand: "#ea580c", brand2: "#c2410c", bg: "#fff9f5", panel: "#ffffff", text: "#1c0a00", good: "#15803d", bad: "#dc2626" },
+    t1: { brand:"#1363df", brand2:"#0a4cbc", bg:"#f0f4f8", panel:"#ffffff", text:"#1a2b3d", good:"#0d7e38", bad:"#c0392b", muted:"#4a6076", line:"#d0d8e0" },
+    t2: { brand:"#0f62fe", brand2:"#0043ce", bg:"#f4f4f4", panel:"#ffffff", text:"#161616", good:"#198038", bad:"#da1e28", muted:"#525252", line:"#d0d0d0" },
+    t3: { brand:"#2d6a00", brand2:"#1a4800", bg:"#f5f5f0", panel:"#ffffff", text:"#1e1e14", good:"#2d6a00", bad:"#c42b1c", muted:"#5a5a3a", line:"#d8d8c8" },
+    t4: { brand:"#7c3aed", brand2:"#5b21b6", bg:"#fafafa", panel:"#ffffff", text:"#18181b", good:"#15803d", bad:"#be123c", muted:"#71717a", line:"#d8d8d8" },
+    t5: { brand:"#ea580c", brand2:"#c2410c", bg:"#fff9f5", panel:"#ffffff", text:"#1c0a00", good:"#15803d", bad:"#dc2626", muted:"#804020", line:"#f0d8c8" },
   },
   aurora: {
-    t1: { brand: "#5b21b6", brand2: "#4c1d95", bg: "#f5f4ff", panel: "#ffffff", text: "#1a1040", good: "#059669", bad: "#dc2626" },
-    t2: { brand: "#059669", brand2: "#047857", bg: "#f0fdf7", panel: "#ffffff", text: "#0a2418", good: "#16a34a", bad: "#dc2626" },
-    t3: { brand: "#e84226", brand2: "#c93119", bg: "#fff5f2", panel: "#ffffff", text: "#3d0c00", good: "#059669", bad: "#b91c1c" },
-    t4: { brand: "#9333ea", brand2: "#7e22ce", bg: "#fdf4ff", panel: "#ffffff", text: "#2e0040", good: "#059669", bad: "#dc2626" },
-    t5: { brand: "#0284c7", brand2: "#0369a1", bg: "#f0f8ff", panel: "#ffffff", text: "#062040", good: "#059669", bad: "#dc2626" },
+    t1: { brand:"#5b21b6", brand2:"#4c1d95", bg:"#f5f4ff", panel:"#ffffff", text:"#1a1040", good:"#059669", bad:"#dc2626", muted:"#5b4f8f", line:"#d8d0f0" },
+    t2: { brand:"#059669", brand2:"#047857", bg:"#f0fdf7", panel:"#ffffff", text:"#0a2418", good:"#16a34a", bad:"#dc2626", muted:"#2d6a52", line:"#c0e8d8" },
+    t3: { brand:"#e84226", brand2:"#c93119", bg:"#fff5f2", panel:"#ffffff", text:"#3d0c00", good:"#059669", bad:"#b91c1c", muted:"#8b3120", line:"#f0d0c8" },
+    t4: { brand:"#9333ea", brand2:"#7e22ce", bg:"#fdf4ff", panel:"#ffffff", text:"#2e0040", good:"#059669", bad:"#dc2626", muted:"#7c2d8a", line:"#e8c8f0" },
+    t5: { brand:"#0284c7", brand2:"#0369a1", bg:"#f0f8ff", panel:"#ffffff", text:"#062040", good:"#059669", bad:"#dc2626", muted:"#1a5080", line:"#c0d8f0" },
   },
   carbon: {
-    t1: { brand: "#f59e0b", brand2: "#d97706", bg: "#0e0d0b", panel: "#161410", text: "#f5e8c0", good: "#4ade80", bad: "#f87171" },
-    t2: { brand: "#22d3ee", brand2: "#06b6d4", bg: "#070d10", panel: "#0e1520", text: "#b8e8f8", good: "#4ade80", bad: "#f87171" },
-    t3: { brand: "#84cc16", brand2: "#65a30d", bg: "#060c04", panel: "#0c1408", text: "#c8f0a8", good: "#4ade80", bad: "#f87171" },
-    t4: { brand: "#ec4899", brand2: "#db2777", bg: "#0d050c", panel: "#180c18", text: "#f8c8f0", good: "#4ade80", bad: "#f87171" },
-    t5: { brand: "#f97316", brand2: "#ea580c", bg: "#0e0800", panel: "#171008", text: "#f8d8a0", good: "#4ade80", bad: "#f87171" },
+    t1: { brand:"#f59e0b", brand2:"#d97706", bg:"#0e0d0b", panel:"#161410", text:"#f5e8c0", good:"#4ade80", bad:"#f87171", muted:"#8c7a50", line:"#2a2820" },
+    t2: { brand:"#22d3ee", brand2:"#06b6d4", bg:"#070d10", panel:"#0e1520", text:"#b8e8f8", good:"#4ade80", bad:"#f87171", muted:"#3a7090", line:"#1a2a3e" },
+    t3: { brand:"#84cc16", brand2:"#65a30d", bg:"#060c04", panel:"#0c1408", text:"#c8f0a8", good:"#4ade80", bad:"#f87171", muted:"#406830", line:"#1a2814" },
+    t4: { brand:"#ec4899", brand2:"#db2777", bg:"#0d050c", panel:"#180c18", text:"#f8c8f0", good:"#4ade80", bad:"#f87171", muted:"#7a3870", line:"#2c162c" },
+    t5: { brand:"#f97316", brand2:"#ea580c", bg:"#0e0800", panel:"#171008", text:"#f8d8a0", good:"#4ade80", bad:"#f87171", muted:"#8c5020", line:"#2c1e0e" },
   },
   prism: {
-    t1: { brand: "#1c2a8c", brand2: "#3b4ec8", bg: "#f4f6ff", panel: "#ffffff", text: "#0c1240", good: "#166534", bad: "#991b1b" },
-    t2: { brand: "#991b1b", brand2: "#dc2626", bg: "#fff5f5", panel: "#ffffff", text: "#200808", good: "#166534", bad: "#7f1d1d" },
-    t3: { brand: "#14532d", brand2: "#166534", bg: "#f3f8f2", panel: "#ffffff", text: "#0a1e08", good: "#14532d", bad: "#991b1b" },
-    t4: { brand: "#a16207", brand2: "#ca8a04", bg: "#fffbeb", panel: "#ffffff", text: "#1c0e00", good: "#166534", bad: "#991b1b" },
-    t5: { brand: "#0f172a", brand2: "#1e293b", bg: "#f8fafc", panel: "#ffffff", text: "#0f172a", good: "#166534", bad: "#991b1b" },
+    t1: { brand:"#1c2a8c", brand2:"#3b4ec8", bg:"#f4f6ff", panel:"#ffffff", text:"#0c1240", good:"#166534", bad:"#991b1b", muted:"#303c80", line:"#d0d8f0" },
+    t2: { brand:"#991b1b", brand2:"#dc2626", bg:"#fff5f5", panel:"#ffffff", text:"#200808", good:"#166534", bad:"#7f1d1d", muted:"#7a1818", line:"#f0d0d0" },
+    t3: { brand:"#14532d", brand2:"#166534", bg:"#f3f8f2", panel:"#ffffff", text:"#0a1e08", good:"#14532d", bad:"#991b1b", muted:"#1e5018", line:"#c8e0c0" },
+    t4: { brand:"#a16207", brand2:"#ca8a04", bg:"#fffbeb", panel:"#ffffff", text:"#1c0e00", good:"#166534", bad:"#991b1b", muted:"#6a4c00", line:"#f0e0b0" },
+    t5: { brand:"#0f172a", brand2:"#1e293b", bg:"#f8fafc", panel:"#ffffff", text:"#0f172a", good:"#166534", bad:"#991b1b", muted:"#334155", line:"#d8e0e8" },
   },
   noir: {
-    t1: { brand: "#d4af37", brand2: "#b8960c", bg: "#0a0800", panel: "#111006", text: "#f5e8c0", good: "#4ade80", bad: "#f87171" },
-    t2: { brand: "#90adc4", brand2: "#7090a8", bg: "#0a0c0e", panel: "#131618", text: "#dce8f0", good: "#4ade80", bad: "#f87171" },
-    t3: { brand: "#e04040", brand2: "#c02828", bg: "#0c0404", panel: "#160808", text: "#f0d0d0", good: "#4ade80", bad: "#f87171" },
-    t4: { brand: "#2563eb", brand2: "#1d4ed8", bg: "#040810", panel: "#080e1a", text: "#c8d8f8", good: "#4ade80", bad: "#f87171" },
-    t5: { brand: "#16a34a", brand2: "#15803d", bg: "#020c06", panel: "#081408", text: "#c0f0d0", good: "#4ade80", bad: "#f87171" },
+    t1: { brand:"#d4af37", brand2:"#b8960c", bg:"#0a0800", panel:"#111006", text:"#f5e8c0", good:"#4ade80", bad:"#f87171", muted:"#706840", line:"#222010" },
+    t2: { brand:"#90adc4", brand2:"#7090a8", bg:"#0a0c0e", panel:"#131618", text:"#dce8f0", good:"#4ade80", bad:"#f87171", muted:"#60788a", line:"#252a30" },
+    t3: { brand:"#e04040", brand2:"#c02828", bg:"#0c0404", panel:"#160808", text:"#f0d0d0", good:"#4ade80", bad:"#f87171", muted:"#704040", line:"#2a1414" },
+    t4: { brand:"#2563eb", brand2:"#1d4ed8", bg:"#040810", panel:"#080e1a", text:"#c8d8f8", good:"#4ade80", bad:"#f87171", muted:"#284878", line:"#161e30" },
+    t5: { brand:"#16a34a", brand2:"#15803d", bg:"#020c06", panel:"#081408", text:"#c0f0d0", good:"#4ade80", bad:"#f87171", muted:"#286040", line:"#142818" },
   },
   pulse: {
-    t1: { brand: "#27e0a3", brand2: "#2bb8ff", bg: "#071018", panel: "#0b141f", text: "#edf6ff", good: "#27e0a3", bad: "#ff627e" },
-    t2: { brand: "#8b7bff", brand2: "#6e5cff", bg: "#090b16", panel: "#0f101e", text: "#f3f4ff", good: "#3fe0a5", bad: "#ff627e" },
-    t3: { brand: "#2bb8ff", brand2: "#0e90ff", bg: "#061220", panel: "#0a1828", text: "#ebf6ff", good: "#27e0a3", bad: "#ff627e" },
-    t4: { brand: "#27e0a3", brand2: "#06b676", bg: "#07150f", panel: "#091612", text: "#effff7", good: "#27e0a3", bad: "#ff627e" },
-    t5: { brand: "#ffb84d", brand2: "#ff8a3d", bg: "#15110a", panel: "#1b150d", text: "#fff7ea", good: "#42e1a7", bad: "#ff6b6b" },
+    t1: { brand:"#27e0a3", brand2:"#2bb8ff", bg:"#071018", panel:"#0b141f", text:"#edf6ff", good:"#27e0a3", bad:"#ff627e", muted:"#8aa0b7", line:"#1a2a3a" },
+    t2: { brand:"#8b7bff", brand2:"#6e5cff", bg:"#090b16", panel:"#0f101e", text:"#f3f4ff", good:"#3fe0a5", bad:"#ff627e", muted:"#9fa2c7", line:"#1c2036" },
+    t3: { brand:"#2bb8ff", brand2:"#0e90ff", bg:"#061220", panel:"#0a1828", text:"#ebf6ff", good:"#27e0a3", bad:"#ff627e", muted:"#90aac2", line:"#162840" },
+    t4: { brand:"#27e0a3", brand2:"#06b676", bg:"#07150f", panel:"#091612", text:"#effff7", good:"#27e0a3", bad:"#ff627e", muted:"#94b8a7", line:"#102820" },
+    t5: { brand:"#ffb84d", brand2:"#ff8a3d", bg:"#15110a", panel:"#1b150d", text:"#fff7ea", good:"#42e1a7", bad:"#ff6b6b", muted:"#c2ad8f", line:"#2e2415" },
   },
 };
 
-const THEMES = ["t1", "t2", "t3", "t4", "t5"];
+const THEMES = ["t1", "t2", "t3", "t4", "t5"] as const;
 const METHODS = ["FIFO", "DCA"];
 const CURRENCIES = ["USD", "EUR", "GBP", "QAR"];
 const TIMEZONES = [
@@ -102,113 +108,216 @@ const REFRESH_INTERVALS = [
   { id: "600", name: "10 minutes" },
 ];
 
-type ThemeColors = { brand: string; brand2: string; bg: string; panel: string; text: string; good: string; bad: string };
+// ── Layout Card with hardcoded preview colors ─────────────────────────────
+
+function LayoutCard({ layout, active, currentTheme, onClick }: {
+  layout: typeof LAYOUTS[0]; active: boolean; currentTheme: string; onClick: () => void;
+}) {
+  const c = TC[layout.id]?.[currentTheme] || TC[layout.id]?.t1;
+  if (!c) return null;
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: "pointer",
+        borderRadius: 10,
+        border: active ? `2px solid var(--brand)` : "2px solid var(--line)",
+        padding: 10,
+        background: active ? "var(--brand3)" : "var(--panel2)",
+        boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
+        transition: "all 0.15s ease",
+        position: "relative",
+        overflow: "hidden",
+      }}
+    >
+      {/* Mini layout preview using hardcoded theme colors */}
+      <div style={{
+        height: 56, borderRadius: 6, marginBottom: 8, overflow: "hidden",
+        background: c.bg, border: "1px solid " + c.line,
+        display: "flex", gap: 3, padding: 4,
+      }}>
+        {/* Sidebar */}
+        <div style={{
+          width: 14, borderRadius: 3, background: c.panel,
+          display: "flex", flexDirection: "column", gap: 3, padding: 3,
+        }}>
+          <div style={{ height: 3, borderRadius: 1, background: c.brand }} />
+          <div style={{ height: 3, borderRadius: 1, background: c.muted, opacity: 0.4 }} />
+          <div style={{ height: 3, borderRadius: 1, background: c.muted, opacity: 0.3 }} />
+        </div>
+        {/* Main content area */}
+        <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 3 }}>
+          {/* Topbar */}
+          <div style={{ height: 7, borderRadius: 2, background: c.panel }} />
+          {/* KPI row */}
+          <div style={{ display: "flex", gap: 3, flex: 1 }}>
+            <div style={{ flex: 1, borderRadius: 3, background: c.panel, display: "flex", flexDirection: "column", padding: 2, justifyContent: "center" }}>
+              <div style={{ height: 2, width: "60%", background: c.muted, borderRadius: 1, marginBottom: 2 }} />
+              <div style={{ height: 4, width: "80%", background: c.brand, borderRadius: 1 }} />
+            </div>
+            <div style={{ flex: 1, borderRadius: 3, background: c.panel, display: "flex", flexDirection: "column", padding: 2, justifyContent: "center" }}>
+              <div style={{ height: 2, width: "60%", background: c.muted, borderRadius: 1, marginBottom: 2 }} />
+              <div style={{ height: 4, width: "70%", background: c.good, borderRadius: 1 }} />
+            </div>
+            <div style={{ flex: 1, borderRadius: 3, background: c.panel, display: "flex", flexDirection: "column", padding: 2, justifyContent: "center" }}>
+              <div style={{ height: 2, width: "60%", background: c.muted, borderRadius: 1, marginBottom: 2 }} />
+              <div style={{ height: 4, width: "50%", background: c.bad, borderRadius: 1 }} />
+            </div>
+          </div>
+          {/* Table area */}
+          <div style={{ height: 12, borderRadius: 3, background: c.panel }} />
+        </div>
+      </div>
+
+      <div style={{ fontSize: 12, fontWeight: 800, color: "var(--text)" }}>{layout.name}</div>
+      <div style={{ fontSize: 10, color: "var(--muted)", marginTop: 1 }}>{layout.desc}</div>
+      <div style={{ fontSize: 8, color: "var(--muted2)", marginTop: 2, fontStyle: "italic" }}>{layout.font}</div>
+
+      {active && (
+        <div style={{
+          position: "absolute", top: 6, right: 6,
+          width: 16, height: 16, borderRadius: "50%",
+          background: "var(--brand)", color: "#fff",
+          display: "flex", alignItems: "center", justifyContent: "center",
+          fontSize: 10, fontWeight: 900,
+        }}>✓</div>
+      )}
+    </div>
+  );
+}
+
+// ── Theme Button with hardcoded colors ─────────────────────────────────────
+
+function ThemeButton({ themeId, layoutId, active, onClick }: {
+  themeId: string; layoutId: string; active: boolean; onClick: () => void;
+}) {
+  const c = TC[layoutId]?.[themeId];
+  if (!c) return null;
+
+  return (
+    <div
+      onClick={onClick}
+      style={{
+        cursor: "pointer",
+        borderRadius: 10,
+        border: active ? "2px solid var(--brand)" : "2px solid var(--line)",
+        padding: 10,
+        background: active ? "var(--brand3)" : "var(--panel2)",
+        boxShadow: active ? "0 0 0 3px var(--brand3)" : "none",
+        transition: "all 0.15s ease",
+        display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+      }}
+    >
+      {/* Color palette circles */}
+      <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
+        <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.brand, border: "1px solid rgba(128,128,128,0.2)" }} />
+        <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.brand2, border: "1px solid rgba(128,128,128,0.2)" }} />
+        <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.good, border: "1px solid rgba(128,128,128,0.2)" }} />
+        <div style={{ width: 16, height: 16, borderRadius: "50%", background: c.bad, border: "1px solid rgba(128,128,128,0.2)" }} />
+      </div>
+
+      {/* Mini bar with bg+panel */}
+      <div style={{
+        width: "100%", height: 20, borderRadius: 4, overflow: "hidden",
+        background: c.bg, border: "1px solid " + c.line,
+        display: "flex", alignItems: "center", gap: 4, padding: "0 6px",
+      }}>
+        <div style={{ width: 8, height: 8, borderRadius: "50%", background: c.brand }} />
+        <div style={{ flex: 1, height: 3, borderRadius: 2, background: c.text, opacity: 0.2 }} />
+        <div style={{ width: 14, height: 3, borderRadius: 2, background: c.good }} />
+      </div>
+
+      <div style={{ fontSize: 10, fontWeight: 700, color: "var(--text)" }}>Theme {themeId.slice(1)}</div>
+    </div>
+  );
+}
+
+// ── Live Preview ──────────────────────────────────────────────────────────
 
 function LivePreview({ colors, layoutName }: { colors: ThemeColors | undefined; layoutName: string }) {
   if (!colors) return null;
-  const muted = colors.text + "88";
-  const line = colors.text + "18";
-  const brand3 = colors.brand + "1a";
+
+  const fontFamily = layoutName === "cipher" || layoutName === "carbon" ? "'JetBrains Mono', monospace"
+    : layoutName === "prism" ? "'Space Grotesk', sans-serif"
+    : layoutName === "pulse" ? "'DM Sans', sans-serif"
+    : "'Inter', sans-serif";
 
   return (
-    <div style={{
-      background: colors.bg, borderRadius: 8, padding: 16, border: "1px solid " + line,
-      fontFamily: layoutName === "cipher" || layoutName === "carbon" ? "'JetBrains Mono', monospace"
-        : layoutName === "prism" ? "'Space Grotesk', sans-serif"
-        : layoutName === "pulse" ? "'DM Sans', sans-serif"
-        : "'Inter', sans-serif",
-    }}>
-      {/* KPI Cards row */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 14 }}>
+    <div style={{ background: colors.bg, borderRadius: 10, padding: 16, border: "1px solid " + colors.line, fontFamily }}>
+      {/* KPI Cards */}
+      <div className="settings-preview-kpis">
         {[
-          { label: "PORTFOLIO VALUE", value: "$124,580.32", sub: "12 assets" },
-          { label: "TOTAL P&L", value: "+$18,420.15", sub: "+17.34%", isGood: true },
-          { label: "24H CHANGE", value: "-$1,230.40", sub: "-0.98%", isBad: true },
+          { label: "PORTFOLIO VALUE", value: "$124,580", sub: "12 assets", color: colors.text },
+          { label: "TOTAL P&L", value: "+$18,420", sub: "+17.34%", color: colors.good },
+          { label: "24H CHANGE", value: "-$1,230", sub: "-0.98%", color: colors.bad },
         ].map((kpi, i) => (
           <div key={i} style={{
             background: colors.panel, borderRadius: 6, padding: "10px 12px",
-            border: "1px solid " + line,
-            boxShadow: "0 2px 8px " + colors.brand + "10",
+            border: "1px solid " + colors.line,
           }}>
-            <div style={{ fontSize: 8, fontWeight: 700, color: muted, letterSpacing: "0.5px", textTransform: "uppercase" }}>{kpi.label}</div>
-            <div style={{
-              fontSize: 16, fontWeight: 900, marginTop: 4,
-              color: kpi.isGood ? colors.good : kpi.isBad ? colors.bad : colors.text,
-            }}>{kpi.value}</div>
-            <div style={{ fontSize: 9, color: kpi.isGood ? colors.good : kpi.isBad ? colors.bad : muted, marginTop: 2 }}>{kpi.sub}</div>
+            <div style={{ fontSize: 8, fontWeight: 700, color: colors.muted, letterSpacing: "0.5px", textTransform: "uppercase" }}>{kpi.label}</div>
+            <div style={{ fontSize: 18, fontWeight: 900, color: kpi.color, marginTop: 3 }}>{kpi.value}</div>
+            <div style={{ fontSize: 9, color: kpi.color === colors.text ? colors.muted : kpi.color, marginTop: 2, opacity: 0.8 }}>{kpi.sub}</div>
           </div>
         ))}
       </div>
 
       {/* Sample table */}
-      <div style={{
-        background: colors.panel, borderRadius: 6, overflow: "hidden",
-        border: "1px solid " + line,
-      }}>
-        <div style={{
-          padding: "8px 12px", borderBottom: "1px solid " + line,
-          display: "flex", justifyContent: "space-between", alignItems: "center",
-        }}>
+      <div style={{ background: colors.panel, borderRadius: 6, overflow: "hidden", border: "1px solid " + colors.line, marginTop: 12 }}>
+        <div style={{ padding: "8px 12px", borderBottom: "1px solid " + colors.line, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
           <span style={{ fontSize: 11, fontWeight: 800, color: colors.text }}>Assets</span>
-          <span style={{
-            fontSize: 9, padding: "2px 8px", borderRadius: 10,
-            background: brand3, color: colors.brand, fontWeight: 600,
-          }}>Live</span>
+          <span style={{ fontSize: 9, padding: "2px 8px", borderRadius: 10, background: colors.brand + "1a", color: colors.brand, fontWeight: 600 }}>Live</span>
         </div>
         {[
-          { sym: "BTC", name: "Bitcoin", price: "$67,245.80", change: "+2.34%", value: "$84,057.25", good: true },
-          { sym: "ETH", name: "Ethereum", price: "$3,521.40", change: "-1.12%", value: "$28,171.20", good: false },
-          { sym: "SOL", name: "Solana", price: "$142.65", change: "+5.67%", value: "$12,351.87", good: true },
+          { sym: "BTC", price: "$67,245", change: "+2.34%", up: true },
+          { sym: "ETH", price: "$3,521",  change: "-1.12%", up: false },
+          { sym: "SOL", price: "$142.65", change: "+5.67%", up: true },
         ].map((row, i) => (
           <div key={i} style={{
-            display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr",
-            padding: "7px 12px", borderBottom: i < 2 ? "1px solid " + line : "none",
-            fontSize: 11, alignItems: "center",
+            display: "flex", justifyContent: "space-between", alignItems: "center",
+            padding: "6px 12px", borderBottom: i < 2 ? "1px solid " + colors.line : "none",
+            fontSize: 11,
           }}>
-            <div>
-              <span style={{ fontWeight: 800, color: colors.text }}>{row.sym}</span>
-              <span style={{ fontSize: 9, color: muted, marginLeft: 4 }}>{row.name}</span>
-            </div>
-            <div style={{ fontFamily: "monospace", fontWeight: 700, color: colors.text, textAlign: "right" }}>{row.price}</div>
-            <div style={{ fontFamily: "monospace", fontWeight: 700, color: row.good ? colors.good : colors.bad, textAlign: "right" }}>
-              {row.good ? "▲" : "▼"} {row.change}
-            </div>
-            <div style={{ fontFamily: "monospace", fontWeight: 600, color: colors.text, textAlign: "right", fontSize: 10 }}>{row.value}</div>
+            <span style={{ fontWeight: 800, color: colors.text, minWidth: 40 }}>{row.sym}</span>
+            <span style={{ fontFamily: "monospace", fontWeight: 600, color: colors.text }}>{row.price}</span>
+            <span style={{ fontFamily: "monospace", fontWeight: 700, color: row.up ? colors.good : colors.bad }}>
+              {row.up ? "▲" : "▼"} {row.change}
+            </span>
           </div>
         ))}
       </div>
 
-      {/* Button samples */}
-      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center" }}>
-        <div style={{
-          padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700,
-          background: colors.brand, color: "#fff", cursor: "default",
-        }}>Primary</div>
-        <div style={{
-          padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700,
-          background: "transparent", border: "1px solid " + colors.brand,
-          color: colors.brand, cursor: "default",
-        }}>Secondary</div>
+      {/* Button + legend */}
+      <div style={{ display: "flex", gap: 8, marginTop: 12, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: colors.brand, color: "#fff" }}>Primary</div>
+        <div style={{ padding: "5px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700, background: "transparent", border: "1px solid " + colors.brand, color: colors.brand }}>Secondary</div>
         <div style={{ flex: 1 }} />
-        <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.good }} />
-          <span style={{ fontSize: 9, color: muted }}>Good</span>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.bad, marginLeft: 6 }} />
-          <span style={{ fontSize: 9, color: muted }}>Bad</span>
-          <div style={{ width: 8, height: 8, borderRadius: "50%", background: colors.brand, marginLeft: 6 }} />
-          <span style={{ fontSize: 9, color: muted }}>Brand</span>
+        <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
+          {[
+            { label: "Brand", color: colors.brand },
+            { label: "Good", color: colors.good },
+            { label: "Bad", color: colors.bad },
+          ].map(s => (
+            <div key={s.label} style={{ display: "flex", gap: 3, alignItems: "center" }}>
+              <div style={{ width: 8, height: 8, borderRadius: "50%", background: s.color }} />
+              <span style={{ fontSize: 9, color: colors.muted }}>{s.label}</span>
+            </div>
+          ))}
         </div>
       </div>
     </div>
   );
 }
 
+// ── Main Page ─────────────────────────────────────────────────────────────
+
 const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function SettingsPage(_props, _ref) {
   const { state, setState, toast } = useCrypto();
 
-  const currentLayoutColors = useMemo(() => {
-    return THEME_COLORS[state.layout] || THEME_COLORS.flux;
-  }, [state.layout]);
+  const currentLayoutColors = useMemo(() => TC[state.layout] || TC.flux, [state.layout]);
+  const activeColors = currentLayoutColors[state.theme] || currentLayoutColors.t1;
+  const activeLayout = LAYOUTS.find(l => l.id === state.layout);
 
   return (
     <>
@@ -217,49 +326,15 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         <div className="panel-head"><h2>Layout Templates</h2></div>
         <div className="panel-body">
           <div className="lt-grid">
-            {LAYOUTS.map(l => {
-              const colors = THEME_COLORS[l.id]?.[state.theme] || THEME_COLORS[l.id]?.t1;
-              return (
-                <div
-                  key={l.id}
-                  className={`lt-card${state.layout === l.id ? " active" : ""}`}
-                  onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
-                >
-                  {/* Mini preview */}
-                  <div style={{
-                    height: 48, borderRadius: 4, marginBottom: 8, overflow: "hidden",
-                    background: colors.bg, border: "1px solid " + colors.brand + "22",
-                    display: "flex", gap: 2, padding: 4,
-                  }}>
-                    {/* Sidebar mini */}
-                    <div style={{
-                      width: 12, borderRadius: 2,
-                      background: colors.panel,
-                      display: "flex", flexDirection: "column", gap: 2, padding: 2,
-                    }}>
-                      {[0,1,2].map(i => (
-                        <div key={i} style={{ height: 3, borderRadius: 1, background: colors.brand, opacity: i === 0 ? 1 : 0.3 }} />
-                      ))}
-                    </div>
-                    {/* Content mini */}
-                    <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 2 }}>
-                      <div style={{ height: 6, borderRadius: 1, background: colors.panel, opacity: 0.8 }} />
-                      <div style={{ flex: 1, display: "flex", gap: 2 }}>
-                        <div style={{ flex: 1, borderRadius: 2, background: colors.brand, opacity: 0.2 }} />
-                        <div style={{ flex: 1, borderRadius: 2, background: colors.brand2, opacity: 0.15 }} />
-                      </div>
-                      <div style={{ display: "flex", gap: 2 }}>
-                        <div style={{ flex: 2, height: 10, borderRadius: 2, background: colors.panel }} />
-                        <div style={{ flex: 1, height: 10, borderRadius: 2, background: colors.panel }} />
-                      </div>
-                    </div>
-                  </div>
-                  <div className="lt-name">{l.name}</div>
-                  <div className="lt-desc">{l.desc}</div>
-                  <div style={{ fontSize: 8, color: "var(--muted)", marginTop: 2 }}>{l.font}</div>
-                </div>
-              );
-            })}
+            {LAYOUTS.map(l => (
+              <LayoutCard
+                key={l.id}
+                layout={l}
+                active={state.layout === l.id}
+                currentTheme={state.theme}
+                onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
+              />
+            ))}
           </div>
         </div>
       </div>
@@ -269,53 +344,32 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         <div className="panel-head"><h2>Theme Colors</h2></div>
         <div className="panel-body">
           <div className="theme-colors">
-            {THEMES.map(t => {
-              const colors = currentLayoutColors[t];
-              if (!colors) return null;
-              return (
-                <div
-                  key={t}
-                  className={`tc-btn${state.theme === t ? " active" : ""}`}
-                  onClick={() => { setState(p => ({ ...p, theme: t })); toast("Theme: " + t, "good"); }}
-                >
-                  {/* Color swatches */}
-                  <div className="tc-swatch-row">
-                    <div className="tc-sw" style={{ background: colors.brand }} />
-                    <div className="tc-sw" style={{ background: colors.brand2 }} />
-                    <div className="tc-sw" style={{ background: colors.good }} />
-                    <div className="tc-sw" style={{ background: colors.bad }} />
-                  </div>
-                  {/* Mini bar preview */}
-                  <div style={{
-                    width: "100%", height: 18, borderRadius: 3, overflow: "hidden",
-                    background: colors.bg, border: "1px solid " + colors.brand + "33",
-                    display: "flex", alignItems: "center", gap: 3, padding: "2px 4px",
-                  }}>
-                    <div style={{ width: 6, height: 6, borderRadius: "50%", background: colors.brand }} />
-                    <div style={{ flex: 1, height: 3, borderRadius: 2, background: colors.brand, opacity: 0.4 }} />
-                    <div style={{ width: 8, height: 3, borderRadius: 2, background: colors.good }} />
-                  </div>
-                  <div className="tc-name" style={{ fontSize: 10, fontWeight: 700, marginTop: 2, color: colors.text }}>
-                    Theme {t.slice(1)}
-                  </div>
-                </div>
-              );
-            })}
+            {THEMES.map(t => (
+              <ThemeButton
+                key={t}
+                themeId={t}
+                layoutId={state.layout}
+                active={state.theme === t}
+                onClick={() => { setState(p => ({ ...p, theme: t })); toast("Theme: " + t, "good"); }}
+              />
+            ))}
           </div>
         </div>
       </div>
 
       {/* Live Preview */}
       <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head"><h2>Live Preview</h2><span className="pill">{LAYOUTS.find(l => l.id === state.layout)?.name} · Theme {state.theme.slice(1)}</span></div>
+        <div className="panel-head">
+          <h2>Live Preview</h2>
+          <span className="pill">{activeLayout?.name} · Theme {state.theme.slice(1)}</span>
+        </div>
         <div className="panel-body">
-          <LivePreview colors={currentLayoutColors[state.theme]} layoutName={state.layout} />
+          <LivePreview colors={activeColors} layoutName={state.layout} />
         </div>
       </div>
 
-      {/* Tracking + Currency side by side */}
+      {/* Tracking + Currency */}
       <div className="settings-row" style={{ marginTop: 10 }}>
-        {/* Tracking Method */}
         <div className="panel">
           <div className="panel-head"><h2>Tracking Method</h2></div>
           <div className="panel-body">
@@ -329,8 +383,6 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
             </p>
           </div>
         </div>
-
-        {/* Base Currency */}
         <div className="panel">
           <div className="panel-head"><h2>Base Currency</h2></div>
           <div className="panel-body">
@@ -350,38 +402,20 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
           <div className="settings-prefs-grid">
             <div className="form-field">
               <label className="form-label">Timezone</label>
-              <select
-                className="inp"
-                value={(state as any).timezone || "local"}
-                onChange={e => { setState(p => ({ ...p, timezone: e.target.value } as any)); toast("Timezone updated", "good"); }}
-              >
-                {TIMEZONES.map(tz => (
-                  <option key={tz.id} value={tz.id}>{tz.name}</option>
-                ))}
+              <select className="inp" value={(state as any).timezone || "local"} onChange={e => { setState(p => ({ ...p, timezone: e.target.value } as any)); toast("Timezone updated", "good"); }}>
+                {TIMEZONES.map(tz => <option key={tz.id} value={tz.id}>{tz.name}</option>)}
               </select>
             </div>
             <div className="form-field">
               <label className="form-label">Number Format</label>
-              <select
-                className="inp"
-                value={(state as any).numberFormat || "default"}
-                onChange={e => { setState(p => ({ ...p, numberFormat: e.target.value } as any)); toast("Number format updated", "good"); }}
-              >
-                {NUMBER_FORMATS.map(nf => (
-                  <option key={nf.id} value={nf.id}>{nf.name}</option>
-                ))}
+              <select className="inp" value={(state as any).numberFormat || "default"} onChange={e => { setState(p => ({ ...p, numberFormat: e.target.value } as any)); toast("Number format updated", "good"); }}>
+                {NUMBER_FORMATS.map(nf => <option key={nf.id} value={nf.id}>{nf.name}</option>)}
               </select>
             </div>
             <div className="form-field">
               <label className="form-label">Data Refresh Interval</label>
-              <select
-                className="inp"
-                value={(state as any).refreshInterval || "120"}
-                onChange={e => { setState(p => ({ ...p, refreshInterval: e.target.value } as any)); toast("Refresh interval updated", "good"); }}
-              >
-                {REFRESH_INTERVALS.map(ri => (
-                  <option key={ri.id} value={ri.id}>{ri.name}</option>
-                ))}
+              <select className="inp" value={(state as any).refreshInterval || "120"} onChange={e => { setState(p => ({ ...p, refreshInterval: e.target.value } as any)); toast("Refresh interval updated", "good"); }}>
+                {REFRESH_INTERVALS.map(ri => <option key={ri.id} value={ri.id}>{ri.name}</option>)}
               </select>
             </div>
           </div>
@@ -392,31 +426,23 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
       <div className="panel" style={{ marginTop: 10 }}>
         <div className="panel-head"><h2>Notifications</h2></div>
         <div className="panel-body">
-          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifyAlerts: !(p as any).notifyAlerts } as any))}>
-            <span className="tog-lbl">Price alert notifications</span>
-            <div className="tog-switch">
-              <input type="checkbox" checked={(state as any).notifyAlerts ?? true} readOnly />
-              <span className="tog-track" />
+          {[
+            { key: "notifyAlerts", label: "Price alert notifications", def: true },
+            { key: "notifyImports", label: "Import completion notifications", def: true },
+            { key: "notifySync", label: "Sync status notifications", def: false },
+          ].map(n => (
+            <div key={n.key} className="tog-wrap" onClick={() => setState(p => ({ ...p, [n.key]: !(p as any)[n.key] } as any))}>
+              <span className="tog-lbl">{n.label}</span>
+              <div className="tog-switch">
+                <input type="checkbox" checked={(state as any)[n.key] ?? n.def} readOnly />
+                <span className="tog-track" />
+              </div>
             </div>
-          </div>
-          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifyImports: !(p as any).notifyImports } as any))}>
-            <span className="tog-lbl">Import completion notifications</span>
-            <div className="tog-switch">
-              <input type="checkbox" checked={(state as any).notifyImports ?? true} readOnly />
-              <span className="tog-track" />
-            </div>
-          </div>
-          <div className="tog-wrap" onClick={() => setState(p => ({ ...p, notifySync: !(p as any).notifySync } as any))}>
-            <span className="tog-lbl">Sync status notifications</span>
-            <div className="tog-switch">
-              <input type="checkbox" checked={(state as any).notifySync ?? false} readOnly />
-              <span className="tog-track" />
-            </div>
-          </div>
+          ))}
         </div>
       </div>
 
-      {/* Data Management + Stats side by side */}
+      {/* Data Management + Stats */}
       <div className="settings-row" style={{ marginTop: 10 }}>
         <div className="panel">
           <div className="panel-head"><h2>Data Management</h2></div>
@@ -431,12 +457,8 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
                 const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json";
                 inp.onchange = async () => {
                   const file = inp.files?.[0]; if (!file) return;
-                  try {
-                    const text = await file.text();
-                    const data = JSON.parse(text);
-                    setState(() => data);
-                    toast("Restored from backup ✓", "good");
-                  } catch { toast("Invalid backup file", "bad"); }
+                  try { const data = JSON.parse(await file.text()); setState(() => data); toast("Restored from backup ✓", "good"); }
+                  catch { toast("Invalid backup file", "bad"); }
                 };
                 inp.click();
               }}>📤 Import Backup</button>
@@ -451,7 +473,6 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
             </div>
           </div>
         </div>
-
         <div className="panel">
           <div className="panel-head"><h2>Data Stats</h2></div>
           <div className="panel-body">
