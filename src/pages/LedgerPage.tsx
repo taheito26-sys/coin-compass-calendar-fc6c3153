@@ -349,14 +349,14 @@ export default function LedgerPage() {
           id: `local_${uid()}`,
           ts: row.timestamp,
           type: row.side,
-          asset: row.symbol,
+          asset: row.assetSymbol,
           qty: row.qty,
-          price: row.unitPrice,
+          price: row.price,
           total: row.grossValue,
           fee: row.feeAmount,
           feeAsset: row.feeAsset || "USD",
           accountId: "acc_main",
-          note: `Import: ${EXCHANGE_LABELS[row.exchange] ?? row.exchange}`,
+          note: `Import: ${EXCHANGE_LABELS[row.sourceExchange] ?? row.sourceExchange}`,
           lots: "",
         }));
         return {
@@ -388,24 +388,25 @@ export default function LedgerPage() {
       const missingSymbols = new Set<string>();
 
       for (const row of importResult.rows) {
-        const { assetId, symbol } = resolveAssetId(row.symbol, assets);
+        const { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
         if (!assetId) {
           missingSymbols.add(symbol);
           counts.rejected++;
           continue;
         }
+        const nativeId = row.tradeId || row.orderId || row.txHash || "";
         counts.accepted++;
         batchPayload.push({
           asset_id: assetId,
           timestamp: new Date(row.timestamp).toISOString(),
           type: row.side,
           qty: row.qty,
-          unit_price: row.unitPrice,
+          unit_price: row.price,
           fee_amount: row.feeAmount,
           fee_currency: row.feeAsset || "USD",
-          external_id: row.externalId || undefined,
-          venue: EXCHANGE_LABELS[row.exchange] ?? row.exchange,
-          note: `Import: ${row.externalId ?? ""}`,
+          external_id: nativeId || undefined,
+          venue: EXCHANGE_LABELS[row.sourceExchange] ?? row.sourceExchange,
+          note: `Import: ${nativeId}`,
           source: "import",
         });
       }
