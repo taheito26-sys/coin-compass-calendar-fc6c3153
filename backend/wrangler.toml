@@ -3,6 +3,10 @@ main = "src/index.ts"
 compatibility_date = "2025-03-01"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+# Update with specific frontend origins (e.g., https://tracker01.taheito26.pages.dev)
+ALLOWED_ORIGINS = "http://localhost:3000,https://your-frontend.pages.dev"
+
 [triggers]
 crons = ["*/2 * * * *"]
 
