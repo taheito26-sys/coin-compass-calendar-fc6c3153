@@ -1,9 +1,9 @@
-// Worker API base URL — prefer VITE_WORKER_API_URL, fallback to known production Worker
-const DEFAULT_WORKER_BASE = "https://cryptotracker-api.taheito26.workers.dev";
+// Worker API base URL — STRICT: require explicit configuration
+// No dangerous fallback to a hardcoded production URL
 
 function resolveWorkerBase(raw: string | undefined): string {
   const candidate = (raw || "").trim();
-  if (!candidate) return DEFAULT_WORKER_BASE;
+  if (!candidate) return ""; // No fallback — must be explicitly configured
 
   try {
     const parsed = new URL(candidate);
@@ -11,18 +11,75 @@ function resolveWorkerBase(raw: string | undefined): string {
       return candidate.replace(/\/$/, "");
     }
   } catch {
-    // fall through to default
+    // Invalid URL
   }
 
-  return DEFAULT_WORKER_BASE;
+  return "";
 }
 
 const WORKER_BASE = resolveWorkerBase(import.meta.env.VITE_WORKER_API_URL);
 
 let tokenProvider: null | (() => Promise<string | null>) = null;
 
+// Cache for health check results (5 second TTL)
+let _healthCache: { available: boolean; ts: number } | null = null;
+const HEALTH_TTL = 5000;
+
+/**
+ * Whether the Worker URL environment variable is configured.
+ * This does NOT mean the worker is reachable.
+ */
 export function isWorkerConfigured(): boolean {
   return Boolean(WORKER_BASE);
+}
+
+/**
+ * Check if the Worker is actually reachable (health endpoint).
+ * Caches result for 5 seconds to avoid spamming.
+ */
+export async function isWorkerAvailable(): Promise<boolean> {
+  if (!WORKER_BASE) return false;
+
+  // Use cache if fresh
+  if (_healthCache && Date.now() - _healthCache.ts < HEALTH_TTL) {
+    return _healthCache.available;
+  }
+
+  try {
+    const response = await fetch(`${WORKER_BASE}/api/status`, {
+      signal: AbortSignal.timeout(5000),
+    });
+    const available = response.ok;
+    _healthCache = { available, ts: Date.now() };
+    return available;
+  } catch {
+    _healthCache = { available: false, ts: Date.now() };
+    return false;
+  }
+}
+
+/**
+ * Ensure the backend is ready for write operations.
+ * Throws with a user-friendly message if not.
+ */
+export async function ensureWriteReady(): Promise<void> {
+  if (!WORKER_BASE) {
+    throw new Error(
+      "Backend not configured. Set VITE_WORKER_API_URL to enable data persistence."
+    );
+  }
+
+  const token = await getAuthToken();
+  if (!token) {
+    throw new Error("Not authenticated. Please sign in to save data.");
+  }
+
+  const available = await isWorkerAvailable();
+  if (!available) {
+    throw new Error(
+      "Backend unavailable. Your data was NOT saved. Please try again later."
+    );
+  }
 }
 
 export function setAuthTokenProvider(provider: () => Promise<string | null>) {
@@ -49,8 +106,8 @@ async function getAuthToken(): Promise<string | null> {
 }
 
 async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
-  if (!isWorkerConfigured()) {
-    throw new Error("Worker API is not configured (missing VITE_WORKER_API_URL)");
+  if (!WORKER_BASE) {
+    throw new Error("Backend not configured (missing VITE_WORKER_API_URL)");
   }
 
   const token = await getAuthToken();
@@ -296,7 +353,6 @@ export async function recordImportBatch(input: any): Promise<{ ok: boolean; batc
 
 // ─── User preferences ─────────────────────────────────────
 
-
 export async function fetchUserPreferences(): Promise<Record<string, string>> {
   const response = await apiFetch<{ preferences: Record<string, string> }>("/api/preferences");
   return response.preferences;
@@ -307,18 +363,4 @@ export async function saveUserPreferences(prefs: Record<string, string>): Promis
     method: "PUT",
     body: JSON.stringify(prefs),
   });
-}
-
-// ─── Health check ──────────────────────────────────────────
-
-export async function isWorkerAvailable(): Promise<boolean> {
-  if (!WORKER_BASE) return false;
-  try {
-    const response = await fetch(`${WORKER_BASE}/api/status`, {
-      signal: AbortSignal.timeout(5000),
-    });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
