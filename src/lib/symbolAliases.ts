@@ -25,6 +25,7 @@ const SYMBOL_ALIASES: Record<string, string> = {
 const QUOTE_CURRENCIES = [
   "USDT", "USDC", "BUSD", "TUSD", "FDUSD", "DAI", "UST",
   "BTC", "ETH", "BNB", "EUR", "GBP", "TRY", "BRL", "ARS",
+  "USD", "PERP",
 ];
 
 /**

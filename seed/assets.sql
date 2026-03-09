@@ -56,4 +56,11 @@ VALUES
   ('pepe-001','PEPE', 'Pepe',            'pepe',             'PEPEUSDT', 'meme',     8, 8),
   ('floki-001','FLOKI','Floki',          'floki',            'FLOKIUSDT','meme',     8, 7),
   ('wif-001', 'WIF',  'dogwifhat',       'dogwifcoin',       'WIFUSDT',  'meme',     8, 4),
-  ('bonk-001','BONK', 'Bonk',            'bonk',             'BONKUSDT', 'meme',     8, 8);
+  ('bonk-001','BONK', 'Bonk',            'bonk',             'BONKUSDT', 'meme',     8, 8),
+
+  -- Additional popular assets
+  ('qnt-001', 'QNT',  'Quant',           'quant-network',    'QNTUSDT',  'layer1',   8, 3),
+  ('render-001','RENDER','Render',        'render-token',     'RENDERUSDT','defi',    8, 4),
+  ('tao-001', 'TAO',  'Bittensor',       'bittensor',        'TAOUSDT',  'layer1',   8, 3),
+  ('fet-001', 'FET',  'Fetch.ai',        'fetch-ai',         'FETUSDT',  'defi',     8, 4),
+  ('axs-001', 'AXS',  'Axie Infinity',   'axie-infinity',    'AXSUSDT',  'defi',     8, 3);
