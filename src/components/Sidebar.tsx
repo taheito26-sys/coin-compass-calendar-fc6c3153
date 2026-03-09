@@ -3,7 +3,6 @@ import { useCrypto } from "@/lib/cryptoContext";
 const pages = [
   { id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation", icon: "M4 13h7V4H4v9Zm9 7h7V11h-7v9ZM4 20h7v-5H4v5Zm9-11h7V4h-7v5Z" },
   { id: "assets", label: "Assets", sub: "Positions · P&L", icon: "M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" },
-  { id: "analytics", label: "Analytics", sub: "Risk · Sharpe · Benchmark", icon: "M2 20h20M5 20V14l4-4 4 4 4-8 4 4" },
   { id: "calendar", label: "Calendar", sub: "Daily P&L", icon: "M3 4h18v18H3zM16 2v4M8 2v4M3 10h18" },
   { id: "ledger", label: "Ledger", sub: "Journal · Import · API", icon: "M7 4h10M7 8h10M7 12h10M7 16h10M7 20h10" },
   { id: "markets", label: "Markets", sub: "Live Prices", icon: "M22 12h-4l-3 9L9 3l-3 9H2" },
@@ -40,12 +39,6 @@ export default function Sidebar({ page, onNav, onLogout }: { page: string; onNav
                     fontSize: 8, fontWeight: 900, background: "var(--brand)", color: "#fff",
                     borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
                   }}>{alertCount}</span>
-                )}
-                {p.id === "analytics" && (
-                  <span style={{
-                    fontSize: 7, fontWeight: 900, background: "var(--t2, #7c3aed)", color: "#fff",
-                    borderRadius: 999, padding: "1px 5px", lineHeight: 1.4,
-                  }}>NEW</span>
                 )}
               </div>
               <small>{p.sub}</small>

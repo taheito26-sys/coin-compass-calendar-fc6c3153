@@ -2,11 +2,10 @@ import { useCrypto } from "@/lib/cryptoContext";
 import { fmtFiat, fmtQty, fmtPx, fmtTotal } from "@/lib/cryptoState";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useMemo, useState, useCallback, useRef, useEffect } from "react";
+import { useMemo, useState } from "react";
 import FearGreedGauge from "@/components/dashboard/FearGreedGauge";
 import HistoricalNetValue from "@/components/dashboard/HistoricalNetValue";
-import ValueDistribution from "@/components/dashboard/ValueDistribution";
-import EventsAnalysis from "@/components/dashboard/EventsAnalysis";
+import PerAssetRiskBreakdown from "@/components/dashboard/PerAssetRiskBreakdown";
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -34,10 +33,8 @@ const ALL_CARDS: CardDef[] = [
   { id: "fearGreed", label: "Fear & Greed" },
   { id: "movers", label: "Top Movers" },
   { id: "watchlist", label: "Watchlist" },
-  { id: "valDist", label: "Value Distribution" },
-  { id: "events", label: "Events Analysis" },
+  { id: "riskBreakdown", label: "Per-Asset Risk", colSpan: 2 },
   { id: "positions", label: "Top Positions", colSpan: 2 },
-  { id: "activity", label: "Recent Activity", colSpan: 2 },
 ];
 
 function getDefaultLayout(): string[] {
@@ -173,20 +170,17 @@ function DragHandle({ editing }: { editing: boolean }) {
 // ─── Main Dashboard ───────────────────────────────────────────────────────────
 
 export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }) {
-  const [returnPeriod, setReturnPeriod] = useState<string>("max");
   const { state } = useCrypto();
   const portfolio = useUnifiedPortfolio();
   const { getPrice } = useLivePrices();
 
-  const base   = state.base   || "USD";
-  const method = state.method || "FIFO";
+  const base = state.base || "USD";
 
   const positions = portfolio.positions;
   const totalMV     = portfolio.totalMV;
   const totalCost   = portfolio.totalCost;
   const totalPnl    = portfolio.totalPnl;
   const totalPnlPct = portfolio.totalPnlPct;
-  const assetCount  = portfolio.positions.length;
   const txCount     = state.txs.length;
   const realizedPnl = useMemo(() => positions.reduce((s, p) => s + p.realizedPnl, 0), [positions]);
 
@@ -283,7 +277,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     });
   }, [state.watch, getPrice]);
 
-  const recentTxs = useMemo(() => [...state.txs].sort((a, b) => b.ts - a.ts).slice(0, 8), [state.txs]);
+  
 
   const { topGainers, topLosers } = useMemo(() => {
     const withPnl = positions.map(r => {
@@ -321,15 +315,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     switch (id) {
       case "kpis":
         return (
-          <div className="kpis kpis-5">
-            <div className="kpi-card">
-              <div className="kpi-head">
-                <span className="kpi-badge" style={{ color: "var(--brand)", borderColor: "color-mix(in srgb,var(--brand) 30%,transparent)", background: "var(--brand3)" }}>{base}</span>
-              </div>
-              <div className="kpi-lbl">PORTFOLIO VALUE</div>
-              <div className="kpi-val">{fmtTotal(totalMV)}</div>
-              <div className="kpi-sub">{assetCount} assets tracked</div>
-            </div>
+          <div className="kpis kpis-3">
             <div className="kpi-card">
               <div className="kpi-head"><span className={`kpi-badge`}>{totalPnl >= 0 ? "▲" : "▼"}</span></div>
               <div className="kpi-lbl">UNREALIZED P&amp;L</div>
@@ -345,11 +331,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
               <div className="kpi-lbl">TOTAL COST</div>
               <div className="kpi-val">{fmtFiat(totalCost, base)}</div>
               <div className="kpi-sub">{txCount} transactions</div>
-            </div>
-            <div className="kpi-card">
-              <div className="kpi-lbl">METHOD</div>
-              <div className="kpi-val" style={{ fontSize: 16 }}>{method}</div>
-              <div className="kpi-sub">{assetCount > 0 ? "All priced OK" : "No positions"}</div>
             </div>
           </div>
         );
@@ -387,8 +368,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
 
       case "histValue": return <HistoricalNetValue />;
       case "fearGreed": return <FearGreedGauge />;
-      case "valDist": return <ValueDistribution />;
-      case "events": return <EventsAnalysis />;
+      case "riskBreakdown": return <PerAssetRiskBreakdown />;
 
       case "movers":
         return (
@@ -479,38 +459,6 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
                   </tbody>
                 </table>
               </div>
-            </div>
-          </div>
-        );
-
-      case "activity":
-        return (
-          <div className="panel">
-            <div className="panel-head">
-              <DragHandle editing={editing} />
-              <h2>Recent Activity</h2>
-              {onNav && <button className="btn tiny secondary" onClick={() => onNav("ledger")}>Ledger →</button>}
-            </div>
-            <div className="panel-body" style={{ padding: 0 }}>
-              {recentTxs.length > 0 ? (
-                <div style={{ display: "flex", flexDirection: "column" }}>
-                  {recentTxs.map(tx => (
-                    <div key={tx.id} style={{
-                      display: "flex", alignItems: "center", gap: 8,
-                      padding: "8px 12px", borderBottom: "1px solid var(--line)", fontSize: 11,
-                    }}>
-                      <span className={`pill ${tx.type === "buy" ? "good" : tx.type === "sell" ? "bad" : ""}`} style={{ fontSize: 9, minWidth: 36, textAlign: "center" }}>
-                        {tx.type.toUpperCase()}
-                      </span>
-                      <span className="mono" style={{ fontWeight: 900, minWidth: 40 }}>{tx.asset}</span>
-                      <span className="mono muted" style={{ flex: 1 }}>{fmtQty(tx.qty)}</span>
-                      <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
-                        {new Date(tx.ts).toLocaleDateString(undefined, { month: "short", day: "numeric" })}
-                      </span>
-                    </div>
-                  ))}
-                </div>
-              ) : <div className="muted" style={{ padding: 20, textAlign: "center" }}>No recent activity.</div>}
             </div>
           </div>
         );
