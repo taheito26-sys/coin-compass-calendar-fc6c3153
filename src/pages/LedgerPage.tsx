@@ -379,14 +379,21 @@ export default function LedgerPage() {
     try {
       const assets = await getAssetCatalog(true);
       const batchPayload: any[] = [];
-      const missingSymbols = new Set<string>();
+      const autoCreated: string[] = [];
 
       for (const row of importResult.rows) {
-        const { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
+        let { assetId, symbol } = resolveAssetId(row.assetSymbol, assets);
         if (!assetId) {
-          missingSymbols.add(symbol);
-          counts.rejected++;
-          continue;
+          // Auto-create missing asset
+          try {
+            const result = await resolveOrCreateAsset(row.assetSymbol);
+            assetId = result.assetId;
+            symbol = result.symbol;
+            autoCreated.push(symbol);
+          } catch {
+            counts.rejected++;
+            continue;
+          }
         }
         const nativeId = row.tradeId || row.orderId || row.txHash || "";
         counts.accepted++;
