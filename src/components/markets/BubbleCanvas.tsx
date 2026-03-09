@@ -29,17 +29,12 @@ function formatCompact(n: number): string {
 }
 
 const _imgCache = new Map<string, HTMLImageElement>();
-function getCoinImage(url: string): HTMLImageElement | null {
-  if (!url) return null;
-  if (_imgCache.has(url)) {
-    const img = _imgCache.get(url)!;
-    return img.complete && img.naturalWidth > 0 ? img : null;
-  }
+function preloadImage(url: string) {
+  if (!url || _imgCache.has(url)) return;
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = url;
   _imgCache.set(url, img);
-  return null;
 }
 
 export default function BubbleCanvas({ coins, timeRange }: Props) {
@@ -49,6 +44,7 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
   const animRef = useRef<number>(0);
   const mouseRef = useRef({ x: -999, y: -999 });
 
+  // Pack bubbles using a spiral layout to avoid overlap from the start
   const initBubbles = useCallback(() => {
     if (!coins.length) return;
     const container = containerRef.current;
@@ -57,36 +53,70 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
     const H = container.clientHeight || 550;
     const maxMcap = Math.max(...coins.map(c => c.market_cap || 1));
 
-    for (const coin of coins) {
-      if (coin.image) getCoinImage(coin.image);
-    }
+    for (const coin of coins) preloadImage(coin.image);
 
-    // Pack bubbles in a grid-like pattern for stability
+    // Sort by market cap descending for spiral packing (big first)
+    const sortedCoins = [...coins].sort((a, b) => (b.market_cap || 0) - (a.market_cap || 0));
+
     const bubbles: Bubble[] = [];
-    const cols = Math.ceil(Math.sqrt(coins.length * (W / H)));
-    const rows = Math.ceil(coins.length / cols);
-    const cellW = W / cols;
-    const cellH = H / rows;
+    const cx = W / 2;
+    const cy = H / 2;
 
-    coins.forEach((coin, i) => {
+    // Spiral placement: place each bubble at increasing angles/radii
+    let angle = 0;
+    let radius = 0;
+    const placed: { x: number; y: number; r: number }[] = [];
+
+    for (const coin of sortedCoins) {
       const change = getChange(coin, timeRange);
       const mcapRatio = Math.sqrt((coin.market_cap || 1) / maxMcap);
-      const r = Math.max(14, Math.min(56, mcapRatio * 56));
-      const col = i % cols;
-      const row = Math.floor(i / cols);
-      const tx = cellW * col + cellW / 2;
-      const ty = cellH * row + cellH / 2;
+      const br = Math.max(12, Math.min(52, mcapRatio * 52));
 
+      // Find position via spiral that doesn't overlap
+      let px = cx, py = cy;
+      let found = false;
+      for (let attempt = 0; attempt < 500; attempt++) {
+        px = cx + Math.cos(angle) * radius;
+        py = cy + Math.sin(angle) * radius;
+
+        // Check bounds
+        if (px - br < 2) px = br + 2;
+        if (px + br > W - 2) px = W - br - 2;
+        if (py - br < 2) py = br + 2;
+        if (py + br > H - 2) py = H - br - 2;
+
+        // Check overlap with already placed
+        let overlaps = false;
+        for (const p of placed) {
+          const dx = px - p.x, dy = py - p.y;
+          const minDist = br + p.r + 3; // 3px gap
+          if (dx * dx + dy * dy < minDist * minDist) {
+            overlaps = true;
+            break;
+          }
+        }
+
+        if (!overlaps) { found = true; break; }
+        angle += 0.3;
+        radius += 0.8;
+      }
+
+      if (!found) {
+        // Fallback: random position
+        px = Math.random() * (W - br * 2) + br;
+        py = Math.random() * (H - br * 2) + br;
+      }
+
+      placed.push({ x: px, y: py, r: br });
       bubbles.push({
         id: coin.id, symbol: coin.symbol.toUpperCase(), name: coin.name,
         price: coin.current_price, change, marketCap: coin.market_cap,
         image: coin.image || "",
-        x: tx + (Math.random() - 0.5) * 20,
-        y: ty + (Math.random() - 0.5) * 20,
-        r, vx: 0, vy: 0,
-        targetX: tx, targetY: ty,
+        x: px, y: py, r: br,
+        vx: 0, vy: 0,
+        targetX: px, targetY: py,
       });
-    });
+    }
 
     bubblesRef.current = bubbles;
   }, [coins, timeRange]);
@@ -119,96 +149,107 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
       let hovered: Bubble | null = null;
       const mx = mouseRef.current.x, my = mouseRef.current.y;
 
-      // Gentle physics: attract to target, very slow drift
+      // Very gentle physics: strong spring to target, almost no random drift
       for (const b of bubbles) {
-        // Spring force toward target position (keeps bubbles settled)
+        // Strong spring back to target (keeps bubbles nearly still)
         const dx = b.targetX - b.x;
         const dy = b.targetY - b.y;
-        b.vx += dx * 0.002;
-        b.vy += dy * 0.002;
+        b.vx += dx * 0.008;
+        b.vy += dy * 0.008;
 
-        // Gentle random drift
-        b.vx += (Math.random() - 0.5) * 0.015;
-        b.vy += (Math.random() - 0.5) * 0.015;
+        // Extremely subtle random drift (barely perceptible)
+        b.vx += (Math.random() - 0.5) * 0.003;
+        b.vy += (Math.random() - 0.5) * 0.003;
 
-        // Heavy damping = slow, calm movement
-        b.vx *= 0.92;
-        b.vy *= 0.92;
+        // Very heavy damping
+        b.vx *= 0.85;
+        b.vy *= 0.85;
+
+        // Clamp max velocity to prevent fast movement
+        const maxV = 0.15;
+        const speed = Math.sqrt(b.vx * b.vx + b.vy * b.vy);
+        if (speed > maxV) {
+          b.vx = (b.vx / speed) * maxV;
+          b.vy = (b.vy / speed) * maxV;
+        }
 
         b.x += b.vx;
         b.y += b.vy;
 
-        // Soft wall bounce
-        if (b.x - b.r < 0) { b.x = b.r; b.vx = Math.abs(b.vx) * 0.3; }
-        if (b.x + b.r > W) { b.x = W - b.r; b.vx = -Math.abs(b.vx) * 0.3; }
-        if (b.y - b.r < 0) { b.y = b.r; b.vy = Math.abs(b.vy) * 0.3; }
-        if (b.y + b.r > H) { b.y = H - b.r; b.vy = -Math.abs(b.vy) * 0.3; }
+        // Walls
+        if (b.x - b.r < 0) { b.x = b.r; b.vx = 0; }
+        if (b.x + b.r > W) { b.x = W - b.r; b.vx = 0; }
+        if (b.y - b.r < 0) { b.y = b.r; b.vy = 0; }
+        if (b.y + b.r > H) { b.y = H - b.r; b.vy = 0; }
 
+        // Hover detection
         const mdx = mx - b.x, mdy = my - b.y;
         if (Math.sqrt(mdx * mdx + mdy * mdy) < b.r) hovered = b;
       }
 
-      // Gentle collision separation
-      for (let i = 0; i < bubbles.length; i++) {
-        for (let j = i + 1; j < bubbles.length; j++) {
-          const a = bubbles[i], bb = bubbles[j];
-          const dx = bb.x - a.x, dy = bb.y - a.y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          const minDist = a.r + bb.r + 2;
-          if (dist < minDist && dist > 0) {
-            const overlap = (minDist - dist) / 2;
-            const nx = dx / dist, ny = dy / dist;
-            a.x -= nx * overlap * 0.3;
-            a.y -= ny * overlap * 0.3;
-            bb.x += nx * overlap * 0.3;
-            bb.y += ny * overlap * 0.3;
+      // Strong collision separation to prevent any overlap
+      for (let iter = 0; iter < 3; iter++) {
+        for (let i = 0; i < bubbles.length; i++) {
+          for (let j = i + 1; j < bubbles.length; j++) {
+            const a = bubbles[i], bb = bubbles[j];
+            const dx = bb.x - a.x, dy = bb.y - a.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const minDist = a.r + bb.r + 3;
+            if (dist < minDist && dist > 0.01) {
+              const overlap = minDist - dist;
+              const nx = dx / dist, ny = dy / dist;
+              // Push apart immediately (position-based, not velocity)
+              a.x -= nx * overlap * 0.5;
+              a.y -= ny * overlap * 0.5;
+              bb.x += nx * overlap * 0.5;
+              bb.y += ny * overlap * 0.5;
+              // Kill velocity toward each other
+              a.vx = 0; a.vy = 0;
+              bb.vx = 0; bb.vy = 0;
+            }
           }
         }
       }
 
-      // Draw
+      // Draw bubbles
       for (const b of bubbles) {
         const isPos = b.change >= 0;
         const intensity = Math.min(Math.abs(b.change) / 10, 1);
         const isHov = hovered === b;
-        const scale = isHov ? 1.12 : 1;
+        const scale = isHov ? 1.1 : 1;
         const dr = b.r * scale;
 
-        // Soft glow on hover
+        // Hover glow
         if (isHov) {
           ctx.beginPath();
-          ctx.arc(b.x, b.y, dr + 8, 0, Math.PI * 2);
-          const glow = ctx.createRadialGradient(b.x, b.y, dr * 0.4, b.x, b.y, dr + 8);
-          glow.addColorStop(0, isPos ? "rgba(34,197,94,0.12)" : "rgba(239,68,68,0.12)");
+          ctx.arc(b.x, b.y, dr + 6, 0, Math.PI * 2);
+          const glow = ctx.createRadialGradient(b.x, b.y, dr * 0.4, b.x, b.y, dr + 6);
+          glow.addColorStop(0, isPos ? "rgba(34,197,94,0.1)" : "rgba(239,68,68,0.1)");
           glow.addColorStop(1, "transparent");
           ctx.fillStyle = glow;
           ctx.fill();
         }
 
-        // Main bubble - solid, clean look
-        const alpha = 0.18 + intensity * 0.32;
+        // Bubble fill
+        const alpha = 0.15 + intensity * 0.3;
         ctx.beginPath();
         ctx.arc(b.x, b.y, dr, 0, Math.PI * 2);
-        if (isPos) {
-          ctx.fillStyle = `rgba(34,197,94,${alpha})`;
-        } else {
-          ctx.fillStyle = `rgba(239,68,68,${alpha})`;
-        }
+        ctx.fillStyle = isPos ? `rgba(34,197,94,${alpha})` : `rgba(239,68,68,${alpha})`;
         ctx.fill();
 
-        // Clean border
+        // Border
         ctx.strokeStyle = isPos
-          ? `rgba(34,197,94,${0.3 + intensity * 0.35})`
-          : `rgba(239,68,68,${0.3 + intensity * 0.35})`;
-        ctx.lineWidth = isHov ? 2.5 : 1.5;
+          ? `rgba(34,197,94,${0.25 + intensity * 0.3})`
+          : `rgba(239,68,68,${0.25 + intensity * 0.3})`;
+        ctx.lineWidth = isHov ? 2 : 1;
         ctx.stroke();
 
-        // Coin icon
-        if (b.image && b.r > 18) {
+        // Icon
+        if (b.image && b.r > 16) {
           const img = _imgCache.get(b.image);
           if (img?.complete && img.naturalWidth > 0) {
-            const iconSize = Math.min(dr * 0.38, 18);
-            const iconY = b.r > 28 ? b.y - dr * 0.15 : b.y;
+            const iconSize = Math.min(dr * 0.35, 16);
+            const iconY = b.r > 26 ? b.y - dr * 0.15 : b.y;
             ctx.save();
             ctx.beginPath();
             ctx.arc(b.x, iconY, iconSize, 0, Math.PI * 2);
@@ -218,38 +259,36 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
           }
         }
 
-        // Text - symbol prominent
+        // Text
         ctx.textAlign = "center";
-        if (b.r > 28) {
-          // Symbol
+        if (b.r > 26) {
           ctx.fillStyle = isPos ? "#4ade80" : "#f87171";
-          ctx.font = `bold ${Math.max(10, dr * 0.28)}px var(--app-font, system-ui)`;
-          const symY = b.image ? b.y + dr * 0.4 : b.y - 2;
+          ctx.font = `bold ${Math.max(9, dr * 0.26)}px system-ui, sans-serif`;
+          const symY = b.image ? b.y + dr * 0.38 : b.y - 1;
           ctx.fillText(b.symbol, b.x, symY);
-          // Change %
-          ctx.font = `600 ${Math.max(8, dr * 0.2)}px var(--app-font, system-ui)`;
-          ctx.fillStyle = "rgba(255,255,255,0.55)";
-          ctx.fillText((b.change >= 0 ? "+" : "") + b.change.toFixed(1) + "%", b.x, symY + dr * 0.24);
-        } else if (b.r > 16) {
+          ctx.font = `600 ${Math.max(7, dr * 0.18)}px system-ui, sans-serif`;
+          ctx.fillStyle = "rgba(255,255,255,0.5)";
+          ctx.fillText((b.change >= 0 ? "+" : "") + b.change.toFixed(1) + "%", b.x, symY + dr * 0.22);
+        } else if (b.r > 14) {
           ctx.fillStyle = isPos ? "#4ade80" : "#f87171";
-          ctx.font = `bold ${Math.max(8, dr * 0.4)}px var(--app-font, system-ui)`;
-          ctx.fillText(b.symbol, b.x, b.y + 4);
+          ctx.font = `bold ${Math.max(7, dr * 0.38)}px system-ui, sans-serif`;
+          ctx.fillText(b.symbol, b.x, b.y + 3);
         }
       }
 
       // Tooltip
       if (hovered) {
         const b = hovered;
-        const tw = 170, th = 68;
-        let tx = b.x + b.r + 14, ty = b.y - th / 2;
-        if (tx + tw > W) tx = b.x - b.r - tw - 14;
+        const tw = 165, th = 64;
+        let tx = b.x + b.r + 12, ty = b.y - th / 2;
+        if (tx + tw > W) tx = b.x - b.r - tw - 12;
         if (ty < 4) ty = 4;
         if (ty + th > H - 4) ty = H - th - 4;
 
-        ctx.shadowColor = "rgba(0,0,0,0.4)";
-        ctx.shadowBlur = 20;
+        ctx.shadowColor = "rgba(0,0,0,0.35)";
+        ctx.shadowBlur = 16;
         ctx.fillStyle = "rgba(12,12,18,0.94)";
-        const rr = 10;
+        const rr = 8;
         ctx.beginPath();
         ctx.moveTo(tx + rr, ty); ctx.lineTo(tx + tw - rr, ty);
         ctx.quadraticCurveTo(tx + tw, ty, tx + tw, ty + rr);
@@ -261,33 +300,19 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
         ctx.quadraticCurveTo(tx, ty, tx + rr, ty);
         ctx.fill();
         ctx.shadowBlur = 0;
-
-        ctx.strokeStyle = "rgba(255,255,255,0.06)";
-        ctx.lineWidth = 1;
-        ctx.stroke();
+        ctx.strokeStyle = "rgba(255,255,255,0.06)"; ctx.lineWidth = 1; ctx.stroke();
 
         ctx.textAlign = "left";
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 13px var(--app-font, system-ui)";
-        ctx.fillText(b.symbol, tx + 12, ty + 18);
-
-        ctx.fillStyle = "rgba(255,255,255,0.4)";
-        ctx.font = "10px var(--app-font, system-ui)";
-        const symW = ctx.measureText(b.symbol + "  ").width;
-        ctx.fillText(b.name, tx + 12 + symW, ty + 18);
-
-        ctx.fillStyle = "#fff";
-        ctx.font = "bold 14px var(--app-font, system-ui)";
-        ctx.fillText("$" + b.price.toLocaleString(undefined, { maximumFractionDigits: b.price < 1 ? 6 : 2 }), tx + 12, ty + 38);
-
-        ctx.fillStyle = b.change >= 0 ? "#4ade80" : "#f87171";
-        ctx.font = "bold 11px var(--app-font, system-ui)";
-        ctx.fillText(`${b.change >= 0 ? "+" : ""}${b.change.toFixed(2)}%`, tx + 12, ty + 54);
-
-        ctx.fillStyle = "rgba(255,255,255,0.35)";
-        ctx.font = "10px var(--app-font, system-ui)";
-        ctx.textAlign = "right";
-        ctx.fillText(formatCompact(b.marketCap), tx + tw - 12, ty + 54);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 12px system-ui";
+        ctx.fillText(b.symbol, tx + 10, ty + 16);
+        ctx.fillStyle = "rgba(255,255,255,0.4)"; ctx.font = "10px system-ui";
+        ctx.fillText(b.name, tx + 10 + ctx.measureText(b.symbol + " ").width + 2, ty + 16);
+        ctx.fillStyle = "#fff"; ctx.font = "bold 13px system-ui";
+        ctx.fillText("$" + b.price.toLocaleString(undefined, { maximumFractionDigits: b.price < 1 ? 6 : 2 }), tx + 10, ty + 34);
+        ctx.fillStyle = b.change >= 0 ? "#4ade80" : "#f87171"; ctx.font = "bold 10px system-ui";
+        ctx.fillText(`${b.change >= 0 ? "+" : ""}${b.change.toFixed(2)}%`, tx + 10, ty + 50);
+        ctx.fillStyle = "rgba(255,255,255,0.3)"; ctx.font = "10px system-ui"; ctx.textAlign = "right";
+        ctx.fillText(formatCompact(b.marketCap), tx + tw - 10, ty + 50);
       }
 
       animRef.current = requestAnimationFrame(animate);
@@ -295,18 +320,11 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
 
     animRef.current = requestAnimationFrame(animate);
 
-    const handleResize = () => {
-      ({ W, H, ctx } = setupCanvas());
-    };
-    window.addEventListener("resize", handleResize);
-
-    return () => {
-      cancelAnimationFrame(animRef.current);
-      window.removeEventListener("resize", handleResize);
-    };
+    const onResize = () => { ({ W, H, ctx } = setupCanvas()); };
+    window.addEventListener("resize", onResize);
+    return () => { cancelAnimationFrame(animRef.current); window.removeEventListener("resize", onResize); };
   }, [initBubbles]);
 
-  // Mouse tracking
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -322,15 +340,9 @@ export default function BubbleCanvas({ coins, timeRange }: Props) {
 
   return (
     <div className="panel" style={{ overflow: "hidden" }}>
-      <div
-        ref={containerRef}
-        className="markets-canvas-wrap"
-        style={{ width: "100%", height: 550, position: "relative", background: "var(--bg)" }}
-      >
-        <canvas
-          ref={canvasRef}
-          style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }}
-        />
+      <div ref={containerRef} className="markets-canvas-wrap"
+        style={{ width: "100%", height: 550, position: "relative", background: "var(--bg)" }}>
+        <canvas ref={canvasRef} style={{ display: "block", width: "100%", height: "100%", cursor: "crosshair" }} />
       </div>
     </div>
   );
