@@ -320,27 +320,39 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
   const activeLayout = LAYOUTS.find(l => l.id === state.layout);
 
   return (
-    <>
-      {/* Layout Templates */}
-      <div className="panel">
-        <div className="panel-head"><h2>Layout Templates</h2></div>
-        <div className="panel-body">
-          <div className="lt-grid">
-            {LAYOUTS.map(l => (
-              <LayoutCard
-                key={l.id}
-                layout={l}
-                active={state.layout === l.id}
-                currentTheme={state.theme}
-                onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
-              />
-            ))}
+    <div style={{ minWidth: 0, overflowX: "hidden" }}>
+      {/* Layout Templates + Live Preview — side by side on desktop, stacked on mobile */}
+      <div className="settings-top-split">
+        <div className="panel" style={{ minWidth: 0 }}>
+          <div className="panel-head"><h2>Layout Templates</h2></div>
+          <div className="panel-body">
+            <div className="lt-grid">
+              {LAYOUTS.map(l => (
+                <LayoutCard
+                  key={l.id}
+                  layout={l}
+                  active={state.layout === l.id}
+                  currentTheme={state.theme}
+                  onClick={() => { setState(p => ({ ...p, layout: l.id })); toast("Layout: " + l.name, "good"); }}
+                />
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="panel" style={{ minWidth: 0 }}>
+          <div className="panel-head">
+            <h2>Live Preview</h2>
+            <span className="pill">{activeLayout?.name} · Theme {state.theme.slice(1)}</span>
+          </div>
+          <div className="panel-body">
+            <LivePreview colors={activeColors} layoutName={state.layout} />
           </div>
         </div>
       </div>
 
       {/* Theme Colors */}
-      <div className="panel" style={{ marginTop: 10 }}>
+      <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
         <div className="panel-head"><h2>Theme Colors</h2></div>
         <div className="panel-body">
           <div className="theme-colors">
@@ -357,20 +369,9 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         </div>
       </div>
 
-      {/* Live Preview */}
-      <div className="panel" style={{ marginTop: 10 }}>
-        <div className="panel-head">
-          <h2>Live Preview</h2>
-          <span className="pill">{activeLayout?.name} · Theme {state.theme.slice(1)}</span>
-        </div>
-        <div className="panel-body">
-          <LivePreview colors={activeColors} layoutName={state.layout} />
-        </div>
-      </div>
-
       {/* Tracking + Currency */}
       <div className="settings-row" style={{ marginTop: 10 }}>
-        <div className="panel">
+        <div className="panel" style={{ minWidth: 0 }}>
           <div className="panel-head"><h2>Tracking Method</h2></div>
           <div className="panel-body">
             <div className="seg">
@@ -378,12 +379,12 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
                 <button key={m} className={state.method === m ? "active" : ""} onClick={() => { setState(p => ({ ...p, method: m })); toast("Method: " + m, "good"); }}>{m}</button>
               ))}
             </div>
-            <p className="muted" style={{ marginTop: 8, fontSize: 11 }}>
+            <p className="muted" style={{ marginTop: 8, fontSize: 11, whiteSpace: "normal", wordBreak: "break-word", lineHeight: "1.4" }}>
               FIFO: First-In-First-Out lot matching. DCA: Dollar Cost Average position tracking.
             </p>
           </div>
         </div>
-        <div className="panel">
+        <div className="panel" style={{ minWidth: 0 }}>
           <div className="panel-head"><h2>Base Currency</h2></div>
           <div className="panel-body">
             <div className="seg">
@@ -396,25 +397,25 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
       </div>
 
       {/* Display Preferences */}
-      <div className="panel" style={{ marginTop: 10 }}>
+      <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
         <div className="panel-head"><h2>Display Preferences</h2></div>
         <div className="panel-body">
           <div className="settings-prefs-grid">
-            <div className="form-field">
-              <label className="form-label">Timezone</label>
-              <select className="inp" value={(state as any).timezone || "local"} onChange={e => { setState(p => ({ ...p, timezone: e.target.value } as any)); toast("Timezone updated", "good"); }}>
+            <div className="form-field" style={{ minWidth: 0 }}>
+              <label className="form-label" style={{ whiteSpace: "normal", wordBreak: "break-word", lineHeight: "1.25" }}>Timezone</label>
+              <select className="inp" style={{ width: "100%", minWidth: 0 }} value={(state as any).timezone || "local"} onChange={e => { setState(p => ({ ...p, timezone: e.target.value } as any)); toast("Timezone updated", "good"); }}>
                 {TIMEZONES.map(tz => <option key={tz.id} value={tz.id}>{tz.name}</option>)}
               </select>
             </div>
-            <div className="form-field">
-              <label className="form-label">Number Format</label>
-              <select className="inp" value={(state as any).numberFormat || "default"} onChange={e => { setState(p => ({ ...p, numberFormat: e.target.value } as any)); toast("Number format updated", "good"); }}>
+            <div className="form-field" style={{ minWidth: 0 }}>
+              <label className="form-label" style={{ whiteSpace: "normal", wordBreak: "break-word", lineHeight: "1.25" }}>Number Format</label>
+              <select className="inp" style={{ width: "100%", minWidth: 0 }} value={(state as any).numberFormat || "default"} onChange={e => { setState(p => ({ ...p, numberFormat: e.target.value } as any)); toast("Number format updated", "good"); }}>
                 {NUMBER_FORMATS.map(nf => <option key={nf.id} value={nf.id}>{nf.name}</option>)}
               </select>
             </div>
-            <div className="form-field">
-              <label className="form-label">Data Refresh Interval</label>
-              <select className="inp" value={(state as any).refreshInterval || "120"} onChange={e => { setState(p => ({ ...p, refreshInterval: e.target.value } as any)); toast("Refresh interval updated", "good"); }}>
+            <div className="form-field" style={{ minWidth: 0 }}>
+              <label className="form-label" style={{ whiteSpace: "normal", wordBreak: "break-word", lineHeight: "1.25" }}>Data Refresh Interval</label>
+              <select className="inp" style={{ width: "100%", minWidth: 0 }} value={(state as any).refreshInterval || "120"} onChange={e => { setState(p => ({ ...p, refreshInterval: e.target.value } as any)); toast("Refresh interval updated", "good"); }}>
                 {REFRESH_INTERVALS.map(ri => <option key={ri.id} value={ri.id}>{ri.name}</option>)}
               </select>
             </div>
@@ -423,7 +424,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
       </div>
 
       {/* Notifications */}
-      <div className="panel" style={{ marginTop: 10 }}>
+      <div className="panel" style={{ marginTop: 10, minWidth: 0 }}>
         <div className="panel-head"><h2>Notifications</h2></div>
         <div className="panel-body">
           {[
@@ -432,7 +433,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
             { key: "notifySync", label: "Sync status notifications", def: false },
           ].map(n => (
             <div key={n.key} className="tog-wrap" onClick={() => setState(p => ({ ...p, [n.key]: !(p as any)[n.key] } as any))}>
-              <span className="tog-lbl">{n.label}</span>
+              <span className="tog-lbl" style={{ whiteSpace: "normal", wordBreak: "break-word", lineHeight: "1.25" }}>{n.label}</span>
               <div className="tog-switch">
                 <input type="checkbox" checked={(state as any)[n.key] ?? n.def} readOnly />
                 <span className="tog-track" />
@@ -444,16 +445,16 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
 
       {/* Data Management + Stats */}
       <div className="settings-row" style={{ marginTop: 10 }}>
-        <div className="panel">
+        <div className="panel" style={{ minWidth: 0 }}>
           <div className="panel-head"><h2>Data Management</h2></div>
           <div className="panel-body">
-            <div className="vault-actions-grid">
-              <button className="btn secondary" onClick={() => {
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+              <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
                 const blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
                 const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "crypto-backup.json"; a.click();
                 toast("Exported ✓", "good");
               }}>📥 Export Backup</button>
-              <button className="btn secondary" onClick={() => {
+              <button className="btn secondary" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
                 const inp = document.createElement("input"); inp.type = "file"; inp.accept = ".json";
                 inp.onchange = async () => {
                   const file = inp.files?.[0]; if (!file) return;
@@ -464,7 +465,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
               }}>📤 Import Backup</button>
             </div>
             <div style={{ borderTop: "1px solid var(--line)", paddingTop: 10, marginTop: 10 }}>
-              <button className="btn danger" onClick={() => {
+              <button className="btn danger" style={{ minWidth: 0, whiteSpace: "normal" }} onClick={() => {
                 if (confirm("Clear ALL transactions, lots, and holdings? This cannot be undone.")) {
                   setState(p => ({ ...p, txs: [], lots: [], holdings: [], importedFiles: [], calendarEntries: [] }));
                   toast("All data cleared", "bad");
@@ -473,7 +474,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
             </div>
           </div>
         </div>
-        <div className="panel">
+        <div className="panel" style={{ minWidth: 0 }}>
           <div className="panel-head"><h2>Data Stats</h2></div>
           <div className="panel-body">
             <div className="vault-stats">
@@ -485,7 +486,7 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
           </div>
         </div>
       </div>
-    </>
+    </div>
   );
 });
 
