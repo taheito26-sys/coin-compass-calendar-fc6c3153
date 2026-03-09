@@ -38,6 +38,8 @@ const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "Bybit",
   okx: "OKX",
   gate: "Gate.io",
+  mexc: "MEXC",
+  kucoin: "KuCoin",
 };
 
 const TX_TYPES = [
