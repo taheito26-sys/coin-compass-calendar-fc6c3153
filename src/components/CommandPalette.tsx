@@ -76,12 +76,10 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
       }},
     { type: "action", id: "export-data", label: "Export Portfolio Data", sub: "Navigate to Settings for backup", icon: "💾",
       action: () => onNav("settings") },
-    { type: "action", id: "view-analytics", label: "View Risk Analytics", sub: "Sharpe ratio, volatility, drawdown", icon: "📈",
-      action: () => onNav("charts") },
     { type: "action", id: "import-csv", label: "Import CSV", sub: "Upload exchange trade history", icon: "📁",
       action: () => onNav("ledger") },
     { type: "action", id: "manage-alerts", label: "Manage Alerts", sub: "Price alerts & notification channels", icon: "🔔",
-      action: () => onNav("alerts") },
+      action: () => onNav("settings") },
   ], [state.theme, onNav, setState]);
 
   const results = useMemo(() => {
