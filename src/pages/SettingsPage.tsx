@@ -464,6 +464,7 @@ function VaultSection() {
         </div>
       </div>
     </div>
+  );
 }
 
 SettingsPage.displayName = "SettingsPage";
