@@ -11,7 +11,7 @@ import MarketsPage from "@/pages/MarketsPage";
 import SettingsPage from "@/pages/SettingsPage";
 import VaultPage from "@/pages/VaultPage";
 import AlertsPage from "@/pages/AlertsPage";
-import AnalyticsPage from "@/pages/AnalyticsPage";
+
 
 
 
