@@ -57,6 +57,50 @@ export interface ImportedFileRow {
   imported_at: string;
 }
 
+export interface ImportBatchRow {
+  id: string;
+  user_id: string;
+  file_name: string;
+  file_hash: string;
+  source_exchange: string | null;
+  source_export_type: string | null;
+  parsed_count: number;
+  accepted_new_count: number;
+  already_imported_count: number;
+  warning_count: number;
+  invalid_count: number;
+  conflict_count: number;
+  persisted_count: number;
+  failed_count: number;
+  created_at: string;
+}
+
+export interface ImportRowRow {
+  id: string;
+  batch_id: string;
+  user_id: string;
+  source_row_index: number;
+  status: string;
+  message: string | null;
+  fingerprint_hash: string | null;
+  native_id: string | null;
+  canonical_json: string | null;
+  transaction_id: string | null;
+  created_at: string;
+}
+
+export interface ImportFingerprintRow {
+  id: string;
+  user_id: string;
+  fingerprint_hash: string;
+  native_id: string | null;
+  source_exchange: string | null;
+  source_export_type: string | null;
+  canonical_json: string | null;
+  transaction_id: string | null;
+  created_at: string;
+}
+
 export interface UserPreferenceRow {
   id: string;
   user_id: string;

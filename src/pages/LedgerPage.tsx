@@ -1,8 +1,8 @@
 import { useState, useRef, useCallback, useMemo } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 import { uid, fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
-import { importCSV, hashFile } from "@/lib/importers";
-import type { ParseResult } from "@/lib/importers";
+import { importCSV, hashFile, applyLookup } from "@/lib/importers";
+import type { ParseResult, ImportRowStatus, Exchange } from "@/lib/importers";
 import CoinAutocomplete from "@/components/CoinAutocomplete";
 import {
   createTransaction,
@@ -12,8 +12,11 @@ import {
   createImportedFile,
   fetchImportedFiles,
   isWorkerConfigured,
+  lookupImportRows,
+  recordImportBatch,
 } from "@/lib/api";
 import { getAssetCatalog, resolveAssetId } from "@/lib/assetResolver";
+
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -35,6 +38,8 @@ const EXCHANGE_LABELS: Record<string, string> = {
   bybit: "Bybit",
   okx: "OKX",
   gate: "Gate.io",
+  mexc: "MEXC",
+  kucoin: "KuCoin",
 };
 
 const TX_TYPES = [
@@ -279,71 +284,58 @@ export default function LedgerPage() {
     setImportLoading(true);
     setIsDeltaImport(false);
     setDeltaCount(0);
+
     try {
       const text = await file.text();
       const hash = await hashFile(text);
 
-      // Check if file was previously imported (local or backend)
-      const knownLocally = importedFiles.some((f: any) => f.hash === hash);
-      let knownInBackend = false;
-      if (isWorkerConfigured()) {
-        try {
-          const backendFiles = await fetchImportedFiles();
-          knownInBackend = backendFiles.some((f: any) => f.file_hash === hash);
-        } catch { /* ignore */ }
-      }
-
-      const parsed = await importCSV(text, file.name);
+      const parsedBase = await importCSV(text, file.name);
       setFileName(file.name);
       setFileHash(hash);
 
-      if (parsed.rows.length === 0) {
-        setImportError(parsed.warnings[0] ?? "No valid rows found in file.");
+      if (parsedBase.rows.length === 0) {
+        setImportError(parsedBase.warnings[0] ?? "No rows found in file.");
         setImportLoading(false);
         return;
       }
 
-      if (knownLocally || knownInBackend) {
-        // Delta mode: compute which rows are NOT already in current state
-        const existingExternalIds = new Set(
-          state.txs
-            .map((t: any) => t.externalId ?? t.external_id)
-            .filter(Boolean)
-        );
-
-        // Also build a composite fingerprint set for rows without externalId
-        const existingFingerprints = new Set(
-          state.txs.map((t: any) =>
-            `${t.ts}:${t.asset}:${t.type === "buy" ? "buy" : "sell"}:${t.qty}:${t.price}`
-          )
-        );
-
-        const newRows = parsed.rows.filter(row => {
-          if (row.externalId && existingExternalIds.has(row.externalId)) return false;
-          const fp = `${row.timestamp}:${row.symbol}:${row.side}:${row.qty}:${row.unitPrice}`;
-          if (existingFingerprints.has(fp)) return false;
-          return true;
-        });
-
-        if (newRows.length === 0) {
-          setImportError(`All ${parsed.rows.length} rows already exist in your tracker. Nothing new to import.`);
-          setImportLoading(false);
-          return;
+      // Backend-aware delta check via fingerprints (if available)
+      let parsed = parsedBase;
+      if (isWorkerConfigured()) {
+        try {
+          const fpHashes = parsedBase.rows.map((r) => r.fingerprintHash).filter(Boolean);
+          const nativeIds = parsedBase.rows.map((r) => r.nativeId).filter(Boolean) as string[];
+          const lookup = await lookupImportRows({ fingerprint_hashes: fpHashes, native_ids: nativeIds });
+          parsed = { ...parsedBase, rows: applyLookup(parsedBase.rows, lookup) };
+        } catch {
+          // If lookup fails, still allow preview + import (backend may be down)
         }
-
-        // Replace rows with only the delta
-        const deltaResult = { ...parsed, rows: newRows, rowCount: newRows.length };
-        setImportResult(deltaResult);
-        setIsDeltaImport(true);
-        setDeltaCount(parsed.rows.length - newRows.length);
-        setImportStage("preview");
-      } else {
-        setImportResult(parsed);
-        setImportStage("preview");
       }
+
+      const already = parsed.rows.filter((r) => r.status === "alreadyImported").length;
+      const conflicts = parsed.rows.filter((r) => r.status === "conflict").length;
+      const invalid = parsed.rows.filter((r) => r.status === "invalid").length;
+      const acceptedNew = parsed.rows.filter((r) => r.status === "new" || r.status === "warning").length;
+
+      setIsDeltaImport(already > 0);
+      setDeltaCount(already);
+
+      if (acceptedNew === 0 && conflicts === 0) {
+        setImportError(
+          already > 0
+            ? `No new transactions found. All rows were already imported (${already} already imported${invalid ? `, ${invalid} invalid` : ""}).`
+            : "No importable rows found.",
+        );
+        setImportLoading(false);
+        return;
+      }
+
+      setImportResult(parsed);
+      setImportStage("preview");
     } catch (e: any) {
       setImportError("Parse failed: " + (e?.message ?? String(e)));
     }
+
     setImportLoading(false);
   }, [importedFiles, state.txs]);
 
@@ -757,7 +749,7 @@ export default function LedgerPage() {
           <div className="panel">
             <div className="panel-head">
               <h2>Import CSV</h2>
-              <span className="pill">Spot Trades · Binance · Bybit · OKX · Gate.io</span>
+              <span className="pill">Spot Trades · Binance · Bybit · OKX · Gate.io · MEXC · KuCoin</span>
             </div>
             <div className="panel-body">
 

@@ -13,14 +13,23 @@ export function parseBinance(rows: Record<string, string>[]): { parsed: Normaliz
     try {
       const dateStr = r["Date(UTC)"] || r["Date"] || "";
       const ts = new Date(dateStr).getTime();
-      if (!ts || isNaN(ts)) { skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r }); continue; }
+      if (!ts || isNaN(ts)) {
+        skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r });
+        continue;
+      }
 
       const symbol = (r["Pair"] || r["Market"] || "").replace(/[_\-/\s]/g, "").toUpperCase();
-      if (!symbol) { skipped.push({ line: i + 2, reason: "Missing symbol", raw: r }); continue; }
+      if (!symbol) {
+        skipped.push({ line: i + 2, reason: "Missing symbol", raw: r });
+        continue;
+      }
 
       const sideRaw = (r["Side"] || r["Type"] || "").toUpperCase();
-      const side = sideRaw === "BUY" ? "buy" as const : sideRaw === "SELL" ? "sell" as const : null;
-      if (!side) { skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r }); continue; }
+      const side = sideRaw === "BUY" ? ("buy" as const) : sideRaw === "SELL" ? ("sell" as const) : null;
+      if (!side) {
+        skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r });
+        continue;
+      }
 
       // Executed = filled qty; Amount = total cost in quote
       const qty = parseNum(r["Executed"] || r["Amount"] || r["Qty"] || "0");
@@ -29,10 +38,20 @@ export function parseBinance(rows: Record<string, string>[]): { parsed: Normaliz
       const fee = parseNum(r["Fee"] || "0");
       const feeAsset = (r["Fee Coin"] || r["Fee Asset"] || "").toUpperCase();
 
-      if (qty <= 0) { skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r }); continue; }
-      if (price < 0) { skipped.push({ line: i + 2, reason: "Negative price", raw: r }); continue; }
+      const tradeId = String(r["Trade ID"] || r["TradeId"] || "");
+      const orderId = String(r["Order ID"] || r["OrderId"] || "");
+
+      if (qty <= 0) {
+        skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r });
+        continue;
+      }
+      if (price < 0) {
+        skipped.push({ line: i + 2, reason: "Negative price", raw: r });
+        continue;
+      }
 
       parsed.push({
+        sourceRowIndex: i,
         timestamp: ts,
         exchange: "binance",
         symbol,
@@ -42,8 +61,10 @@ export function parseBinance(rows: Record<string, string>[]): { parsed: Normaliz
         grossValue: price > 0 ? qty * price : Math.abs(total),
         feeAmount: Math.abs(fee),
         feeAsset,
-        externalId: r["Trade ID"] || r["TradeId"] || "",
-        note: "",
+        tradeId: tradeId || "",
+        orderId: orderId || "",
+        txHash: "",
+        externalId: tradeId || orderId || "",
         raw: r,
       });
     } catch {

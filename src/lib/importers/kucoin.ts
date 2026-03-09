@@ -12,7 +12,9 @@ export function parseKuCoin(rows: Record<string, string>[]): { parsed: Normalize
     const r = rows[i];
     try {
       const get = (keys: string[]) => {
-        for (const k of keys) { if (r[k] !== undefined && r[k] !== "") return r[k]; }
+        for (const k of keys) {
+          if (r[k] !== undefined && r[k] !== "") return r[k];
+        }
         return "";
       };
 
@@ -22,15 +24,24 @@ export function parseKuCoin(rows: Record<string, string>[]): { parsed: Normalize
       if (numTime > 1e12) ts = numTime;
       else if (numTime > 1e9) ts = numTime * 1000;
       else ts = new Date(timeStr).getTime();
-      if (!ts || isNaN(ts)) { skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r }); continue; }
+      if (!ts || isNaN(ts)) {
+        skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r });
+        continue;
+      }
 
       const pairRaw = get(["symbol", "Symbol", "Pair", "Market", "Trading Pair"]);
       const symbol = pairRaw.replace(/[_\-/\s]/g, "").toUpperCase();
-      if (!symbol) { skipped.push({ line: i + 2, reason: "Missing symbol", raw: r }); continue; }
+      if (!symbol) {
+        skipped.push({ line: i + 2, reason: "Missing symbol", raw: r });
+        continue;
+      }
 
       const sideRaw = get(["side", "Side", "Direction", "Type"]).toUpperCase();
-      const side = sideRaw === "BUY" ? "buy" as const : sideRaw === "SELL" ? "sell" as const : null;
-      if (!side) { skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r }); continue; }
+      const side = sideRaw === "BUY" ? ("buy" as const) : sideRaw === "SELL" ? ("sell" as const) : null;
+      if (!side) {
+        skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r });
+        continue;
+      }
 
       const price = parseNum(get(["price", "Price", "Deal Price", "Filled Price"]));
       const qty = parseNum(get(["size", "Size", "Filled", "Amount", "Qty", "Quantity"]));
@@ -38,10 +49,20 @@ export function parseKuCoin(rows: Record<string, string>[]): { parsed: Normalize
       const fee = parseNum(get(["fee", "Fee", "Trading Fee"]));
       const feeAsset = get(["feeCurrency", "Fee Currency", "Fee Coin", "Fee Asset"]).toUpperCase();
 
-      if (qty <= 0) { skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r }); continue; }
-      if (price < 0) { skipped.push({ line: i + 2, reason: "Negative price", raw: r }); continue; }
+      const tradeId = get(["tradeId", "Trade ID", "TradeId"]);
+      const orderId = get(["orderId", "Order ID", "Order Id", "OrderId"]);
+
+      if (qty <= 0) {
+        skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r });
+        continue;
+      }
+      if (price < 0) {
+        skipped.push({ line: i + 2, reason: "Negative price", raw: r });
+        continue;
+      }
 
       parsed.push({
+        sourceRowIndex: i,
         timestamp: ts,
         exchange: "kucoin",
         symbol,
@@ -51,8 +72,10 @@ export function parseKuCoin(rows: Record<string, string>[]): { parsed: Normalize
         grossValue: price > 0 ? qty * price : Math.abs(total),
         feeAmount: Math.abs(fee),
         feeAsset,
-        externalId: get(["tradeId", "Trade ID", "Order ID", "orderId", "Order Id"]),
-        note: "",
+        tradeId: tradeId || "",
+        orderId: orderId || "",
+        txHash: "",
+        externalId: tradeId || orderId || "",
         raw: r,
       });
     } catch {

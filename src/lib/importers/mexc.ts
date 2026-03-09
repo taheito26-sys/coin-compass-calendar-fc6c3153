@@ -11,21 +11,32 @@ export function parseMEXC(rows: Record<string, string>[]): { parsed: NormalizedR
     const r = rows[i];
     try {
       const get = (keys: string[]) => {
-        for (const k of keys) { if (r[k] !== undefined && r[k] !== "") return r[k]; }
+        for (const k of keys) {
+          if (r[k] !== undefined && r[k] !== "") return r[k];
+        }
         return "";
       };
 
       const dateStr = get(["Date", "Time", "Trade Time", "Filled Time", "Date(UTC)"]);
       const ts = new Date(dateStr).getTime();
-      if (!ts || isNaN(ts)) { skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r }); continue; }
+      if (!ts || isNaN(ts)) {
+        skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r });
+        continue;
+      }
 
       const pairRaw = get(["Pairs", "Symbol", "Pair", "Market", "Trading Pair"]);
       const symbol = pairRaw.replace(/[_\-/\s]/g, "").toUpperCase();
-      if (!symbol) { skipped.push({ line: i + 2, reason: "Missing symbol", raw: r }); continue; }
+      if (!symbol) {
+        skipped.push({ line: i + 2, reason: "Missing symbol", raw: r });
+        continue;
+      }
 
       const sideRaw = get(["Side", "Type", "Direction"]).toUpperCase();
-      const side = sideRaw === "BUY" ? "buy" as const : sideRaw === "SELL" ? "sell" as const : null;
-      if (!side) { skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r }); continue; }
+      const side = sideRaw === "BUY" ? ("buy" as const) : sideRaw === "SELL" ? ("sell" as const) : null;
+      if (!side) {
+        skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r });
+        continue;
+      }
 
       const price = parseNum(get(["Price", "Filled Price", "Avg. Price", "Deal Price"]));
       const qty = parseNum(get(["Executed", "Amount", "Qty", "Filled", "Filled Amount", "Quantity"]));
@@ -33,10 +44,20 @@ export function parseMEXC(rows: Record<string, string>[]): { parsed: NormalizedR
       const fee = parseNum(get(["Fee", "Trading Fee", "Commission"]));
       const feeAsset = get(["Fee Coin", "Fee Currency", "Fee Asset"]).toUpperCase();
 
-      if (qty <= 0) { skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r }); continue; }
-      if (price < 0) { skipped.push({ line: i + 2, reason: "Negative price", raw: r }); continue; }
+      const tradeId = get(["Trade ID", "TradeId", "Trade No"]);
+      const orderId = get(["Order ID", "OrderId", "Order No"]);
+
+      if (qty <= 0) {
+        skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r });
+        continue;
+      }
+      if (price < 0) {
+        skipped.push({ line: i + 2, reason: "Negative price", raw: r });
+        continue;
+      }
 
       parsed.push({
+        sourceRowIndex: i,
         timestamp: ts,
         exchange: "mexc",
         symbol,
@@ -46,8 +67,10 @@ export function parseMEXC(rows: Record<string, string>[]): { parsed: NormalizedR
         grossValue: price > 0 ? qty * price : Math.abs(total),
         feeAmount: Math.abs(fee),
         feeAsset,
-        externalId: get(["Trade ID", "Order ID", "Order No", "TradeId"]),
-        note: "",
+        tradeId: tradeId || "",
+        orderId: orderId || "",
+        txHash: "",
+        externalId: tradeId || orderId || "",
         raw: r,
       });
     } catch {

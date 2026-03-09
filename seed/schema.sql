@@ -66,3 +66,57 @@ CREATE TABLE IF NOT EXISTS user_preferences (
   UNIQUE(user_id, key)
 );
 CREATE INDEX IF NOT EXISTS idx_prefs_user ON user_preferences(user_id);
+
+-- ─────────────────────────────────────────────────────────────
+-- Import audit tables (v2)
+-- ─────────────────────────────────────────────────────────────
+
+CREATE TABLE IF NOT EXISTS import_batches (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  user_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  file_hash TEXT NOT NULL,
+  source_exchange TEXT,
+  source_export_type TEXT,
+  parsed_count INTEGER DEFAULT 0,
+  accepted_new_count INTEGER DEFAULT 0,
+  already_imported_count INTEGER DEFAULT 0,
+  warning_count INTEGER DEFAULT 0,
+  invalid_count INTEGER DEFAULT 0,
+  conflict_count INTEGER DEFAULT 0,
+  persisted_count INTEGER DEFAULT 0,
+  failed_count INTEGER DEFAULT 0,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_import_batches_user ON import_batches(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_import_batches_filehash ON import_batches(user_id, file_hash);
+
+CREATE TABLE IF NOT EXISTS import_rows (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  batch_id TEXT NOT NULL REFERENCES import_batches(id),
+  user_id TEXT NOT NULL,
+  source_row_index INTEGER NOT NULL,
+  status TEXT NOT NULL,
+  message TEXT,
+  fingerprint_hash TEXT,
+  native_id TEXT,
+  canonical_json TEXT,
+  transaction_id TEXT,
+  created_at TEXT DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_import_rows_batch ON import_rows(batch_id);
+CREATE INDEX IF NOT EXISTS idx_import_rows_user ON import_rows(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS import_row_fingerprints (
+  id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
+  user_id TEXT NOT NULL,
+  fingerprint_hash TEXT NOT NULL,
+  native_id TEXT,
+  source_exchange TEXT,
+  source_export_type TEXT,
+  canonical_json TEXT,
+  transaction_id TEXT,
+  created_at TEXT DEFAULT (datetime('now')),
+  UNIQUE(user_id, fingerprint_hash)
+);
+CREATE INDEX IF NOT EXISTS idx_import_fp_user_native ON import_row_fingerprints(user_id, native_id);

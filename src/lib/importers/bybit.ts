@@ -14,12 +14,18 @@ export function parseBybit(rows: Record<string, string>[]): { parsed: Normalized
     try {
       const dateStr = r["TradeTime"] || r["Trading Time"] || r["Trade Time"] || r["Create Time"] || "";
       const ts = new Date(dateStr).getTime();
-      if (!ts || isNaN(ts)) { skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r }); continue; }
+      if (!ts || isNaN(ts)) {
+        skipped.push({ line: i + 2, reason: "Invalid timestamp", raw: r });
+        continue;
+      }
 
       const symbol = (r["Symbol"] || r["Contracts"] || "").replace(/[_\-/\s]/g, "").toUpperCase();
-      if (!symbol) { skipped.push({ line: i + 2, reason: "Missing symbol", raw: r }); continue; }
+      if (!symbol) {
+        skipped.push({ line: i + 2, reason: "Missing symbol", raw: r });
+        continue;
+      }
 
-      // Reject non-spot: if there's a "Type" or "Category" column indicating non-spot
+      // Reject non-spot
       const cat = (r["Category"] || r["Type"] || "").toUpperCase();
       if (cat && !["SPOT", ""].includes(cat)) {
         skipped.push({ line: i + 2, reason: "Non-spot record: " + cat, raw: r });
@@ -27,18 +33,31 @@ export function parseBybit(rows: Record<string, string>[]): { parsed: Normalized
       }
 
       const sideRaw = (r["Side"] || "").toUpperCase();
-      const side = sideRaw === "BUY" ? "buy" as const : sideRaw === "SELL" ? "sell" as const : null;
-      if (!side) { skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r }); continue; }
+      const side = sideRaw === "BUY" ? ("buy" as const) : sideRaw === "SELL" ? ("sell" as const) : null;
+      if (!side) {
+        skipped.push({ line: i + 2, reason: "Invalid side: " + sideRaw, raw: r });
+        continue;
+      }
 
       const price = parseNum(r["TradePrice"] || r["Avg. Filled Price"] || r["Avg Filled Price"] || r["Order Price"] || "0");
       const qty = parseNum(r["ExecQty"] || r["Filled"] || r["Qty"] || "0");
       const fee = parseNum(r["ExecFee"] || r["Fee"] || r["Trading Fee"] || "0");
       const feeAsset = (r["FeeAsset"] || r["Fee Asset"] || r["Fee Currency"] || "").toUpperCase();
 
-      if (qty <= 0) { skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r }); continue; }
-      if (price < 0) { skipped.push({ line: i + 2, reason: "Negative price", raw: r }); continue; }
+      const tradeId = String(r["TradeId"] || r["Trade ID"] || "");
+      const orderId = String(r["OrderId"] || r["Order ID"] || "");
+
+      if (qty <= 0) {
+        skipped.push({ line: i + 2, reason: "Zero or negative qty", raw: r });
+        continue;
+      }
+      if (price < 0) {
+        skipped.push({ line: i + 2, reason: "Negative price", raw: r });
+        continue;
+      }
 
       parsed.push({
+        sourceRowIndex: i,
         timestamp: ts,
         exchange: "bybit",
         symbol,
@@ -48,8 +67,10 @@ export function parseBybit(rows: Record<string, string>[]): { parsed: Normalized
         grossValue: qty * price,
         feeAmount: Math.abs(fee),
         feeAsset,
-        externalId: r["TradeId"] || r["Trade ID"] || r["OrderId"] || r["Order ID"] || "",
-        note: "",
+        tradeId: tradeId || "",
+        orderId: orderId || "",
+        txHash: "",
+        externalId: tradeId || orderId || "",
         raw: r,
       });
     } catch {
