@@ -384,8 +384,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
 
       case "histValue": return <HistoricalNetValue />;
       case "fearGreed": return <FearGreedGauge />;
-      case "valDist": return <ValueDistribution />;
-      case "events": return <EventsAnalysis />;
+      case "riskBreakdown": return <PerAssetRiskBreakdown />;
 
       case "movers":
         return (
