@@ -109,7 +109,19 @@ export default function ChartsPage() {
   const [period, setPeriod] = useState(90);
   const [selectedAssets, setSelectedAssets] = useState<string[]>([]);
 
-  const coinIds = useMemo(() => portfolio.positions.slice(0, 10).map(p => p.coingeckoId).filter(Boolean) as string[], [portfolio.positions]);
+  // Build a sym→coingeckoId map from state.txs assets (available via state)
+  const assetMeta = useMemo(() => {
+    const map = new Map<string, { coingeckoId: string; name: string }>();
+    // Use the KNOWN_IDS from priceProvider as fallback
+    const KNOWN: Record<string, string> = { BTC: "bitcoin", ETH: "ethereum", SOL: "solana", BNB: "binancecoin", XRP: "ripple", ADA: "cardano", AVAX: "avalanche-2", DOT: "polkadot", DOGE: "dogecoin", MATIC: "matic-network", LINK: "chainlink", UNI: "uniswap", ATOM: "cosmos", LTC: "litecoin", NEAR: "near" };
+    for (const p of portfolio.positions) {
+      const cgId = KNOWN[p.sym.toUpperCase()] || p.sym.toLowerCase();
+      map.set(p.sym, { coingeckoId: cgId, name: p.sym });
+    }
+    return map;
+  }, [portfolio.positions]);
+
+  const coinIds = useMemo(() => portfolio.positions.slice(0, 10).map(p => assetMeta.get(p.sym)?.coingeckoId).filter(Boolean) as string[], [portfolio.positions, assetMeta]);
   const sparklines = useSparklineData(coinIds);
 
   const metrics = useMemo(() => {
