@@ -12,7 +12,6 @@ import type { DerivedLot } from "@/lib/derivePortfolio";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 
 const AlertsPage = lazy(() => import("@/pages/AlertsPage"));
-const LedgerPage = lazy(() => import("@/pages/LedgerPage"));
 
 // ── View mode ──────────────────────────────────────────────────────────────
 
