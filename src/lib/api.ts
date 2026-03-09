@@ -141,6 +141,19 @@ export async function fetchAssets(): Promise<ApiAsset[]> {
   return response.assets;
 }
 
+/** Auto-create a missing asset. Returns existing if symbol already exists. */
+export async function createAsset(input: {
+  symbol: string;
+  name?: string;
+  coingecko_id?: string;
+  binance_symbol?: string;
+}): Promise<{ asset: ApiAsset; created: boolean }> {
+  return apiFetch<{ asset: ApiAsset; created: boolean }>("/api/assets", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 // ─── Transaction operations ────────────────────────────────
 
 export async function fetchTransactions(): Promise<ApiTransaction[]> {
