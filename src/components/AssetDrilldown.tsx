@@ -1,11 +1,122 @@
 import { useCrypto } from "@/lib/cryptoContext";
 import { fmtFiat, fmtQty, fmtPx } from "@/lib/cryptoState";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
+import { getDailyHistory } from "@/lib/priceProvider";
+import { KNOWN_IDS } from "@/lib/priceProvider";
 
 interface Props {
   sym: string;
   onClose: () => void;
+}
+
+function PriceChart({ sym }: { sym: string }) {
+  const [data, setData] = useState<{ day: string; price: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [days, setDays] = useState(30);
+
+  useEffect(() => {
+    setLoading(true);
+    const cgId = KNOWN_IDS[sym] || sym.toLowerCase();
+    getDailyHistory(cgId, days).then(d => {
+      setData(d);
+      setLoading(false);
+    });
+  }, [sym, days]);
+
+  if (loading) {
+    return (
+      <div style={{ height: 180, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="muted" style={{ fontSize: 11 }}>Loading chart…</span>
+      </div>
+    );
+  }
+
+  if (data.length < 2) {
+    return (
+      <div style={{ height: 80, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <span className="muted" style={{ fontSize: 11 }}>No price data available for {sym}</span>
+      </div>
+    );
+  }
+
+  const prices = data.map(d => d.price);
+  const min = Math.min(...prices);
+  const max = Math.max(...prices);
+  const range = max - min || 1;
+  const w = 100;
+  const h = 160;
+  const padding = 2;
+
+  const isUp = prices[prices.length - 1] >= prices[0];
+  const color = isUp ? "var(--good, #22c55e)" : "var(--bad, #ef4444)";
+  const fillColor = isUp ? "rgba(34,197,94,0.08)" : "rgba(239,68,68,0.08)";
+
+  const points = prices.map((p, i) => {
+    const x = padding + (i / (prices.length - 1)) * (w - padding * 2);
+    const y = padding + (1 - (p - min) / range) * (h - padding * 2);
+    return `${x},${y}`;
+  });
+
+  const linePath = `M${points.join(" L")}`;
+  const areaPath = `${linePath} L${padding + w - padding * 2},${h - padding} L${padding},${h - padding} Z`;
+
+  const firstPrice = prices[0];
+  const lastPrice = prices[prices.length - 1];
+  const change = ((lastPrice - firstPrice) / firstPrice) * 100;
+
+  return (
+    <div style={{ marginBottom: 16 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <h4 style={{ fontSize: 11, fontWeight: 900, letterSpacing: ".5px", textTransform: "uppercase", color: "var(--muted)", margin: 0 }}>
+          Price Chart
+        </h4>
+        <div style={{ flex: 1 }} />
+        <div className="seg" style={{ gap: 0 }}>
+          {[7, 30, 90, 365].map(d => (
+            <button
+              key={d}
+              className={days === d ? "active" : ""}
+              onClick={() => setDays(d)}
+              style={{ fontSize: 9, padding: "2px 8px" }}
+            >
+              {d === 365 ? "1Y" : d + "D"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      <div style={{
+        background: "var(--panel2, rgba(0,0,0,.03))",
+        borderRadius: "var(--lt-radius-sm)",
+        padding: "12px 16px",
+        border: "1px solid var(--line)",
+      }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 8 }}>
+          <div>
+            <span className="mono" style={{ fontSize: 18, fontWeight: 800 }}>${fmtPx(lastPrice)}</span>
+            <span className={`mono ${isUp ? "good" : "bad"}`} style={{ fontSize: 12, fontWeight: 700, marginLeft: 8 }}>
+              {change >= 0 ? "+" : ""}{change.toFixed(2)}%
+            </span>
+          </div>
+          <div style={{ fontSize: 10, color: "var(--muted)", textAlign: "right" }}>
+            <div>High: ${fmtPx(max)}</div>
+            <div>Low: ${fmtPx(min)}</div>
+          </div>
+        </div>
+
+        <svg viewBox={`0 0 ${w} ${h}`} style={{ width: "100%", height: 160 }} preserveAspectRatio="none">
+          <path d={areaPath} fill={fillColor} />
+          <path d={linePath} fill="none" stroke={color} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
+        </svg>
+
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 4, fontSize: 9, color: "var(--muted)" }}>
+          <span>{data[0].day}</span>
+          <span>{data[data.length - 1].day}</span>
+        </div>
+      </div>
+    </div>
+  );
 }
 
 export default function AssetDrilldown({ sym, onClose }: Props) {
@@ -13,7 +124,6 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
   const portfolio = useUnifiedPortfolio();
   const base = portfolio.base;
 
-  // Get position from unified portfolio (same data as Dashboard and Assets page)
   const position = portfolio.getPosition(sym);
 
   const qty = position?.qty ?? 0;
@@ -26,7 +136,6 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
   const realizedPnl = position?.realizedPnl ?? 0;
   const lots = position?.lots ?? [];
 
-  // Transactions for this asset (from the single source of truth)
   const txs = useMemo(() => {
     return state.txs
       .filter(t => t.asset.toUpperCase() === sym.toUpperCase())
@@ -61,6 +170,9 @@ export default function AssetDrilldown({ sym, onClose }: Props) {
               <div className="kpi-val" style={{ fontSize: 16 }}>{mv !== null ? fmtFiat(mv, base) : "—"}</div>
             </div>
           </div>
+
+          {/* Price Chart */}
+          <PriceChart sym={sym} />
 
           {/* P&L Summary */}
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 16 }}>
