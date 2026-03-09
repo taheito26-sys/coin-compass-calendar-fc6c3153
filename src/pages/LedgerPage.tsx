@@ -799,8 +799,25 @@ export default function LedgerPage() {
               {/* STAGE: PREVIEW */}
               {importStage === "preview" && importResult && (
                 <div>
+                  {/* Delta import banner */}
+                  {isDeltaImport && (
+                    <div style={{
+                      marginBottom: 12, padding: "10px 14px",
+                      background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.3)",
+                      borderRadius: "var(--lt-radius-sm)", fontSize: 12, color: "var(--warn)",
+                      display: "flex", alignItems: "center", gap: 8,
+                    }}>
+                      <span style={{ fontSize: 16 }}>⚡</span>
+                      <span>
+                        <strong>Delta import:</strong> This file was previously imported.{" "}
+                        <strong>{deltaCount}</strong> row{deltaCount !== 1 ? "s" : ""} already in your tracker —
+                        only the <strong>{importResult.rowCount}</strong> new row{importResult.rowCount !== 1 ? "s" : ""} will be added.
+                      </span>
+                    </div>
+                  )}
                   <div style={{ marginBottom: 12, display: "flex", gap: 16, flexWrap: "wrap" }}>
-                    <StatCard label="ROWS PARSED" value={importResult.rowCount} accent="var(--good)" />
+                    <StatCard label={isDeltaImport ? "NEW ROWS" : "ROWS PARSED"} value={importResult.rowCount} accent="var(--good)" />
+                    {isDeltaImport && <StatCard label="ALREADY EXIST" value={deltaCount} accent="var(--muted)" />}
                     <StatCard label="SKIPPED" value={importResult.skippedCount} accent={importResult.skippedCount > 0 ? "var(--bad)" : "var(--muted)"} />
                     <StatCard label="EXCHANGE" value={EXCHANGE_LABELS[importResult.exchange] ?? importResult.exchange} />
                     <StatCard label="TYPE" value={importResult.exportType} />
@@ -823,7 +840,9 @@ export default function LedgerPage() {
                     File: <strong style={{ color: "var(--text)" }}>{fileName}</strong>
                   </div>
                   <div style={{ display: "flex", gap: 8 }}>
-                    <button className="btn" onClick={commitImport}>Commit {importResult.rowCount} Trades →</button>
+                    <button className="btn" onClick={commitImport}>
+                      {isDeltaImport ? `Import ${importResult.rowCount} New Trade${importResult.rowCount !== 1 ? "s" : ""} →` : `Commit ${importResult.rowCount} Trades →`}
+                    </button>
                     <button className="btn secondary" onClick={resetImport}>Cancel</button>
                   </div>
                 </div>
