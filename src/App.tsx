@@ -128,11 +128,9 @@ function AppShell({
           <div className="scroll">
             {page === "dashboard" && <DashboardPage onNav={setPage} />}
             {page === "assets" && <PortfolioPage />}
-            {page === "charts" && <ChartsPage />}
             {page === "ledger" && <LedgerPage />}
             {page === "calendar" && <CalendarPage />}
             {page === "markets" && <MarketsPage />}
-            {page === "tools" && <ToolsPage />}
             {page === "settings" && <SettingsPage />}
           </div>
         </div>
