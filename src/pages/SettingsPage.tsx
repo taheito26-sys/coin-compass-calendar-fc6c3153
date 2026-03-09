@@ -1,4 +1,4 @@
-import { forwardRef, useMemo } from "react";
+import { forwardRef, useMemo, useState, useEffect, useCallback, useRef } from "react";
 import { useCrypto } from "@/lib/cryptoContext";
 
 // ── Layout & theme metadata ───────────────────────────────────────────────
