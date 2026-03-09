@@ -581,11 +581,6 @@ export default function PortfolioPage() {
           </Suspense>
         </TabsContent>
 
-        <TabsContent value="ledger">
-          <Suspense fallback={<div className="muted" style={{ padding: 20, textAlign: "center" }}>Loading…</div>}>
-            <LedgerPage />
-          </Suspense>
-        </TabsContent>
       </Tabs>
 
       {drilldownSym && (
