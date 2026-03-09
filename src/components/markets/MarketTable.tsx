@@ -162,7 +162,7 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
                     <td className="mono" style={{ fontSize: 12 }}>{formatCompact(coin.total_volume)}</td>
                     <td>
                       {sparkData.length > 1 ? (
-                        <Sparkline data={sparkData} width={90} height={28} color={is7dUp ? "var(--good)" : "var(--bad)"} />
+                        <Sparkline data={sparkData} positive={is7dUp} />
                       ) : (
                         <span className="muted" style={{ fontSize: 10 }}>—</span>
                       )}
