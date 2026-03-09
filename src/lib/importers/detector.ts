@@ -118,5 +118,5 @@ export function detectExchange(headers: string[], firstRows: Record<string, stri
     }
   }
 
-  return { detected: false, exchange: null, exportType: null, rejected: true, rejectionReason: "No supported exchange format detected. Supported: Binance, Bybit, OKX, Gate.io spot trade history exports." };
+  return { detected: false, exchange: null, exportType: null, rejected: true, rejectionReason: "No supported exchange format detected. Supported: Binance, Bybit, OKX, Gate.io, MEXC, KuCoin spot trade history exports." };
 }
