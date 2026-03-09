@@ -7,11 +7,8 @@ import AssetDrilldown from "@/components/AssetDrilldown";
 import { Sparkline } from "@/components/portfolio/Sparkline";
 import { AssetFilter } from "@/components/portfolio/AssetFilter";
 import { useUnifiedPortfolio } from "@/hooks/useUnifiedPortfolio";
-import { useState, useMemo, useEffect, lazy, Suspense } from "react";
+import { useState, useMemo, useEffect } from "react";
 import type { DerivedLot } from "@/lib/derivePortfolio";
-import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
-
-const AlertsPage = lazy(() => import("@/pages/AlertsPage"));
 
 // ── View mode ──────────────────────────────────────────────────────────────
 
@@ -128,7 +125,6 @@ export default function PortfolioPage() {
   const [showColConfig,  setShowColConfig]  = useState(false);
   const [dragCol,        setDragCol]        = useState<string | null>(null);
   const [drilldownSym,   setDrilldownSym]   = useState<string | null>(null);
-  const [activeTab,      setActiveTab]      = useState("portfolio");
 
   // Persist UI prefs
   useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); },  [viewMode]);
@@ -306,14 +302,7 @@ export default function PortfolioPage() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", minHeight: "80vh", padding: "0 2px" }}>
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="mb-2" style={{ background: "var(--panel2)", border: "1px solid var(--line)" }}>
-          <TabsTrigger value="portfolio" style={{ fontSize: 11 }}>Portfolio</TabsTrigger>
-          <TabsTrigger value="alerts" style={{ fontSize: 11 }}>Alerts</TabsTrigger>
-          
-        </TabsList>
-
-        <TabsContent value="portfolio" style={{ flex: 1, display: "flex", flexDirection: "column" }}>
+      <div style={{ flex: 1, display: "flex", flexDirection: "column" }}>
           {/* Compact KPIs — 40% smaller */}
           <div style={{ display: "flex", gap: 8, marginBottom: 8, flexWrap: "wrap" }}>
             <div style={{ background: "var(--panel2)", border: "1px solid var(--line)", borderRadius: "var(--lt-radius-sm)", padding: "7px 12px", minWidth: 100 }}>
@@ -573,15 +562,7 @@ export default function PortfolioPage() {
               </div>
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="alerts">
-          <Suspense fallback={<div className="muted" style={{ padding: 20, textAlign: "center" }}>Loading…</div>}>
-            <AlertsPage />
-          </Suspense>
-        </TabsContent>
-
-      </Tabs>
+        </div>
 
       {drilldownSym && (
         <AssetDrilldown sym={drilldownSym} onClose={() => setDrilldownSym(null)} />
