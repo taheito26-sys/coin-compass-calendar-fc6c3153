@@ -181,6 +181,14 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
   const [search, setSearch] = useState("");
   const [visibleCols, setVisibleCols] = useState<string[]>(getDefaultVisibleCols);
   const [showColPicker, setShowColPicker] = useState(false);
+  const [colOrder, setColOrder] = useState<string[]>(() => {
+    try {
+      const saved = localStorage.getItem("market_col_order");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return ALL_COLUMNS.map(c => c.key);
+  });
+  const [dragCol, setDragCol] = useState<string | null>(null);
 
   const sparklineIds = useMemo(() =>
     coins.slice(0, 50).map(c => c.id).filter(Boolean),
