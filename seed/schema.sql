@@ -36,6 +36,7 @@ CREATE INDEX IF NOT EXISTS idx_tx_user ON transactions(user_id);
 CREATE INDEX IF NOT EXISTS idx_tx_user_asset ON transactions(user_id, asset_id);
 CREATE INDEX IF NOT EXISTS idx_tx_user_ts ON transactions(user_id, timestamp DESC);
 CREATE INDEX IF NOT EXISTS idx_tx_external ON transactions(external_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_tx_user_external_id ON transactions(user_id, external_id);
 
 CREATE TABLE IF NOT EXISTS tracking_preferences (
   id TEXT PRIMARY KEY DEFAULT (lower(hex(randomblob(16)))),
