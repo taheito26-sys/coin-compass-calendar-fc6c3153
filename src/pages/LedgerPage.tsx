@@ -903,6 +903,9 @@ export default function LedgerPage() {
           </div>
         </div>
       )}
+
+      {/* ═══════════ TAB: CONNECT API ═══════════ */}
+      {tab === "connect" && <ExchangeConnect />}
     </div>
   );
 }

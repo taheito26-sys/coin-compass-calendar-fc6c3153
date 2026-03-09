@@ -28,6 +28,7 @@ app.route("/api/imported-files", importedFilesRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/import", importRoute);
 app.route("/api/fear-greed", fearGreedRoute);
+app.route("/api/exchange-sync", exchangeSyncRoute);
 
 // Health check
 app.get("/api/status", async (c) => {
