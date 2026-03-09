@@ -30,7 +30,7 @@ interface ImportCounts {
   failed: number;
 }
 
-type Tab = "journal" | "add" | "import";
+type Tab = "journal" | "add" | "import" | "connect";
 
 // ─── Constants ───────────────────────────────────────────────────────────────
 
