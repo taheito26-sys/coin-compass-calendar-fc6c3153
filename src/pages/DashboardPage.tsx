@@ -280,7 +280,7 @@ export default function DashboardPage({ onNav }: { onNav?: (p: string) => void }
     });
   }, [state.watch, getPrice]);
 
-  const recentTxs = useMemo(() => [...state.txs].sort((a, b) => b.ts - a.ts).slice(0, 8), [state.txs]);
+  
 
   const { topGainers, topLosers } = useMemo(() => {
     const withPnl = positions.map(r => {
