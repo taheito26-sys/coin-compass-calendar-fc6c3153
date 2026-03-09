@@ -119,7 +119,7 @@ function LivePreview({ colors, layoutName }: { colors: ThemeColors | undefined; 
         : "'Inter', sans-serif",
     }}>
       {/* KPI Cards row */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 10, marginBottom: 14 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(120px, 1fr))", gap: 10, marginBottom: 14 }}>
         {[
           { label: "PORTFOLIO VALUE", value: "$124,580.32", sub: "12 assets" },
           { label: "TOTAL P&L", value: "+$18,420.15", sub: "+17.34%", isGood: true },
