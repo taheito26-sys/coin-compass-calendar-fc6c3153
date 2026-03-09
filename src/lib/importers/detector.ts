@@ -50,6 +50,30 @@ const SIGNATURES: { exchange: Exchange; exportType: string; required: string[]; 
     exportType: "Spot Trade History",
     required: ["Pair", "Side"],
   },
+  // MEXC Spot Trade History
+  {
+    exchange: "mexc",
+    exportType: "Spot Trade History",
+    required: ["Pairs", "Side"],
+  },
+  // MEXC alternate
+  {
+    exchange: "mexc",
+    exportType: "Spot Trade History",
+    required: ["Trading Pair", "Direction"],
+  },
+  // KuCoin Spot Trade History
+  {
+    exchange: "kucoin",
+    exportType: "Spot Trade History",
+    required: ["tradeCreatedAt", "symbol", "side"],
+  },
+  // KuCoin alternate
+  {
+    exchange: "kucoin",
+    exportType: "Spot Trade History",
+    required: ["Symbol", "Side", "Trade Time"],
+  },
 ];
 
 // Headers that indicate a NON-spot export (reject these)
