@@ -40,8 +40,12 @@ export interface LiveCoin {
 }
 
 // ─── Multi-source market data with cascading fallback ──────
-// Priority: CoinGecko → CoinCap → CoinPaprika → CryptoCompare → Binance REST
-// If the primary source fails, automatically tries the next one.
+// Priority: Worker Proxy (server-side, no CORS) → Direct browser requests
+// The Worker proxy itself cascades: CoinGecko → CoinCap → CoinPaprika → CryptoCompare → Binance
+
+import { isWorkerConfigured } from "@/lib/api";
+
+const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://cryptotracker-api.taheito26.workers.dev").replace(/\/$/, "");
 
 let _marketCache: LiveCoin[] = [];
 let _marketCacheTs = 0;
@@ -56,15 +60,23 @@ function notifyListeners() {
   _marketListeners.forEach(cb => cb());
 }
 
-// ── Source 1: CoinGecko ────────────────────────────────────
-async function fetchCoinGecko(signal: AbortSignal): Promise<LiveCoin[]> {
+// ── Primary: Worker proxy (server-side fetch, no CORS issues) ──
+async function fetchViaWorkerProxy(signal: AbortSignal): Promise<{ coins: LiveCoin[]; source: string }> {
+  const r = await fetch(`${WORKER_BASE}/api/market-data`, { signal });
+  if (!r.ok) throw new Error(`Worker proxy ${r.status}`);
+  const data = await r.json();
+  if (!data.coins?.length) throw new Error("Worker proxy empty");
+  return { coins: data.coins, source: `Proxy:${data.source || "unknown"}` };
+}
+
+// ── Fallback: Direct browser requests ──────────────────────
+async function fetchCoinGeckoDirect(signal: AbortSignal): Promise<LiveCoin[]> {
   const url = (page: number) =>
     `https://api.coingecko.com/api/v3/coins/markets?vs_currency=usd&order=market_cap_desc&per_page=250&page=${page}&sparkline=false&price_change_percentage=1h,24h,7d`;
   const r = await fetch(url(1), { signal });
   if (!r.ok) throw new Error(`CG ${r.status}`);
   const p1: any[] = await r.json();
   if (!p1.length) throw new Error("CG empty");
-  // Try page 2 in background
   try {
     await new Promise(r => setTimeout(r, 3000));
     const r2 = await fetch(url(2), { signal: AbortSignal.timeout(10000) });
@@ -76,83 +88,26 @@ async function fetchCoinGecko(signal: AbortSignal): Promise<LiveCoin[]> {
   return p1;
 }
 
-// ── Source 2: CoinCap v2 ───────────────────────────────────
-async function fetchCoinCap(signal: AbortSignal): Promise<LiveCoin[]> {
+async function fetchCoinCapDirect(signal: AbortSignal): Promise<LiveCoin[]> {
   const r = await fetch("https://api.coincap.io/v2/assets?limit=250", { signal });
   if (!r.ok) throw new Error(`CoinCap ${r.status}`);
   const { data } = await r.json();
   if (!data?.length) throw new Error("CoinCap empty");
   return data.map((c: any, i: number) => ({
-    id: c.id,
-    symbol: (c.symbol || "").toLowerCase(),
-    name: c.name || c.id,
-    current_price: parseFloat(c.priceUsd) || 0,
-    market_cap: parseFloat(c.marketCapUsd) || 0,
-    total_volume: parseFloat(c.volumeUsd24Hr) || 0,
-    market_cap_rank: parseInt(c.rank) || i + 1,
-    image: "",
-    price_change_percentage_1h_in_currency: null,
+    id: c.id, symbol: (c.symbol || "").toLowerCase(), name: c.name || c.id,
+    current_price: parseFloat(c.priceUsd) || 0, market_cap: parseFloat(c.marketCapUsd) || 0,
+    total_volume: parseFloat(c.volumeUsd24Hr) || 0, market_cap_rank: parseInt(c.rank) || i + 1,
+    image: "", price_change_percentage_1h_in_currency: null,
     price_change_percentage_24h_in_currency: parseFloat(c.changePercent24Hr) || null,
     price_change_percentage_7d_in_currency: null,
   }));
 }
 
-// ── Source 3: CoinPaprika ──────────────────────────────────
-async function fetchCoinPaprika(signal: AbortSignal): Promise<LiveCoin[]> {
-  const r = await fetch("https://api.coinpaprika.com/v1/tickers?limit=250", { signal });
-  if (!r.ok) throw new Error(`Paprika ${r.status}`);
-  const data: any[] = await r.json();
-  if (!data?.length) throw new Error("Paprika empty");
-  return data.map((c: any, i: number) => ({
-    id: c.id,
-    symbol: (c.symbol || "").toLowerCase(),
-    name: c.name || c.id,
-    current_price: c.quotes?.USD?.price || 0,
-    market_cap: c.quotes?.USD?.market_cap || 0,
-    total_volume: c.quotes?.USD?.volume_24h || 0,
-    market_cap_rank: c.rank || i + 1,
-    image: "",
-    price_change_percentage_1h_in_currency: c.quotes?.USD?.percent_change_1h || null,
-    price_change_percentage_24h_in_currency: c.quotes?.USD?.percent_change_24h || null,
-    price_change_percentage_7d_in_currency: c.quotes?.USD?.percent_change_7d || null,
-  }));
-}
-
-// ── Source 4: CryptoCompare ────────────────────────────────
-async function fetchCryptoCompare(signal: AbortSignal): Promise<LiveCoin[]> {
-  const r = await fetch(
-    "https://min-api.cryptocompare.com/data/top/mktcapfull?limit=100&tsym=USD",
-    { signal }
-  );
-  if (!r.ok) throw new Error(`CC ${r.status}`);
-  const { Data } = await r.json();
-  if (!Data?.length) throw new Error("CC empty");
-  return Data.map((c: any, i: number) => {
-    const raw = c.RAW?.USD || {};
-    const display = c.CoinInfo || {};
-    return {
-      id: (display.Name || "").toLowerCase(),
-      symbol: (display.Name || "").toLowerCase(),
-      name: display.FullName || display.Name || "",
-      current_price: raw.PRICE || 0,
-      market_cap: raw.MKTCAP || 0,
-      total_volume: raw.TOTALVOLUME24HTO || 0,
-      market_cap_rank: i + 1,
-      image: display.ImageUrl ? `https://www.cryptocompare.com${display.ImageUrl}` : "",
-      price_change_percentage_1h_in_currency: null,
-      price_change_percentage_24h_in_currency: raw.CHANGEPCT24HOUR || null,
-      price_change_percentage_7d_in_currency: null,
-    };
-  });
-}
-
-// ── Source 5: Binance REST ticker ──────────────────────────
-async function fetchBinanceTicker(signal: AbortSignal): Promise<LiveCoin[]> {
+async function fetchBinanceTickerDirect(signal: AbortSignal): Promise<LiveCoin[]> {
   const r = await fetch("https://api.binance.com/api/v3/ticker/24hr", { signal });
   if (!r.ok) throw new Error(`Binance ${r.status}`);
   const data: any[] = await r.json();
   if (!data?.length) throw new Error("Binance empty");
-  // Only USDT pairs, deduplicate by base symbol
   const seen = new Set<string>();
   const out: LiveCoin[] = [];
   for (const t of data) {
@@ -161,61 +116,71 @@ async function fetchBinanceTicker(signal: AbortSignal): Promise<LiveCoin[]> {
     if (seen.has(base)) continue;
     seen.add(base);
     out.push({
-      id: base,
-      symbol: base,
-      name: base.toUpperCase(),
-      current_price: parseFloat(t.lastPrice) || 0,
-      market_cap: 0,
-      total_volume: parseFloat(t.quoteVolume) || 0,
-      market_cap_rank: out.length + 1,
-      image: "",
-      price_change_percentage_1h_in_currency: null,
+      id: base, symbol: base, name: base.toUpperCase(),
+      current_price: parseFloat(t.lastPrice) || 0, market_cap: 0,
+      total_volume: parseFloat(t.quoteVolume) || 0, market_cap_rank: out.length + 1,
+      image: "", price_change_percentage_1h_in_currency: null,
       price_change_percentage_24h_in_currency: parseFloat(t.priceChangePercent) || null,
       price_change_percentage_7d_in_currency: null,
     });
   }
-  // Sort by volume descending as rough proxy for market cap rank
   out.sort((a, b) => b.total_volume - a.total_volume);
   out.forEach((c, i) => { c.market_cap_rank = i + 1; });
   return out.slice(0, 500);
 }
 
-// ── Cascading fetch with fallback ──────────────────────────
-const SOURCES: { name: string; fn: (s: AbortSignal) => Promise<LiveCoin[]> }[] = [
-  { name: "CoinGecko", fn: fetchCoinGecko },
-  { name: "CoinCap", fn: fetchCoinCap },
-  { name: "CoinPaprika", fn: fetchCoinPaprika },
-  { name: "CryptoCompare", fn: fetchCryptoCompare },
-  { name: "Binance", fn: fetchBinanceTicker },
-];
-
 async function doMarketFetch() {
   if (_marketFetching) return;
   _marketFetching = true;
   try {
-    for (const source of SOURCES) {
+    // 1. Try Worker proxy first (server-side, no CORS/rate-limit issues)
+    if (isWorkerConfigured()) {
+      try {
+        const { coins, source } = await fetchViaWorkerProxy(AbortSignal.timeout(15000));
+        if (coins.length > 0) {
+          _marketCache = coins;
+          _marketCacheTs = Date.now();
+          _lastSource = source;
+          console.log(`[Prices] Loaded ${coins.length} coins via ${source}`);
+          notifyListeners();
+          return;
+        }
+      } catch (err) {
+        console.warn("[Prices] Worker proxy failed:", err instanceof Error ? err.message : err);
+      }
+    }
+
+    // 2. Fallback: direct browser requests
+    const directSources: { name: string; fn: (s: AbortSignal) => Promise<LiveCoin[]> }[] = [
+      { name: "CoinGecko", fn: fetchCoinGeckoDirect },
+      { name: "CoinCap", fn: fetchCoinCapDirect },
+      { name: "Binance", fn: fetchBinanceTickerDirect },
+    ];
+
+    for (const source of directSources) {
       try {
         const coins = await source.fn(AbortSignal.timeout(15000));
         if (coins.length > 0) {
           _marketCache = coins;
           _marketCacheTs = Date.now();
-          _lastSource = source.name;
-          console.log(`[Prices] Loaded ${coins.length} coins from ${source.name}`);
+          _lastSource = `Direct:${source.name}`;
+          console.log(`[Prices] Loaded ${coins.length} coins direct from ${source.name}`);
           notifyListeners();
           return;
         }
       } catch (err) {
-        console.warn(`[Prices] ${source.name} failed:`, err instanceof Error ? err.message : err);
-        continue; // Try next source
+        console.warn(`[Prices] Direct ${source.name} failed:`, err instanceof Error ? err.message : err);
+        continue;
       }
     }
+
     console.warn("[Prices] All sources failed, keeping stale cache");
   } finally {
     _marketFetching = false;
   }
 }
 
-// Also persist to localStorage for resilience across reloads
+// Persist to localStorage for resilience across reloads
 const LS_CACHE_KEY = "lt_market_cache";
 function persistCache() {
   try {
@@ -227,7 +192,6 @@ function restoreCache() {
     const raw = localStorage.getItem(LS_CACHE_KEY);
     if (!raw) return;
     const { ts, data } = JSON.parse(raw);
-    // Use cached data if less than 30 minutes old
     if (data?.length && Date.now() - ts < 1_800_000) {
       _marketCache = data;
       _marketCacheTs = ts;
@@ -235,7 +199,6 @@ function restoreCache() {
   } catch {}
 }
 
-// Initialize from localStorage
 restoreCache();
 
 let _pollIntervalId: number | null = null;
@@ -248,6 +211,7 @@ function ensureMarketPolling() {
   _pollIntervalId = window.setInterval(() => {
     if (Date.now() - _marketCacheTs > STALE_MS && !_marketFetching) {
       doMarketFetch().then(persistCache);
+    }
     }
   }, POLL_MS);
 }
