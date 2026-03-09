@@ -4,6 +4,7 @@ import { useLivePrices } from "@/hooks/useLivePrices";
 import MarketStats from "@/components/markets/MarketStats";
 import MarketTable from "@/components/markets/MarketTable";
 import BubbleCanvas from "@/components/markets/BubbleCanvas";
+import HeatmapGrid from "@/components/markets/HeatmapGrid";
 
 const TIME_RANGES = [
   { key: "1h", label: "1H" },
@@ -11,10 +12,12 @@ const TIME_RANGES = [
   { key: "7d", label: "7D" },
 ];
 
+type ViewMode = "table" | "watchlist" | "bubbles" | "heatmap";
+
 export default function MarketsPage() {
   const { state, setState, toast } = useCrypto();
   const { coins: allCoins, loading } = useLivePrices();
-  const [view, setView] = useState<"table" | "bubbles">("table");
+  const [view, setView] = useState<ViewMode>("table");
   const [timeRange, setTimeRange] = useState("24h");
   const [coinCount, setCoinCount] = useState(100);
 
@@ -33,20 +36,28 @@ export default function MarketsPage() {
     }
   }, [state.watch, setState, toast]);
 
+  const views: { key: ViewMode; icon: string; label: string }[] = [
+    { key: "table", icon: "☰", label: "Table" },
+    { key: "watchlist", icon: "★", label: "Watchlist" },
+    { key: "bubbles", icon: "◉", label: "Bubbles" },
+    { key: "heatmap", icon: "▦", label: "Heatmap" },
+  ];
+
   return (
     <>
-      {/* Top stats banner */}
       <MarketStats coins={allCoins} />
 
-      {/* Controls bar */}
       <div className="market-controls">
         <div className="seg">
-          <button className={view === "table" ? "active" : ""} onClick={() => setView("table")}>
-            <span style={{ fontSize: 12 }}>☰</span> Table
-          </button>
-          <button className={view === "bubbles" ? "active" : ""} onClick={() => setView("bubbles")}>
-            <span style={{ fontSize: 12 }}>◉</span> Bubbles
-          </button>
+          {views.map(v => (
+            <button
+              key={v.key}
+              className={view === v.key ? "active" : ""}
+              onClick={() => setView(v.key)}
+            >
+              <span style={{ fontSize: 11 }}>{v.icon}</span> {v.label}
+            </button>
+          ))}
         </div>
 
         <div className="seg">
@@ -57,16 +68,17 @@ export default function MarketsPage() {
           ))}
         </div>
 
-        <div className="seg">
-          {[100, 250, 500].map(n => (
-            <button key={n} className={coinCount === n ? "active" : ""} onClick={() => setCoinCount(n)}>
-              Top {n}
-            </button>
-          ))}
-        </div>
+        {view !== "heatmap" && (
+          <div className="seg">
+            {[100, 250, 500].map(n => (
+              <button key={n} className={coinCount === n ? "active" : ""} onClick={() => setCoinCount(n)}>
+                Top {n}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
-      {/* Loading state */}
       {loading && (
         <div className="panel">
           <div className="panel-body">
@@ -78,19 +90,20 @@ export default function MarketsPage() {
         </div>
       )}
 
-      {/* Table view */}
       {!loading && view === "table" && (
-        <MarketTable
-          coins={coins}
-          isWatched={isWatched}
-          toggleWatch={toggleWatch}
-          timeRange={timeRange}
-        />
+        <MarketTable coins={coins} isWatched={isWatched} toggleWatch={toggleWatch} timeRange={timeRange} />
       )}
 
-      {/* Bubble view */}
+      {!loading && view === "watchlist" && (
+        <MarketTable coins={coins} isWatched={isWatched} toggleWatch={toggleWatch} timeRange={timeRange} watchOnly />
+      )}
+
       {!loading && view === "bubbles" && (
         <BubbleCanvas coins={coins} timeRange={timeRange} />
+      )}
+
+      {!loading && view === "heatmap" && (
+        <HeatmapGrid coins={coins} timeRange={timeRange} />
       )}
     </>
   );

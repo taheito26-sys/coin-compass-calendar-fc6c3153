@@ -1329,6 +1329,15 @@ table { table-layout: auto; }
   display: flex; align-items: center; justify-content: center;
   font-size: 8px; font-weight: 900;
 }
+.market-coin-symbol-primary {
+  font-weight: 800; font-size: 13px; color: var(--text);
+  white-space: nowrap; letter-spacing: 0.3px;
+}
+.market-coin-name-sub {
+  font-size: 10px; color: var(--muted); font-weight: 500;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  max-width: 120px;
+}
 .market-coin-name {
   font-weight: 700; font-size: 13px; color: var(--text);
   white-space: nowrap;
@@ -1373,6 +1382,51 @@ table { table-layout: auto; }
 }
 @media(max-width:560px) {
   .market-stats-bar { display: grid; grid-template-columns: 1fr 1fr; }
+}
+
+/* ── HEATMAP GRID ── */
+.heatmap-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 4px;
+}
+.heatmap-tile {
+  border: 1px solid var(--line);
+  border-radius: var(--lt-radius-sm, 8px);
+  padding: 10px 8px;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; min-height: 72px;
+  transition: transform .15s, box-shadow .15s;
+  cursor: default;
+}
+.heatmap-tile:hover {
+  transform: scale(1.04);
+  box-shadow: 0 4px 16px rgba(0,0,0,.2);
+  z-index: 2; position: relative;
+}
+.heatmap-tile-header {
+  display: flex; align-items: center; gap: 5px;
+}
+.heatmap-tile-icon {
+  width: 18px; height: 18px; border-radius: 50%;
+}
+.heatmap-tile-symbol {
+  font-weight: 800; font-size: 12px; color: var(--text);
+  letter-spacing: 0.3px;
+}
+.heatmap-tile-change {
+  font-family: var(--lt-font-mono, monospace);
+  font-weight: 700; font-size: 13px;
+}
+.heatmap-tile-price {
+  font-size: 10px; color: var(--muted); font-family: var(--lt-font-mono, monospace);
+}
+.heatmap-tile-mcap {
+  font-size: 9px; color: var(--muted2); font-family: var(--lt-font-mono, monospace);
+}
+@media(max-width:560px) {
+  .heatmap-grid { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); }
+  .heatmap-tile { padding: 6px 4px; min-height: 56px; }
 }
 
 /* ── Zen Mode ── */

@@ -8,6 +8,7 @@ interface Props {
   isWatched: (sym: string) => boolean;
   toggleWatch: (sym: string) => void;
   timeRange: string;
+  watchOnly?: boolean;
 }
 
 type SortKey = "rank" | "name" | "price" | "1h" | "24h" | "7d" | "mcap" | "vol";
@@ -38,12 +39,11 @@ function ChangePill({ val }: { val: number | null }) {
   );
 }
 
-export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }: Props) {
+export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, watchOnly }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
 
-  // Sparklines for visible coins (top 50 only to avoid rate limits)
   const sparklineIds = useMemo(() =>
     coins.slice(0, 50).map(c => c.id).filter(Boolean),
     [coins]
@@ -55,13 +55,18 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
     else { setSortKey(key); setSortDir(key === "rank" ? "asc" : "desc"); }
   };
 
+  const baseCoins = useMemo(() => {
+    if (watchOnly) return coins.filter(c => isWatched(c.symbol));
+    return coins;
+  }, [coins, watchOnly, isWatched]);
+
   const filtered = useMemo(() => {
-    if (!search) return coins;
+    if (!search) return baseCoins;
     const q = search.toLowerCase();
-    return coins.filter(c =>
+    return baseCoins.filter(c =>
       c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q)
     );
-  }, [coins, search]);
+  }, [baseCoins, search]);
 
   const sorted = useMemo(() => {
     const arr = [...filtered];
@@ -69,7 +74,7 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
     arr.sort((a, b) => {
       switch (sortKey) {
         case "rank": return (a.market_cap_rank - b.market_cap_rank) * dir;
-        case "name": return a.name.localeCompare(b.name) * dir;
+        case "name": return a.symbol.localeCompare(b.symbol) * dir;
         case "price": return (a.current_price - b.current_price) * dir;
         case "1h": return ((a.price_change_percentage_1h_in_currency || 0) - (b.price_change_percentage_1h_in_currency || 0)) * dir;
         case "24h": return ((a.price_change_percentage_24h_in_currency || 0) - (b.price_change_percentage_24h_in_currency || 0)) * dir;
@@ -82,8 +87,11 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
     return arr;
   }, [filtered, sortKey, sortDir]);
 
-  const SortHeader = ({ label, col }: { label: string; col: SortKey }) => (
-    <th onClick={() => toggleSort(col)} style={{ cursor: "pointer", userSelect: "none" }}>
+  const SortHeader = ({ label, col, align }: { label: string; col: SortKey; align?: string }) => (
+    <th
+      onClick={() => toggleSort(col)}
+      style={{ cursor: "pointer", userSelect: "none", textAlign: align as any || "left" }}
+    >
       <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
         {label}
         {sortKey === col && (
@@ -96,7 +104,7 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
   return (
     <div className="panel">
       <div className="panel-head" style={{ gap: 8 }}>
-        <h2>Cryptocurrency Prices</h2>
+        <h2>{watchOnly ? "Watchlist" : "Cryptocurrency Prices"}</h2>
         <div style={{ flex: 1 }} />
         <input
           className="market-search-input"
@@ -108,71 +116,79 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange }
         <span className="pill">{filtered.length} coins</span>
       </div>
       <div className="panel-body" style={{ padding: 0 }}>
-        <div className="tableWrap" style={{ maxHeight: "calc(100dvh - 280px)", overflow: "auto" }}>
-          <table className="market-table">
-            <thead>
-              <tr>
-                <th style={{ width: 32 }}></th>
-                <SortHeader label="#" col="rank" />
-                <SortHeader label="Name" col="name" />
-                <SortHeader label="Price" col="price" />
-                <SortHeader label="1h %" col="1h" />
-                <SortHeader label="24h %" col="24h" />
-                <SortHeader label="7d %" col="7d" />
-                <SortHeader label="Market Cap" col="mcap" />
-                <SortHeader label="Volume (24h)" col="vol" />
-                <th style={{ width: 100 }}>Last 7 Days</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map(coin => {
-                const sparkData = sparklines.get(coin.id) || [];
-                const is7dUp = (coin.price_change_percentage_7d_in_currency || 0) >= 0;
-                return (
-                  <tr key={coin.id} className="market-row">
-                    <td>
-                      <span
-                        className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
-                        onClick={() => toggleWatch(coin.symbol)}
-                      >
-                        {isWatched(coin.symbol) ? "★" : "☆"}
-                      </span>
-                    </td>
-                    <td className="mono muted" style={{ fontSize: 12 }}>{coin.market_cap_rank}</td>
-                    <td>
-                      <div className="market-coin-cell">
-                        {coin.image ? (
-                          <img src={coin.image} alt="" className="market-coin-icon" loading="lazy" />
-                        ) : (
-                          <div className="market-coin-icon-placeholder">
-                            {coin.symbol.slice(0, 2).toUpperCase()}
+        {watchOnly && filtered.length === 0 ? (
+          <div style={{ padding: "40px 20px", textAlign: "center", color: "var(--muted)" }}>
+            <div style={{ fontSize: 28, marginBottom: 8 }}>☆</div>
+            <div style={{ fontSize: 13, fontWeight: 600 }}>No coins in your watchlist</div>
+            <div style={{ fontSize: 11, marginTop: 4 }}>Star coins in the Table view to add them here</div>
+          </div>
+        ) : (
+          <div className="tableWrap" style={{ maxHeight: "calc(100dvh - 280px)", overflow: "auto" }}>
+            <table className="market-table">
+              <thead>
+                <tr>
+                  <th style={{ width: 32 }}></th>
+                  <SortHeader label="#" col="rank" />
+                  <SortHeader label="Coin" col="name" />
+                  <SortHeader label="Price" col="price" align="right" />
+                  <SortHeader label="1h" col="1h" align="right" />
+                  <SortHeader label="24h" col="24h" align="right" />
+                  <SortHeader label="7d" col="7d" align="right" />
+                  <SortHeader label="Mkt Cap" col="mcap" align="right" />
+                  <SortHeader label="Vol 24h" col="vol" align="right" />
+                  <th style={{ width: 100, textAlign: "center" }}>7d Chart</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map(coin => {
+                  const sparkData = sparklines.get(coin.id) || [];
+                  const is7dUp = (coin.price_change_percentage_7d_in_currency || 0) >= 0;
+                  return (
+                    <tr key={coin.id} className="market-row">
+                      <td>
+                        <span
+                          className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
+                          onClick={() => toggleWatch(coin.symbol)}
+                        >
+                          {isWatched(coin.symbol) ? "★" : "☆"}
+                        </span>
+                      </td>
+                      <td className="mono muted" style={{ fontSize: 11 }}>{coin.market_cap_rank}</td>
+                      <td>
+                        <div className="market-coin-cell">
+                          {coin.image ? (
+                            <img src={coin.image} alt="" className="market-coin-icon" loading="lazy" />
+                          ) : (
+                            <div className="market-coin-icon-placeholder">
+                              {coin.symbol.slice(0, 2).toUpperCase()}
+                            </div>
+                          )}
+                          <div style={{ display: "flex", flexDirection: "column" }}>
+                            <span className="market-coin-symbol-primary">{coin.symbol.toUpperCase()}</span>
+                            <span className="market-coin-name-sub">{coin.name}</span>
                           </div>
-                        )}
-                        <div>
-                          <span className="market-coin-name">{coin.name}</span>
-                          <span className="market-coin-symbol">{coin.symbol.toUpperCase()}</span>
                         </div>
-                      </div>
-                    </td>
-                    <td className="mono" style={{ fontWeight: 700 }}>{formatPrice(coin.current_price)}</td>
-                    <td><ChangePill val={coin.price_change_percentage_1h_in_currency} /></td>
-                    <td><ChangePill val={coin.price_change_percentage_24h_in_currency} /></td>
-                    <td><ChangePill val={coin.price_change_percentage_7d_in_currency} /></td>
-                    <td className="mono" style={{ fontSize: 12 }}>{formatCompact(coin.market_cap)}</td>
-                    <td className="mono" style={{ fontSize: 12 }}>{formatCompact(coin.total_volume)}</td>
-                    <td>
-                      {sparkData.length > 1 ? (
-                        <Sparkline data={sparkData} positive={is7dUp} />
-                      ) : (
-                        <span className="muted" style={{ fontSize: 10 }}>—</span>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                      </td>
+                      <td className="mono" style={{ fontWeight: 700, textAlign: "right" }}>{formatPrice(coin.current_price)}</td>
+                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_1h_in_currency} /></td>
+                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_24h_in_currency} /></td>
+                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_7d_in_currency} /></td>
+                      <td className="mono" style={{ fontSize: 12, textAlign: "right" }}>{formatCompact(coin.market_cap)}</td>
+                      <td className="mono" style={{ fontSize: 12, textAlign: "right" }}>{formatCompact(coin.total_volume)}</td>
+                      <td style={{ textAlign: "center" }}>
+                        {sparkData.length > 1 ? (
+                          <Sparkline data={sparkData} positive={is7dUp} />
+                        ) : (
+                          <span className="muted" style={{ fontSize: 10 }}>—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </div>
   );
