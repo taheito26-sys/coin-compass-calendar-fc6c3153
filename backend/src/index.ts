@@ -26,6 +26,7 @@ app.route("/api/tracking-preferences", trackingRoute);
 app.route("/api/imported-files", importedFilesRoute);
 app.route("/api/preferences", preferencesRoute);
 app.route("/api/import", importRoute);
+app.route("/api/fear-greed", fearGreedRoute);
 
 // Health check
 app.get("/api/status", async (c) => {
