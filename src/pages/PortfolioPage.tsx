@@ -562,15 +562,7 @@ export default function PortfolioPage() {
               </div>
             </div>
           )}
-        </TabsContent>
-
-        <TabsContent value="alerts">
-          <Suspense fallback={<div className="muted" style={{ padding: 20, textAlign: "center" }}>Loading…</div>}>
-            <AlertsPage />
-          </Suspense>
-        </TabsContent>
-
-      </Tabs>
+        </div>
 
       {drilldownSym && (
         <AssetDrilldown sym={drilldownSym} onClose={() => setDrilldownSym(null)} />
