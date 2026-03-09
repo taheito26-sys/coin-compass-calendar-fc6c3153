@@ -11,8 +11,20 @@ interface Props {
   watchOnly?: boolean;
 }
 
-type SortKey = "rank" | "name" | "price" | "1h" | "24h" | "7d" | "mcap" | "vol";
+type SortKey = string;
 type SortDir = "asc" | "desc";
+
+// All available columns
+interface ColumnDef {
+  key: string;
+  label: string;
+  group: string;
+  defaultVisible: boolean;
+  align?: "left" | "right" | "center";
+  width?: number;
+  render: (coin: LiveCoin, extra: { sparklines: Map<string, number[]>; isWatched: boolean }) => React.ReactNode;
+  sortValue?: (coin: LiveCoin) => number | string;
+}
 
 function formatCompact(n: number): string {
   if (n >= 1e12) return "$" + (n / 1e12).toFixed(2) + "T";
@@ -39,10 +51,136 @@ function ChangePill({ val }: { val: number | null }) {
   );
 }
 
+const COLUMN_STORAGE_KEY = "market_visible_columns";
+
+const ALL_COLUMNS: ColumnDef[] = [
+  {
+    key: "rank", label: "#", group: "Basic", defaultVisible: true, align: "left", width: 40,
+    render: (c) => <span className="mono muted" style={{ fontSize: 11 }}>{c.market_cap_rank}</span>,
+    sortValue: (c) => c.market_cap_rank,
+  },
+  {
+    key: "coin", label: "Coin", group: "Basic", defaultVisible: true, align: "left",
+    render: (c) => (
+      <div className="market-coin-cell">
+        {c.image ? (
+          <img src={c.image} alt="" className="market-coin-icon" loading="lazy" />
+        ) : (
+          <div className="market-coin-icon-placeholder">{c.symbol.slice(0, 2).toUpperCase()}</div>
+        )}
+        <div style={{ display: "flex", flexDirection: "column" }}>
+          <span className="market-coin-symbol-primary">{c.symbol.toUpperCase()}</span>
+          <span className="market-coin-name-sub">{c.name}</span>
+        </div>
+      </div>
+    ),
+    sortValue: (c) => c.symbol,
+  },
+  {
+    key: "price", label: "Price", group: "Price", defaultVisible: true, align: "right",
+    render: (c) => <span className="mono" style={{ fontWeight: 700 }}>{formatPrice(c.current_price)}</span>,
+    sortValue: (c) => c.current_price,
+  },
+  {
+    key: "1h", label: "1h %", group: "Change", defaultVisible: true, align: "right",
+    render: (c) => <ChangePill val={c.price_change_percentage_1h_in_currency} />,
+    sortValue: (c) => c.price_change_percentage_1h_in_currency || 0,
+  },
+  {
+    key: "24h", label: "24h %", group: "Change", defaultVisible: true, align: "right",
+    render: (c) => <ChangePill val={c.price_change_percentage_24h_in_currency} />,
+    sortValue: (c) => c.price_change_percentage_24h_in_currency || 0,
+  },
+  {
+    key: "7d", label: "7d %", group: "Change", defaultVisible: true, align: "right",
+    render: (c) => <ChangePill val={c.price_change_percentage_7d_in_currency} />,
+    sortValue: (c) => c.price_change_percentage_7d_in_currency || 0,
+  },
+  {
+    key: "mcap", label: "Market Cap", group: "Market", defaultVisible: true, align: "right",
+    render: (c) => <span className="mono" style={{ fontSize: 12 }}>{formatCompact(c.market_cap)}</span>,
+    sortValue: (c) => c.market_cap || 0,
+  },
+  {
+    key: "vol", label: "Volume 24h", group: "Market", defaultVisible: true, align: "right",
+    render: (c) => <span className="mono" style={{ fontSize: 12 }}>{formatCompact(c.total_volume)}</span>,
+    sortValue: (c) => c.total_volume || 0,
+  },
+  {
+    key: "sparkline", label: "7d Chart", group: "Chart", defaultVisible: true, align: "center", width: 100,
+    render: (c, { sparklines }) => {
+      const data = sparklines.get(c.id) || [];
+      const up = (c.price_change_percentage_7d_in_currency || 0) >= 0;
+      return data.length > 1 ? <Sparkline data={data} positive={up} /> : <span className="muted" style={{ fontSize: 10 }}>—</span>;
+    },
+  },
+  {
+    key: "high24h", label: "24h High", group: "Price", defaultVisible: false, align: "right",
+    render: (c) => <span className="mono" style={{ fontSize: 12 }}>{formatPrice((c as any).high_24h || c.current_price)}</span>,
+    sortValue: (c) => (c as any).high_24h || c.current_price,
+  },
+  {
+    key: "low24h", label: "24h Low", group: "Price", defaultVisible: false, align: "right",
+    render: (c) => <span className="mono" style={{ fontSize: 12 }}>{formatPrice((c as any).low_24h || c.current_price)}</span>,
+    sortValue: (c) => (c as any).low_24h || c.current_price,
+  },
+  {
+    key: "ath", label: "ATH", group: "Price", defaultVisible: false, align: "right",
+    render: (c) => <span className="mono" style={{ fontSize: 12 }}>{(c as any).ath ? formatPrice((c as any).ath) : "—"}</span>,
+    sortValue: (c) => (c as any).ath || 0,
+  },
+  {
+    key: "athChange", label: "ATH %", group: "Change", defaultVisible: false, align: "right",
+    render: (c) => <ChangePill val={(c as any).ath_change_percentage ?? null} />,
+    sortValue: (c) => (c as any).ath_change_percentage || 0,
+  },
+  {
+    key: "circSupply", label: "Circ. Supply", group: "Market", defaultVisible: false, align: "right",
+    render: (c) => {
+      const supply = (c as any).circulating_supply;
+      if (!supply) return <span className="muted" style={{ fontSize: 10 }}>—</span>;
+      return <span className="mono" style={{ fontSize: 12 }}>{supply >= 1e9 ? (supply / 1e9).toFixed(1) + "B" : supply >= 1e6 ? (supply / 1e6).toFixed(0) + "M" : supply.toLocaleString()}</span>;
+    },
+    sortValue: (c) => (c as any).circulating_supply || 0,
+  },
+  {
+    key: "totalSupply", label: "Total Supply", group: "Market", defaultVisible: false, align: "right",
+    render: (c) => {
+      const supply = (c as any).total_supply;
+      if (!supply) return <span className="muted" style={{ fontSize: 10 }}>—</span>;
+      return <span className="mono" style={{ fontSize: 12 }}>{supply >= 1e9 ? (supply / 1e9).toFixed(1) + "B" : supply >= 1e6 ? (supply / 1e6).toFixed(0) + "M" : supply.toLocaleString()}</span>;
+    },
+    sortValue: (c) => (c as any).total_supply || 0,
+  },
+  {
+    key: "mcapRank", label: "MCap Rank", group: "Market", defaultVisible: false, align: "right",
+    render: (c) => <span className="mono muted" style={{ fontSize: 11 }}>#{c.market_cap_rank}</span>,
+    sortValue: (c) => c.market_cap_rank,
+  },
+  {
+    key: "volMcapRatio", label: "Vol/MCap", group: "Market", defaultVisible: false, align: "right",
+    render: (c) => {
+      const ratio = c.market_cap ? (c.total_volume / c.market_cap) : 0;
+      return <span className="mono" style={{ fontSize: 11 }}>{(ratio * 100).toFixed(2)}%</span>;
+    },
+    sortValue: (c) => c.market_cap ? (c.total_volume / c.market_cap) : 0,
+  },
+];
+
+function getDefaultVisibleCols(): string[] {
+  try {
+    const saved = localStorage.getItem(COLUMN_STORAGE_KEY);
+    if (saved) return JSON.parse(saved);
+  } catch {}
+  return ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key);
+}
+
 export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, watchOnly }: Props) {
   const [sortKey, setSortKey] = useState<SortKey>("rank");
   const [sortDir, setSortDir] = useState<SortDir>("asc");
   const [search, setSearch] = useState("");
+  const [visibleCols, setVisibleCols] = useState<string[]>(getDefaultVisibleCols);
+  const [showColPicker, setShowColPicker] = useState(false);
 
   const sparklineIds = useMemo(() =>
     coins.slice(0, 50).map(c => c.id).filter(Boolean),
@@ -54,6 +192,16 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
     if (sortKey === key) setSortDir(d => d === "asc" ? "desc" : "asc");
     else { setSortKey(key); setSortDir(key === "rank" ? "asc" : "desc"); }
   };
+
+  const toggleCol = (key: string) => {
+    setVisibleCols(prev => {
+      const next = prev.includes(key) ? prev.filter(k => k !== key) : [...prev, key];
+      localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(next));
+      return next;
+    });
+  };
+
+  const columns = useMemo(() => ALL_COLUMNS.filter(c => visibleCols.includes(c.key)), [visibleCols]);
 
   const baseCoins = useMemo(() => {
     if (watchOnly) return coins.filter(c => isWatched(c.symbol));
@@ -69,37 +217,25 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
   }, [baseCoins, search]);
 
   const sorted = useMemo(() => {
+    const col = ALL_COLUMNS.find(c => c.key === sortKey);
+    if (!col?.sortValue) return filtered;
     const arr = [...filtered];
     const dir = sortDir === "asc" ? 1 : -1;
     arr.sort((a, b) => {
-      switch (sortKey) {
-        case "rank": return (a.market_cap_rank - b.market_cap_rank) * dir;
-        case "name": return a.symbol.localeCompare(b.symbol) * dir;
-        case "price": return (a.current_price - b.current_price) * dir;
-        case "1h": return ((a.price_change_percentage_1h_in_currency || 0) - (b.price_change_percentage_1h_in_currency || 0)) * dir;
-        case "24h": return ((a.price_change_percentage_24h_in_currency || 0) - (b.price_change_percentage_24h_in_currency || 0)) * dir;
-        case "7d": return ((a.price_change_percentage_7d_in_currency || 0) - (b.price_change_percentage_7d_in_currency || 0)) * dir;
-        case "mcap": return ((a.market_cap || 0) - (b.market_cap || 0)) * dir;
-        case "vol": return ((a.total_volume || 0) - (b.total_volume || 0)) * dir;
-        default: return 0;
-      }
+      const av = col.sortValue!(a);
+      const bv = col.sortValue!(b);
+      if (typeof av === "string" && typeof bv === "string") return av.localeCompare(bv) * dir;
+      return ((av as number) - (bv as number)) * dir;
     });
     return arr;
   }, [filtered, sortKey, sortDir]);
 
-  const SortHeader = ({ label, col, align }: { label: string; col: SortKey; align?: string }) => (
-    <th
-      onClick={() => toggleSort(col)}
-      style={{ cursor: "pointer", userSelect: "none", textAlign: align as any || "left" }}
-    >
-      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
-        {label}
-        {sortKey === col && (
-          <span style={{ fontSize: 9, opacity: 0.7 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
-        )}
-      </span>
-    </th>
-  );
+  // Group columns for picker
+  const groups = useMemo(() => {
+    const g: Record<string, ColumnDef[]> = {};
+    ALL_COLUMNS.forEach(c => { (g[c.group] ??= []).push(c); });
+    return g;
+  }, []);
 
   return (
     <div className="panel">
@@ -113,6 +249,63 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
           value={search}
           onChange={e => setSearch(e.target.value)}
         />
+        {/* Column picker toggle */}
+        <div style={{ position: "relative" }}>
+          <button
+            className="btn secondary"
+            onClick={() => setShowColPicker(p => !p)}
+            style={{ fontSize: 10, padding: "4px 10px", display: "flex", alignItems: "center", gap: 4 }}
+          >
+            ⚙ Columns
+          </button>
+          {showColPicker && (
+            <>
+              <div style={{ position: "fixed", inset: 0, zIndex: 98 }} onClick={() => setShowColPicker(false)} />
+              <div style={{
+                position: "absolute", top: "100%", right: 0, marginTop: 4,
+                background: "var(--panel)", border: "1px solid var(--line)",
+                borderRadius: "var(--lt-radius-sm)", padding: 12,
+                zIndex: 99, minWidth: 220, maxHeight: 360, overflowY: "auto",
+                boxShadow: "0 8px 24px rgba(0,0,0,.3)",
+              }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: "var(--text)", marginBottom: 8 }}>Show/Hide Columns</div>
+                {Object.entries(groups).map(([group, cols]) => (
+                  <div key={group} style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: "var(--muted)", textTransform: "uppercase", letterSpacing: "0.5px", marginBottom: 4 }}>{group}</div>
+                    {cols.map(col => (
+                      <label key={col.key} style={{
+                        display: "flex", alignItems: "center", gap: 6,
+                        fontSize: 11, color: "var(--text)", cursor: "pointer",
+                        padding: "3px 0",
+                      }}>
+                        <input
+                          type="checkbox"
+                          checked={visibleCols.includes(col.key)}
+                          onChange={() => toggleCol(col.key)}
+                          style={{ accentColor: "var(--brand)" }}
+                        />
+                        {col.label}
+                      </label>
+                    ))}
+                  </div>
+                ))}
+                <button
+                  onClick={() => {
+                    const defaults = ALL_COLUMNS.filter(c => c.defaultVisible).map(c => c.key);
+                    setVisibleCols(defaults);
+                    localStorage.setItem(COLUMN_STORAGE_KEY, JSON.stringify(defaults));
+                  }}
+                  style={{
+                    marginTop: 4, fontSize: 9, padding: "3px 8px", borderRadius: 4,
+                    background: "none", border: "1px solid var(--line)", color: "var(--muted)", cursor: "pointer",
+                  }}
+                >
+                  Reset to defaults
+                </button>
+              </div>
+            </>
+          )}
+        </div>
         <span className="pill">{filtered.length} coins</span>
       </div>
       <div className="panel-body" style={{ padding: 0 }}>
@@ -128,63 +321,45 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
               <thead>
                 <tr>
                   <th style={{ width: 32 }}></th>
-                  <SortHeader label="#" col="rank" />
-                  <SortHeader label="Coin" col="name" />
-                  <SortHeader label="Price" col="price" align="right" />
-                  <SortHeader label="1h" col="1h" align="right" />
-                  <SortHeader label="24h" col="24h" align="right" />
-                  <SortHeader label="7d" col="7d" align="right" />
-                  <SortHeader label="Mkt Cap" col="mcap" align="right" />
-                  <SortHeader label="Vol 24h" col="vol" align="right" />
-                  <th style={{ width: 100, textAlign: "center" }}>7d Chart</th>
+                  {columns.map(col => (
+                    <th
+                      key={col.key}
+                      onClick={() => col.sortValue && toggleSort(col.key)}
+                      style={{
+                        cursor: col.sortValue ? "pointer" : "default",
+                        userSelect: "none",
+                        textAlign: col.align || "left",
+                        width: col.width,
+                      }}
+                    >
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        {col.label}
+                        {sortKey === col.key && (
+                          <span style={{ fontSize: 9, opacity: 0.7 }}>{sortDir === "asc" ? "▲" : "▼"}</span>
+                        )}
+                      </span>
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
-                {sorted.map(coin => {
-                  const sparkData = sparklines.get(coin.id) || [];
-                  const is7dUp = (coin.price_change_percentage_7d_in_currency || 0) >= 0;
-                  return (
-                    <tr key={coin.id} className="market-row">
-                      <td>
-                        <span
-                          className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
-                          onClick={() => toggleWatch(coin.symbol)}
-                        >
-                          {isWatched(coin.symbol) ? "★" : "☆"}
-                        </span>
+                {sorted.map(coin => (
+                  <tr key={coin.id} className="market-row">
+                    <td>
+                      <span
+                        className={`market-star ${isWatched(coin.symbol) ? "active" : ""}`}
+                        onClick={() => toggleWatch(coin.symbol)}
+                      >
+                        {isWatched(coin.symbol) ? "★" : "☆"}
+                      </span>
+                    </td>
+                    {columns.map(col => (
+                      <td key={col.key} style={{ textAlign: col.align || "left" }}>
+                        {col.render(coin, { sparklines, isWatched: isWatched(coin.symbol) })}
                       </td>
-                      <td className="mono muted" style={{ fontSize: 11 }}>{coin.market_cap_rank}</td>
-                      <td>
-                        <div className="market-coin-cell">
-                          {coin.image ? (
-                            <img src={coin.image} alt="" className="market-coin-icon" loading="lazy" />
-                          ) : (
-                            <div className="market-coin-icon-placeholder">
-                              {coin.symbol.slice(0, 2).toUpperCase()}
-                            </div>
-                          )}
-                          <div style={{ display: "flex", flexDirection: "column" }}>
-                            <span className="market-coin-symbol-primary">{coin.symbol.toUpperCase()}</span>
-                            <span className="market-coin-name-sub">{coin.name}</span>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="mono" style={{ fontWeight: 700, textAlign: "right" }}>{formatPrice(coin.current_price)}</td>
-                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_1h_in_currency} /></td>
-                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_24h_in_currency} /></td>
-                      <td style={{ textAlign: "right" }}><ChangePill val={coin.price_change_percentage_7d_in_currency} /></td>
-                      <td className="mono" style={{ fontSize: 12, textAlign: "right" }}>{formatCompact(coin.market_cap)}</td>
-                      <td className="mono" style={{ fontSize: 12, textAlign: "right" }}>{formatCompact(coin.total_volume)}</td>
-                      <td style={{ textAlign: "center" }}>
-                        {sparkData.length > 1 ? (
-                          <Sparkline data={sparkData} positive={is7dUp} />
-                        ) : (
-                          <span className="muted" style={{ fontSize: 10 }}>—</span>
-                        )}
-                      </td>
-                    </tr>
-                  );
-                })}
+                    ))}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
