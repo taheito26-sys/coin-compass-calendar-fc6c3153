@@ -323,13 +323,13 @@ export function useLivePrices() {
     return unsub;
   }, [assetSymbols.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Build CoinGecko price map for quick lookup
+  // Build market price map for quick lookup
   const cgPriceMap = useRef(new Map<string, LiveCoin>());
   useEffect(() => {
     const m = new Map<string, LiveCoin>();
-    for (const c of cgCoins) m.set(c.symbol.toUpperCase(), c);
+    for (const c of marketCoins) m.set(c.symbol.toUpperCase(), c);
     cgPriceMap.current = m;
-  }, [cgCoins]);
+  }, [marketCoins]);
 
   // Merge WS prices with REST bootstrap
   const mergedPrices = useMemo(() => {
@@ -341,18 +341,13 @@ export function useLivePrices() {
     return merged;
   }, [spotPrices, wsRevision]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Unified price getter: WS/Binance → CoinGecko → null
+  // Unified price getter: WS/Binance → market data → null
   const getPrice = useCallback((sym: string): LiveCoin | null => {
     const key = sym.toUpperCase();
-
-    // Check CoinGecko data first (has full LiveCoin interface)
     const cg = cgPriceMap.current.get(key);
-
-    // Check Binance data
     const binance = mergedPrices[key];
 
     if (cg && binance) {
-      // Return CoinGecko shape but with Binance real-time price
       return {
         ...cg,
         current_price: binance.price,
@@ -361,7 +356,6 @@ export function useLivePrices() {
     }
 
     if (binance) {
-      // Synthetic LiveCoin from Binance-only data
       return {
         id: KNOWN_IDS[key] || key.toLowerCase(),
         symbol: key.toLowerCase(),
@@ -379,11 +373,11 @@ export function useLivePrices() {
 
     if (cg) return cg;
     return null;
-  }, [mergedPrices, cgCoins]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [mergedPrices, marketCoins]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return {
-    coins: cgCoins,
-    loading: cgLoading,
+    coins: marketCoins,
+    loading: marketLoading,
     getPrice,
     priceMap: cgPriceMap.current,
     spotPrices: mergedPrices,
