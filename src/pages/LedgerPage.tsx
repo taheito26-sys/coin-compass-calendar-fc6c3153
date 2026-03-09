@@ -277,42 +277,75 @@ export default function LedgerPage() {
   const handleFile = useCallback(async (file: File) => {
     setImportError("");
     setImportLoading(true);
+    setIsDeltaImport(false);
+    setDeltaCount(0);
     try {
       const text = await file.text();
       const hash = await hashFile(text);
 
-      if (importedFiles.some((f: any) => f.hash === hash)) {
-        setImportError("This file was already imported (duplicate detected).");
-        setImportLoading(false);
-        return;
-      }
-
+      // Check if file was previously imported (local or backend)
+      const knownLocally = importedFiles.some((f: any) => f.hash === hash);
+      let knownInBackend = false;
       if (isWorkerConfigured()) {
         try {
           const backendFiles = await fetchImportedFiles();
-          if (backendFiles.some((f: any) => f.file_hash === hash)) {
-            setImportError("This file was already imported (found in backend).");
-            setImportLoading(false);
-            return;
-          }
+          knownInBackend = backendFiles.some((f: any) => f.file_hash === hash);
         } catch { /* ignore */ }
       }
 
       const parsed = await importCSV(text, file.name);
       setFileName(file.name);
       setFileHash(hash);
-      setImportResult(parsed);
 
       if (parsed.rows.length === 0) {
         setImportError(parsed.warnings[0] ?? "No valid rows found in file.");
+        setImportLoading(false);
+        return;
+      }
+
+      if (knownLocally || knownInBackend) {
+        // Delta mode: compute which rows are NOT already in current state
+        const existingExternalIds = new Set(
+          state.txs
+            .map((t: any) => t.externalId ?? t.external_id)
+            .filter(Boolean)
+        );
+
+        // Also build a composite fingerprint set for rows without externalId
+        const existingFingerprints = new Set(
+          state.txs.map((t: any) =>
+            `${t.ts}:${t.asset}:${t.type === "buy" ? "buy" : "sell"}:${t.qty}:${t.price}`
+          )
+        );
+
+        const newRows = parsed.rows.filter(row => {
+          if (row.externalId && existingExternalIds.has(row.externalId)) return false;
+          const fp = `${row.timestamp}:${row.symbol}:${row.side}:${row.qty}:${row.unitPrice}`;
+          if (existingFingerprints.has(fp)) return false;
+          return true;
+        });
+
+        if (newRows.length === 0) {
+          setImportError(`All ${parsed.rows.length} rows already exist in your tracker. Nothing new to import.`);
+          setImportLoading(false);
+          return;
+        }
+
+        // Replace rows with only the delta
+        const deltaResult = { ...parsed, rows: newRows, rowCount: newRows.length };
+        setImportResult(deltaResult);
+        setIsDeltaImport(true);
+        setDeltaCount(parsed.rows.length - newRows.length);
+        setImportStage("preview");
       } else {
+        setImportResult(parsed);
         setImportStage("preview");
       }
     } catch (e: any) {
       setImportError("Parse failed: " + (e?.message ?? String(e)));
     }
     setImportLoading(false);
-  }, [importedFiles]);
+  }, [importedFiles, state.txs]);
 
   const commitImport = async () => {
     if (!importResult || importResult.rows.length === 0) return;
