@@ -1143,6 +1143,7 @@ tbody tr { transition: background var(--lt-tr); }
 /* ── SETTINGS ── */
 .settings-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .settings-prefs-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+.settings-preview-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
 
 /* ── DASHBOARD GRIDS ── */
 .dashboard-charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
