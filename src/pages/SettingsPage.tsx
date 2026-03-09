@@ -204,6 +204,14 @@ const SettingsPage = forwardRef<HTMLDivElement, Record<string, never>>(function 
         </div>
       </div>
 
+      {/* Live Preview */}
+      <div className="panel" style={{ marginTop: 10 }}>
+        <div className="panel-head"><h2>Live Preview</h2><span className="pill">{LAYOUTS.find(l => l.id === state.layout)?.name} · Theme {state.theme.slice(1)}</span></div>
+        <div className="panel-body">
+          <LivePreview colors={currentLayoutColors[state.theme]} layoutName={state.layout} />
+        </div>
+      </div>
+
       {/* Tracking + Currency side by side */}
       <div className="settings-row" style={{ marginTop: 10 }}>
         {/* Tracking Method */}
