@@ -187,7 +187,13 @@ app.post('/batch', async (c) => {
       createdIds.push(id);
       if (tx.external_id) externalIds.add(tx.external_id);
     } catch (err: any) {
-      errors.push({ index: i, reason: err.message });
+      // Treat unique constraint violations as skipped duplicates, not errors
+      const msg = String(err?.message || "");
+      if (msg.includes("UNIQUE constraint failed") || msg.includes("unique")) {
+        skippedDuplicates.push(i);
+      } else {
+        errors.push({ index: i, reason: msg });
+      }
     }
   }
 
