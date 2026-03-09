@@ -209,7 +209,17 @@ export default function MarketTable({ coins, isWatched, toggleWatch, timeRange, 
     });
   };
 
-  const columns = useMemo(() => ALL_COLUMNS.filter(c => visibleCols.includes(c.key)), [visibleCols]);
+  const saveColOrder = (order: string[]) => {
+    setColOrder(order);
+    localStorage.setItem("market_col_order", JSON.stringify(order));
+  };
+
+  const columns = useMemo(() => {
+    return colOrder
+      .filter(k => visibleCols.includes(k))
+      .map(k => ALL_COLUMNS.find(c => c.key === k)!)
+      .filter(Boolean);
+  }, [visibleCols, colOrder]);
 
   const baseCoins = useMemo(() => {
     if (watchOnly) return coins.filter(c => isWatched(c.symbol));
