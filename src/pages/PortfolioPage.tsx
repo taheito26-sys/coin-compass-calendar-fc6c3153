@@ -323,7 +323,7 @@ export default function PortfolioPage() {
       </div>
 
       {/* Asset filter */}
-      <AssetFilter symbols={allSymbols} selected={filterSyms} onChange={setFilterSyms} />
+      <AssetFilter allSymbols={allSymbols} selected={filterSyms} onChange={setFilterSyms} />
 
       {/* Toolbar */}
       <div style={{ display: "flex", gap: 8, marginBottom: 8, alignItems: "center", flexWrap: "wrap" }}>
