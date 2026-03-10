@@ -5,10 +5,10 @@
  */
 import React, { createContext, useContext } from "react";
 
-/** Detect if we're in a preview or dev environment */
+/** Detect if we're in a preview or dev environment (NOT the published URL) */
 export function isPreviewEnv(): boolean {
   const host = window.location.hostname;
-  if (host.includes("lovable.app")) return true;
+  // lovableproject.com = dev/preview; lovable.app = published production
   if (host.includes("lovableproject.com")) return true;
   if (host === "localhost" || host === "127.0.0.1") return true;
   if (import.meta.env.DEV) return true;
