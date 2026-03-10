@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@clerk/react";
+import { useAuthBridge } from "@/lib/authAdapter";
 import {
   fetchAssets,
   fetchPrices,
@@ -132,7 +132,7 @@ function buildPositions(
 const PRICE_POLL_MS = 120000;
 
 export function usePortfolio(): PortfolioData {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isSignedIn, getToken } = useAuthBridge();
   const [positions, setPositions] = useState<Position[]>([]);
   const [txCount, setTxCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -248,7 +248,7 @@ export function usePortfolio(): PortfolioData {
     assetCount: positions.length,
     txCount,
     priceAge: derived.priceAge,
-    loading: !isLoaded || loading,
+    loading: loading,
     error,
     authenticated: Boolean(isSignedIn),
     workerOnline,
