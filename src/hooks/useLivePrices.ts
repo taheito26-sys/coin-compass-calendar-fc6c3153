@@ -45,15 +45,22 @@ export interface LiveCoin {
 
 import { isWorkerConfigured } from "@/lib/api";
 
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://cryptotracker-api.taheito26.workers.dev").replace(/\/$/, "");
+// Use the centralized Worker URL — NO hardcoded fallback
+const WORKER_BASE = (() => {
+  const raw = (import.meta.env.VITE_WORKER_API_URL || "").trim();
+  if (!raw) return "";
+  try { const u = new URL(raw); return raw.replace(/\/$/, ""); } catch { return ""; }
+})();
 
 let _marketCache: LiveCoin[] = [];
 let _marketCacheTs = 0;
 let _marketFetching = false;
 let _marketListeners = new Set<() => void>();
 let _lastSource = "";
+let _consecutiveFailures = 0;
 
-const POLL_MS = 180_000;
+const BASE_POLL_MS = 180_000;
+const MAX_POLL_MS = 600_000; // 10 min max backoff
 const STALE_MS = 170_000;
 
 function notifyListeners() {
