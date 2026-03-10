@@ -1,5 +1,4 @@
-import { PAGES } from "@/lib/pageRegistry";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useCrypto } from "@/lib/cryptoContext";
 
@@ -11,6 +10,15 @@ interface SearchResult {
   icon?: string;
 }
 
+const PAGES = [
+  { id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation · Heatmap" },
+  { id: "assets", label: "Assets", sub: "Positions · P&L · Lots" },
+  { id: "calendar", label: "Calendar", sub: "Daily P&L · Per Coin" },
+  { id: "ledger", label: "Ledger", sub: "Journal · Import · Manual Entry" },
+  { id: "markets", label: "Markets", sub: "Live Prices · Bubbles" },
+  { id: "settings", label: "Settings", sub: "Layout · Themes · Data" },
+];
+
 export default function GlobalSearch({ onNav }: { onNav: (page: string) => void }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState(false);
@@ -19,6 +27,7 @@ export default function GlobalSearch({ onNav }: { onNav: (page: string) => void 
   const { state } = useCrypto();
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  // Close on outside click
   useEffect(() => {
     const h = (e: MouseEvent) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
@@ -27,6 +36,7 @@ export default function GlobalSearch({ onNav }: { onNav: (page: string) => void 
     return () => document.removeEventListener("mousedown", h);
   }, []);
 
+  // Keyboard shortcut Cmd/Ctrl+K
   useEffect(() => {
     const h = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === "k") {
@@ -44,7 +54,7 @@ export default function GlobalSearch({ onNav }: { onNav: (page: string) => void 
     const q = query.toLowerCase();
     const out: SearchResult[] = [];
 
-    // Pages from registry
+    // Pages
     for (const p of PAGES) {
       if (p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q)) {
         out.push({ type: "page", id: p.id, label: p.label, sub: p.sub });
@@ -52,7 +62,7 @@ export default function GlobalSearch({ onNav }: { onNav: (page: string) => void 
     }
 
     // Portfolio positions
-    const txSyms = new Set((state.txs || []).map(t => t.asset?.toUpperCase()).filter(Boolean));
+    const txSyms = new Set(state.txs.map(t => t.asset.toUpperCase()));
     for (const sym of txSyms) {
       if (sym.toLowerCase().includes(q)) {
         out.push({ type: "position", id: sym, label: sym, sub: "Your position" });
@@ -60,15 +70,15 @@ export default function GlobalSearch({ onNav }: { onNav: (page: string) => void 
     }
 
     // Coins
-    const coinMatches = (coins || [])
-      .filter(c => c.symbol?.toLowerCase().includes(q) || c.name?.toLowerCase().includes(q))
+    const coinMatches = coins
+      .filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
       .slice(0, 8);
     for (const c of coinMatches) {
-      if (!out.some(r => r.id === c.symbol?.toUpperCase() && r.type === "position")) {
+      if (!out.some(r => r.id === c.symbol.toUpperCase() && r.type === "position")) {
         out.push({
           type: "coin",
           id: c.id,
-          label: `${c.symbol?.toUpperCase()} · ${c.name}`,
+          label: `${c.symbol.toUpperCase()} · ${c.name}`,
           sub: `$${c.current_price?.toLocaleString()} · #${c.market_cap_rank}`,
         });
       }

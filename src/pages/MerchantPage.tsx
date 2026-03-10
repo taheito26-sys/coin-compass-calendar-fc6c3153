@@ -3,7 +3,7 @@
  * Tabs: Overview, Directory, Invites, Relationships, Deals, Messages, Approvals, Notifications, Audit, Settings
  */
 import { useState, useEffect, useCallback } from "react";
-import { useAuthBridge } from "@/lib/auth";
+import { useAuth } from "@clerk/react";
 import * as api from "@/lib/merchantApi";
 
 type MerchantTab = "overview" | "directory" | "invites" | "relationships" | "deals" | "messages" | "approvals" | "notifications" | "audit" | "settings";
@@ -744,7 +744,7 @@ function AuditTab() {
 
 // ── Main Page ──
 export default function MerchantPage() {
-  const { isSignedIn } = useAuthBridge();
+  const { isSignedIn } = useAuth();
   const [profile, setProfile] = useState<api.MerchantProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<MerchantTab>("overview");

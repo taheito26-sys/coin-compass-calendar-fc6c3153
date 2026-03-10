@@ -1,4 +1,8 @@
-import { PAGES } from "@/lib/pageRegistry";
+/**
+ * CommandPalette — power-user ⌘K command interface
+ * Inspired by TerminalCoin TUI + Linear/Raycast patterns
+ * Replaces basic search with actions + navigation + search
+ */
 import { useState, useRef, useEffect, useMemo, useCallback } from "react";
 import { useLivePrices } from "@/hooks/useLivePrices";
 import { useCrypto } from "@/lib/cryptoContext";
@@ -13,6 +17,16 @@ interface CmdItem {
   icon?: string;
   action?: () => void;
 }
+
+const PAGES: CmdItem[] = [
+  { type: "page", id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation · Heatmap", icon: "📊" },
+  { type: "page", id: "assets", label: "Portfolio", sub: "Positions · P&L · Lots", icon: "💼" },
+  { type: "page", id: "merchant", label: "Merchant", sub: "Deals · Collaboration · Approvals", icon: "🤝" },
+  { type: "page", id: "markets", label: "Markets", sub: "Live Prices · Watchlist", icon: "🌐" },
+  { type: "page", id: "ledger", label: "Ledger", sub: "Journal · Import · Manual Entry", icon: "📒" },
+  { type: "page", id: "calendar", label: "Calendar", sub: "Daily P&L · Per Coin", icon: "📅" },
+  { type: "page", id: "settings", label: "Settings", sub: "Layout · Themes · Alerts · Vault", icon: "⚙️" },
+];
 
 export default function CommandPalette({ onNav }: { onNav: (page: string) => void }) {
   const [query, setQuery] = useState("");
@@ -49,12 +63,6 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
     return () => document.removeEventListener("keydown", h);
   }, []);
 
-  // Build page items from registry
-  const PAGE_ITEMS: CmdItem[] = useMemo(
-    () => PAGES.map((p) => ({ type: "page" as const, id: p.id, label: p.label, sub: p.sub, icon: p.emoji })),
-    [],
-  );
-
   // Quick actions
   const quickActions: CmdItem[] = useMemo(() => [
     { type: "action", id: "new-tx", label: "Log Transaction", sub: "Open Ledger to add a new entry", icon: "➕",
@@ -62,6 +70,7 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
     { type: "action", id: "toggle-theme", label: "Toggle Dark/Light", sub: `Current: ${state.theme || "t1"}`, icon: "🌓",
       action: () => {
         const dark = ["t4", "t5"];
+        const light = ["t1", "t2", "t3"];
         const current = state.theme || "t1";
         const next = dark.includes(current) ? "t1" : "t4";
         setState(s => ({ ...s, theme: next }));
@@ -75,34 +84,38 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
   ], [state.theme, onNav, setState]);
 
   const results = useMemo(() => {
-    if (!query.trim() && mode === "search") return [...quickActions.slice(0, 4), ...PAGE_ITEMS];
+    if (!query.trim() && mode === "search") return [...quickActions.slice(0, 4), ...PAGES];
     
     const q = query.toLowerCase();
     const out: CmdItem[] = [];
 
+    // Quick actions
     for (const a of quickActions) {
       if (a.label.toLowerCase().includes(q) || a.sub.toLowerCase().includes(q)) out.push(a);
     }
 
-    for (const p of PAGE_ITEMS) {
+    // Pages
+    for (const p of PAGES) {
       if (p.label.toLowerCase().includes(q) || p.sub.toLowerCase().includes(q)) out.push(p);
     }
 
-    const txSyms = new Set((state.txs || []).map(t => t.asset?.toUpperCase()).filter(Boolean));
+    // Portfolio positions
+    const txSyms = new Set(state.txs.map(t => t.asset.toUpperCase()));
     for (const sym of txSyms) {
       if (sym.toLowerCase().includes(q)) {
         out.push({ type: "position", id: sym, label: sym, sub: "Your position", icon: "📌" });
       }
     }
 
-    const coinMatches = (coins || [])
-      .filter(c => c.symbol?.toLowerCase().includes(q) || c.name?.toLowerCase().includes(q))
+    // Coins from CoinGecko
+    const coinMatches = coins
+      .filter(c => c.symbol.toLowerCase().includes(q) || c.name.toLowerCase().includes(q))
       .slice(0, 6);
     for (const c of coinMatches) {
-      if (!out.some(r => r.id === c.symbol?.toUpperCase() && r.type === "position")) {
+      if (!out.some(r => r.id === c.symbol.toUpperCase() && r.type === "position")) {
         out.push({
           type: "coin", id: c.id,
-          label: `${c.symbol?.toUpperCase()} · ${c.name}`,
+          label: `${c.symbol.toUpperCase()} · ${c.name}`,
           sub: `$${c.current_price?.toLocaleString()} · #${c.market_cap_rank}`,
           icon: "🪙",
         });
@@ -110,7 +123,7 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
     }
 
     return out.slice(0, 14);
-  }, [query, mode, quickActions, PAGE_ITEMS, state.txs, coins]);
+  }, [query, mode, quickActions, state.txs, coins]);
 
   const handleSelect = useCallback((item: CmdItem) => {
     if (item.action) item.action();
@@ -129,11 +142,21 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
   };
 
   const typeLabel = (t: CmdType) => {
-    switch (t) { case "action": return "Action"; case "page": return "Page"; case "position": return "Position"; case "coin": return "Coin"; }
+    switch (t) {
+      case "action": return "Action";
+      case "page": return "Page";
+      case "position": return "Position";
+      case "coin": return "Coin";
+    }
   };
 
   const typeColor = (t: CmdType) => {
-    switch (t) { case "action": return "var(--brand)"; case "page": return "var(--t5, #0ea5e9)"; case "position": return "var(--good)"; case "coin": return "var(--warn)"; }
+    switch (t) {
+      case "action": return "var(--brand)";
+      case "page": return "var(--t5, #0ea5e9)";
+      case "position": return "var(--good)";
+      case "coin": return "var(--warn)";
+    }
   };
 
   return (
@@ -159,6 +182,7 @@ export default function CommandPalette({ onNav }: { onNav: (page: string) => voi
           boxShadow: "0 12px 40px rgba(0,0,0,.3)",
           marginTop: 4, minWidth: 320,
         }}>
+          {/* Hint */}
           <div style={{
             padding: "6px 12px", fontSize: 9, color: "var(--muted2)",
             borderBottom: "1px solid var(--line2)",

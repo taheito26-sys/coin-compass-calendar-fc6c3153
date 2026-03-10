@@ -43,24 +43,17 @@ export interface LiveCoin {
 // Priority: Worker Proxy (server-side, no CORS) → Direct browser requests
 // The Worker proxy itself cascades: CoinGecko → CoinCap → CoinPaprika → CryptoCompare → Binance
 
-// Worker URL is resolved locally — no dependency on api.ts singleton
+import { isWorkerConfigured } from "@/lib/api";
 
-// Use the centralized Worker URL — NO hardcoded fallback
-const WORKER_BASE = (() => {
-  const raw = (import.meta.env.VITE_WORKER_API_URL || "").trim();
-  if (!raw) return "";
-  try { const u = new URL(raw); return raw.replace(/\/$/, ""); } catch { return ""; }
-})();
+const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://cryptotracker-api.taheito26.workers.dev").replace(/\/$/, "");
 
 let _marketCache: LiveCoin[] = [];
 let _marketCacheTs = 0;
 let _marketFetching = false;
 let _marketListeners = new Set<() => void>();
 let _lastSource = "";
-let _consecutiveFailures = 0;
 
-const BASE_POLL_MS = 180_000;
-const MAX_POLL_MS = 600_000; // 10 min max backoff
+const POLL_MS = 180_000;
 const STALE_MS = 170_000;
 
 function notifyListeners() {
@@ -140,15 +133,14 @@ async function doMarketFetch() {
   if (_marketFetching) return;
   _marketFetching = true;
   try {
-    // 1. Try Worker proxy first — only if URL is actually configured (no hardcoded fallback)
-    if (WORKER_BASE) {
+    // 1. Try Worker proxy first (server-side, no CORS/rate-limit issues)
+    if (isWorkerConfigured()) {
       try {
-        const { coins, source } = await fetchViaWorkerProxy(AbortSignal.timeout(10000));
+        const { coins, source } = await fetchViaWorkerProxy(AbortSignal.timeout(15000));
         if (coins.length > 0) {
           _marketCache = coins;
           _marketCacheTs = Date.now();
           _lastSource = source;
-          _consecutiveFailures = 0;
           console.log(`[Prices] Loaded ${coins.length} coins via ${source}`);
           notifyListeners();
           return;
@@ -167,12 +159,11 @@ async function doMarketFetch() {
 
     for (const source of directSources) {
       try {
-        const coins = await source.fn(AbortSignal.timeout(10000));
+        const coins = await source.fn(AbortSignal.timeout(15000));
         if (coins.length > 0) {
           _marketCache = coins;
           _marketCacheTs = Date.now();
           _lastSource = `Direct:${source.name}`;
-          _consecutiveFailures = 0;
           console.log(`[Prices] Loaded ${coins.length} coins direct from ${source.name}`);
           notifyListeners();
           return;
@@ -183,9 +174,7 @@ async function doMarketFetch() {
       }
     }
 
-    // All sources failed — increase backoff
-    _consecutiveFailures++;
-    console.warn(`[Prices] All sources failed (attempt ${_consecutiveFailures}), keeping stale cache`);
+    console.warn("[Prices] All sources failed, keeping stale cache");
   } finally {
     _marketFetching = false;
   }
@@ -212,33 +201,18 @@ function restoreCache() {
 
 restoreCache();
 
-let _pollTimeoutId: number | null = null;
-
-function getNextPollDelay(): number {
-  if (_consecutiveFailures <= 0) return BASE_POLL_MS;
-  // Exponential backoff: 3min → 6min → 10min (capped)
-  return Math.min(BASE_POLL_MS * Math.pow(2, _consecutiveFailures), MAX_POLL_MS);
-}
-
-function scheduleNextPoll() {
-  if (_pollTimeoutId) clearTimeout(_pollTimeoutId);
-  const delay = getNextPollDelay();
-  _pollTimeoutId = window.setTimeout(() => {
-    if (Date.now() - _marketCacheTs > STALE_MS && !_marketFetching) {
-      doMarketFetch().then(() => { persistCache(); scheduleNextPoll(); });
-    } else {
-      scheduleNextPoll();
-    }
-  }, delay);
-}
+let _pollIntervalId: number | null = null;
 
 function ensureMarketPolling() {
-  if (_pollTimeoutId) return;
+  if (_pollIntervalId) return;
   if (Date.now() - _marketCacheTs > STALE_MS && !_marketFetching) {
-    doMarketFetch().then(() => { persistCache(); scheduleNextPoll(); });
-  } else {
-    scheduleNextPoll();
+    doMarketFetch().then(persistCache);
   }
+  _pollIntervalId = window.setInterval(() => {
+    if (Date.now() - _marketCacheTs > STALE_MS && !_marketFetching) {
+      doMarketFetch().then(persistCache);
+    }
+  }, POLL_MS);
 }
 
 // ─── Shared hook ───────────────────────────────────────────
