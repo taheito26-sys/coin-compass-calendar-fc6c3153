@@ -34,18 +34,30 @@ const fallbackCtx: CryptoCtx = {
 const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
-/** Safe Clerk hooks — returns nulls if Clerk isn't available */
-function useClerkSafe() {
-  const authMode = getAuthMode();
-  if (authMode !== "clerk") {
-    return { isSignedIn: false, getToken: async () => null as string | null, userId: null as string | null };
+/**
+ * Safe Clerk hook wrapper. Returns stub values when Clerk is not active.
+ * IMPORTANT: Hooks must be called unconditionally, so we import useAuth
+ * but guard usage based on auth mode.
+ */
+function useClerkAuth() {
+  const mode = getAuthMode();
+  // We must always call the hook (rules of hooks), but we gate the import
+  if (mode === "clerk") {
+    try {
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      const { useAuth } = require("@clerk/react") as typeof import("@clerk/react");
+      // eslint-disable-next-line react-hooks/rules-of-hooks
+      return useAuth();
+    } catch {
+      // Clerk not available
+    }
   }
-  try {
-    const { useAuth } = require("@clerk/react");
-    return useAuth();
-  } catch {
-    return { isSignedIn: false, getToken: async () => null as string | null, userId: null as string | null };
-  }
+  // Return stub — this is stable and won't change between renders
+  return {
+    isSignedIn: false as boolean,
+    getToken: (async () => null) as () => Promise<string | null>,
+    userId: null as string | null,
+  };
 }
 
 /** Map backend ApiTransaction[] to CryptoTx[] using asset catalog */
@@ -67,18 +79,9 @@ function mapTransactions(
       const fee = Number(tx.fee_amount || 0);
 
       return {
-        id: tx.id,
-        ts,
-        type: tx.type,
-        asset: symbol,
-        qty,
-        price,
-        total: qty * price,
-        fee,
-        feeAsset: tx.fee_currency || "USD",
-        accountId: "acc_main",
-        note: tx.note || "",
-        lots: "",
+        id: tx.id, ts, type: tx.type, asset: symbol, qty, price,
+        total: qty * price, fee, feeAsset: tx.fee_currency || "USD",
+        accountId: "acc_main", note: tx.note || "", lots: "",
       };
     })
     .filter((tx): tx is NonNullable<typeof tx> => tx !== null);
@@ -89,9 +92,13 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
   const lastHydratedUserRef = useRef<string | null>(null);
 
-  const { isSignedIn, getToken, userId } = useClerkSafe();
+  // Auth state — safe for both Clerk and preview modes
+  const clerkAuth = useClerkAuth();
+  const isSignedIn = clerkAuth.isSignedIn ?? false;
+  const getToken = clerkAuth.getToken;
+  const userId = clerkAuth.userId ?? null;
 
-  // Wire auth token provider when Clerk state changes
+  // Wire auth token provider
   useEffect(() => {
     setAuthTokenProvider(async () => {
       if (!isSignedIn) return null;
@@ -141,14 +148,10 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
 
       const assetById = new Map(assets.map((a) => [a.id, a]));
       const canonicalTxs = mapTransactions(transactions, assetById);
-
       const canonicalImported = (importedFiles || []).map((file: any) => ({
-        name: file.file_name,
-        hash: file.file_hash,
+        name: file.file_name, hash: file.file_hash,
         importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
-        exchange: file.exchange,
-        exportType: file.export_type,
-        rowCount: Number(file.row_count || 0),
+        exchange: file.exchange, exportType: file.export_type, rowCount: Number(file.row_count || 0),
       }));
 
       const prefUpdates: Partial<CryptoState> = {};
@@ -158,24 +161,13 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
       if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
 
       setStateRaw((prev) => {
-        const next = {
-          ...prev,
-          ...prefUpdates,
-          txs: canonicalTxs,
-          importedFiles: canonicalImported,
-          syncStatus: "synced" as const,
-          syncError: undefined,
-        };
+        const next = { ...prev, ...prefUpdates, txs: canonicalTxs, importedFiles: canonicalImported, syncStatus: "synced" as const, syncError: undefined };
         saveState(next);
         return next;
       });
     } catch (err) {
       console.error("[crypto-context] Rehydration failed:", err);
-      setStateRaw((prev) => ({
-        ...prev,
-        syncStatus: "error" as const,
-        syncError: err instanceof Error ? err.message : "Backend unreachable",
-      }));
+      setStateRaw((prev) => ({ ...prev, syncStatus: "error" as const, syncError: err instanceof Error ? err.message : "Backend unreachable" }));
     }
   }, [isSignedIn]);
 
@@ -185,13 +177,7 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     if (!isSignedIn || !userId) {
       if (lastHydratedUserRef.current !== null) {
         lastHydratedUserRef.current = null;
-        setStateRaw((prev) => ({
-          ...prev,
-          txs: [],
-          importedFiles: [],
-          syncStatus: "idle" as const,
-          syncError: undefined,
-        }));
+        setStateRaw((prev) => ({ ...prev, txs: [], importedFiles: [], syncStatus: "idle" as const, syncError: undefined }));
       }
       return;
     }
@@ -211,19 +197,14 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
           fetchImportedFiles().catch(() => []),
           fetchUserPreferences().catch(() => ({} as Record<string, string>)),
         ]);
-
         if (cancelled) return;
 
         const assetById = new Map(assets.map((a) => [a.id, a]));
         const canonicalTxs = mapTransactions(transactions, assetById);
-
         const canonicalImported = (importedFiles || []).map((file: any) => ({
-          name: file.file_name,
-          hash: file.file_hash,
+          name: file.file_name, hash: file.file_hash,
           importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
-          exchange: file.exchange,
-          exportType: file.export_type,
-          rowCount: Number(file.row_count || 0),
+          exchange: file.exchange, exportType: file.export_type, rowCount: Number(file.row_count || 0),
         }));
 
         const prefUpdates: Partial<CryptoState> = {};
@@ -234,23 +215,15 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
 
         if (!cancelled) {
           setStateRaw((prev) => {
-            const next = {
-              ...prev,
-              ...prefUpdates,
-              txs: canonicalTxs,
-              importedFiles: canonicalImported,
-              syncStatus: "synced" as const,
-              syncError: undefined,
-            };
+            const next = { ...prev, ...prefUpdates, txs: canonicalTxs, importedFiles: canonicalImported, syncStatus: "synced" as const, syncError: undefined };
             saveState(next);
             return next;
           });
         }
 
-        // Run migration
         const migrationResult = await runMigration();
         if (migrationResult?.migrated && migrationResult.txsMigrated > 0 && !cancelled) {
-          console.info(`[migration] Migrated ${migrationResult.txsMigrated} txs, ${migrationResult.filesMigrated} files, ${migrationResult.txsSkippedDuplicate} skipped duplicates`);
+          console.info(`[migration] Migrated ${migrationResult.txsMigrated} txs`);
           const newTxs = await fetchTransactions();
           const newImported = await fetchImportedFiles().catch(() => []);
           if (!cancelled) {
@@ -258,12 +231,9 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
               ...prev,
               txs: mapTransactions(newTxs, assetById),
               importedFiles: (newImported || []).map((file: any) => ({
-                name: file.file_name,
-                hash: file.file_hash,
+                name: file.file_name, hash: file.file_hash,
                 importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
-                exchange: file.exchange,
-                exportType: file.export_type,
-                rowCount: Number(file.row_count || 0),
+                exchange: file.exchange, exportType: file.export_type, rowCount: Number(file.row_count || 0),
               })),
               syncStatus: "synced" as const,
             }));
@@ -272,11 +242,7 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
       } catch (err) {
         console.error("[crypto-context] Backend hydration failed:", err);
         if (!cancelled) {
-          setStateRaw((prev) => ({
-            ...prev,
-            syncStatus: "error" as const,
-            syncError: err instanceof Error ? err.message : "Backend unreachable",
-          }));
+          setStateRaw((prev) => ({ ...prev, syncStatus: "error" as const, syncError: err instanceof Error ? err.message : "Backend unreachable" }));
         }
       }
     })();
@@ -290,32 +256,15 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     if (!isSignedIn || !isWorkerConfigured()) return;
     if (state.syncStatus !== "synced") return;
 
-    const currentPrefs = JSON.stringify({
-      base: state.base,
-      method: state.method,
-      layout: state.layout,
-      theme: state.theme,
-    });
-
+    const currentPrefs = JSON.stringify({ base: state.base, method: state.method, layout: state.layout, theme: state.theme });
     if (prevPrefsRef.current === currentPrefs) return;
-    if (prevPrefsRef.current === "") {
-      prevPrefsRef.current = currentPrefs;
-      return;
-    }
-
+    if (prevPrefsRef.current === "") { prevPrefsRef.current = currentPrefs; return; }
     prevPrefsRef.current = currentPrefs;
 
     const timer = setTimeout(() => {
-      saveUserPreferences({
-        base: state.base,
-        method: state.method,
-        layout: state.layout,
-        theme: state.theme,
-      }).catch((err) => {
-        console.warn("[crypto-context] Failed to sync preferences:", err);
-      });
+      saveUserPreferences({ base: state.base, method: state.method, layout: state.layout, theme: state.theme })
+        .catch((err) => console.warn("[crypto-context] Failed to sync preferences:", err));
     }, 1000);
-
     return () => clearTimeout(timer);
   }, [state.base, state.method, state.layout, state.theme, state.syncStatus, isSignedIn]);
 
@@ -324,14 +273,10 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
     document.body.setAttribute("data-layout", state.layout);
     document.body.setAttribute("data-theme", state.theme);
     const layoutFonts: Record<string, string> = {
-      flux: "'Inter', sans-serif",
-      cipher: "'JetBrains Mono', monospace",
-      vector: "'Plus Jakarta Sans', sans-serif",
-      aurora: "'Plus Jakarta Sans', sans-serif",
-      carbon: "'JetBrains Mono', monospace",
-      prism: "'Space Grotesk', sans-serif",
-      noir: "'Inter', sans-serif",
-      pulse: "'DM Sans', 'Inter', sans-serif",
+      flux: "'Inter', sans-serif", cipher: "'JetBrains Mono', monospace",
+      vector: "'Plus Jakarta Sans', sans-serif", aurora: "'Plus Jakarta Sans', sans-serif",
+      carbon: "'JetBrains Mono', monospace", prism: "'Space Grotesk', sans-serif",
+      noir: "'Inter', sans-serif", pulse: "'DM Sans', 'Inter', sans-serif",
     };
     document.documentElement.style.setProperty("--app-font", layoutFonts[state.layout] || "'Inter', sans-serif");
   }, [state.layout, state.theme]);

@@ -1,10 +1,14 @@
 import { useState, Suspense } from "react";
-import { getAuthMode, isClerkConfigured } from "@/lib/authAdapter";
+import { getAuthMode } from "@/lib/authAdapter";
 import { PAGES, PAGE_MAP, DEFAULT_PAGE, getPageTitle, validatePageId } from "@/lib/pageRegistry";
 import { ErrorBoundary, PageErrorBoundary } from "@/components/ErrorBoundary";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
+
+// Conditional Clerk imports — only used when auth mode is "clerk"
+// These are static imports but only invoked inside clerk-gated components
+import { ClerkProvider, SignIn, UserButton, useAuth, useUser } from "@clerk/react";
 
 /* ── Preview mode banner ── */
 function PreviewBanner() {
@@ -46,10 +50,12 @@ function AppShell({
   onLogout,
   userLabel,
   isPreview,
+  clerkUserButton,
 }: {
   onLogout?: () => Promise<void>;
   userLabel?: string;
   isPreview: boolean;
+  clerkUserButton?: boolean;
 }) {
   const [pageId, setPageId] = useState(DEFAULT_PAGE);
   const { toastMsg } = useCrypto();
@@ -65,9 +71,16 @@ function AppShell({
       <div className="app">
         <Sidebar page={safePage} onNav={handleNav} onLogout={onLogout} />
         <div className="mainWrap">
-          {/* User bar — only in Clerk mode */}
-          {!isPreview && (
-            <ClerkUserBar userLabel={userLabel} />
+          {clerkUserButton && (
+            <div
+              className="appUserBar"
+              style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, padding: "12px 18px 0" }}
+            >
+              {userLabel ? (
+                <span style={{ fontSize: 12, color: "var(--muted, #a1a1aa)" }}>{userLabel}</span>
+              ) : null}
+              <UserButton />
+            </div>
           )}
 
           <Topbar title={title} sub={sub} onNav={handleNav} />
@@ -79,7 +92,10 @@ function AppShell({
                   <PageRenderer pageDef={pageDef} onNav={handleNav} />
                 ) : (
                   <div style={{ padding: 48, textAlign: "center", color: "var(--muted, #a1a1aa)" }}>
-                    Page not found. <button onClick={() => handleNav(DEFAULT_PAGE)} style={{ color: "var(--brand)", cursor: "pointer", background: "none", border: "none" }}>Go to Dashboard</button>
+                    Page not found.{" "}
+                    <button onClick={() => handleNav(DEFAULT_PAGE)} style={{ color: "var(--brand)", cursor: "pointer", background: "none", border: "none" }}>
+                      Go to Dashboard
+                    </button>
                   </div>
                 )}
               </Suspense>
@@ -97,38 +113,14 @@ function AppShell({
 /* ── Render page component, passing onNav to dashboard ── */
 function PageRenderer({ pageDef, onNav }: { pageDef: (typeof PAGES)[number]; onNav: (p: string) => void }) {
   const Component = pageDef.component;
-  // DashboardPage accepts onNav prop
   if (pageDef.id === "dashboard") {
     return <Component onNav={onNav} />;
   }
   return <Component />;
 }
 
-/* ── Clerk-specific user bar (only loaded when Clerk is active) ── */
-function ClerkUserBar({ userLabel }: { userLabel?: string }) {
-  // Dynamically import Clerk's UserButton to avoid crashing if Clerk isn't loaded
-  try {
-    const { UserButton } = require("@clerk/react");
-    return (
-      <div
-        className="appUserBar"
-        style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, padding: "12px 18px 0" }}
-      >
-        {userLabel ? (
-          <span style={{ fontSize: 12, color: "var(--muted, #a1a1aa)" }}>{userLabel}</span>
-        ) : null}
-        <UserButton />
-      </div>
-    );
-  } catch {
-    return null;
-  }
-}
-
-/* ── Clerk auth root — only used when Clerk is configured ── */
+/* ── Clerk auth root — only rendered inside ClerkProvider ── */
 function ClerkRoot() {
-  // These imports are safe because ClerkRoot is only rendered inside ClerkProvider
-  const { useAuth, useUser } = require("@clerk/react");
   const { isLoaded, isSignedIn, signOut } = useAuth();
   const { user } = useUser();
 
@@ -141,7 +133,6 @@ function ClerkRoot() {
   }
 
   if (!isSignedIn) {
-    const { SignIn } = require("@clerk/react");
     return (
       <div
         style={{
@@ -170,7 +161,7 @@ function ClerkRoot() {
   }
 
   const userLabel = user?.primaryEmailAddress?.emailAddress || user?.username || user?.fullName || "Signed in";
-  return <AppShell onLogout={() => signOut()} userLabel={userLabel} isPreview={false} />;
+  return <AppShell onLogout={() => signOut()} userLabel={userLabel} isPreview={false} clerkUserButton={true} />;
 }
 
 /* ── App entry point ── */
@@ -181,27 +172,13 @@ export default function App() {
     <ErrorBoundary>
       <CryptoProvider>
         {authMode === "clerk" ? (
-          <ClerkAuthWrapper />
+          <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
+            <ClerkRoot />
+          </ClerkProvider>
         ) : (
           <AppShell isPreview={true} />
         )}
       </CryptoProvider>
     </ErrorBoundary>
   );
-}
-
-/* ── Clerk wrapper — dynamically loads ClerkProvider ── */
-function ClerkAuthWrapper() {
-  try {
-    const { ClerkProvider } = require("@clerk/react");
-    const clerkKey = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
-    return (
-      <ClerkProvider publishableKey={clerkKey}>
-        <ClerkRoot />
-      </ClerkProvider>
-    );
-  } catch (err) {
-    console.error("[auth] Clerk failed to load, falling back to preview mode:", err);
-    return <AppShell isPreview={true} />;
-  }
 }
