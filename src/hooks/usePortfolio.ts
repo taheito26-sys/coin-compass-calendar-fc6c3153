@@ -248,7 +248,7 @@ export function usePortfolio(): PortfolioData {
     assetCount: positions.length,
     txCount,
     priceAge: derived.priceAge,
-    loading: !isLoaded || loading,
+    loading: loading,
     error,
     authenticated: Boolean(isSignedIn),
     workerOnline,
