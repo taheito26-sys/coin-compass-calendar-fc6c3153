@@ -235,6 +235,7 @@ export default function LedgerPage() {
   const startEdit = (t: any) => {
     setEditId(t.id);
     setEditType(t.type);
+    setEditAsset(t.asset);
     setEditQty(String(t.qty));
     setEditPrice(String(t.price));
   };

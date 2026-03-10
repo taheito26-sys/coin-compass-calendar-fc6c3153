@@ -81,6 +81,7 @@ app.put('/:id', async (c) => {
 
   // Explicit allowlist — only these fields may be updated
   const EDITABLE_FIELDS: Record<string, (v: unknown) => unknown> = {
+    asset_id: (v) => String(v),
     timestamp: (v) => String(v),
     type: (v) => String(v),
     qty: (v) => Number(v),

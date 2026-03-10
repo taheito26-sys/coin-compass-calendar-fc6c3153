@@ -108,7 +108,7 @@ export function useLedgerMutations() {
    */
   const updateLedgerTransaction = useCallback(async (
     txId: string,
-    updates: { type?: string; qty?: number; unit_price?: number },
+    updates: { type?: string; qty?: number; unit_price?: number; asset_id?: string },
   ): Promise<MutationResult> => {
     try {
       await ensureWriteReady();
