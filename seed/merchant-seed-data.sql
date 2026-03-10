@@ -1,22 +1,10 @@
 -- ============ CANONICAL MERCHANT PROFILES ============
 -- This file is the single source of truth for all merchant_profiles rows.
 -- Must run AFTER merchant-schema.sql, BEFORE merchant-full-cycle.sql.
-
--- Real user profile (parent row for all bbb... references)
-INSERT OR IGNORE INTO merchant_profiles (
-  id, owner_user_id, merchant_id, nickname, display_name,
-  merchant_type, region, default_currency, discoverability, bio,
-  status, created_at, updated_at
-) VALUES (
-  'bbb00000-0000-0000-0000-000000000000',
-  'user_3Ad6MYh466dWCuB3zpAWDe5eaUq',
-  'MRC-BBB00000',
-  'primary_owner',
-  'Primary Owner Merchant',
-  'independent', 'Middle East', 'USDT', 'public',
-  'Owner profile used by merchant full-cycle fixtures.',
-  'active', datetime('now'), datetime('now')
-);
+--
+-- The real user profile (id=69f8c25a-605b-4f2b-beca-8771ea5d2467, nickname=taheito)
+-- is created via the app. Do NOT re-insert it here.
+-- All fixture references use that actual id.
 
 -- Fake merchant profiles for testing
 INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
