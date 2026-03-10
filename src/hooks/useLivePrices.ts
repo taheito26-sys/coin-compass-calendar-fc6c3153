@@ -43,7 +43,7 @@ export interface LiveCoin {
 // Priority: Worker Proxy (server-side, no CORS) → Direct browser requests
 // The Worker proxy itself cascades: CoinGecko → CoinCap → CoinPaprika → CryptoCompare → Binance
 
-import { isWorkerConfigured } from "@/lib/api";
+// Worker URL is resolved locally — no dependency on api.ts singleton
 
 // Use the centralized Worker URL — NO hardcoded fallback
 const WORKER_BASE = (() => {
