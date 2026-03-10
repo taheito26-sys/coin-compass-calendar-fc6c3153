@@ -21,6 +21,7 @@ interface CmdItem {
 const PAGES: CmdItem[] = [
   { type: "page", id: "dashboard", label: "Dashboard", sub: "KPIs · Allocation · Heatmap", icon: "📊" },
   { type: "page", id: "assets", label: "Portfolio", sub: "Positions · P&L · Lots", icon: "💼" },
+  { type: "page", id: "merchant", label: "Merchant", sub: "Deals · Collaboration · Approvals", icon: "🤝" },
   { type: "page", id: "markets", label: "Markets", sub: "Live Prices · Watchlist", icon: "🌐" },
   { type: "page", id: "ledger", label: "Ledger", sub: "Journal · Import · Manual Entry", icon: "📒" },
   { type: "page", id: "calendar", label: "Calendar", sub: "Daily P&L · Per Coin", icon: "📅" },
