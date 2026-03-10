@@ -3,7 +3,7 @@
  * Tabs: Overview, Directory, Invites, Relationships, Deals, Messages, Approvals, Notifications, Audit, Settings
  */
 import { useState, useEffect, useCallback } from "react";
-import { useAuth } from "@clerk/react";
+import { useAuthBridge } from "@/lib/authAdapter";
 import * as api from "@/lib/merchantApi";
 
 type MerchantTab = "overview" | "directory" | "invites" | "relationships" | "deals" | "messages" | "approvals" | "notifications" | "audit" | "settings";
