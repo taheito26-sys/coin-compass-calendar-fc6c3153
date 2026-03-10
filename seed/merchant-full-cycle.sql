@@ -10,9 +10,8 @@ INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nicknam
 INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
   ('aaa00005-0000-0000-0000-000000000005', 'fake-user-005', 'MRC-Q7R8S9T0', 'midnight_fx', 'Midnight FX', 'independent', 'Africa', 'USDT', 'public', 'Cross-border payments and stablecoin liquidity provider.', 'active', '2026-02-01T18:00:00Z', '2026-02-01T18:00:00Z');
 
--- ============ REAL USER PROFILE ============
-INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at)
-VALUES ('bbb00000-0000-0000-0000-000000000000', 'user_3Ad6MYh466dWCuB3zpAWDe5eaUq', 'MRC-MYPROFILE', 'my_desk', 'My Trading Desk', 'desk', 'Middle East', 'USDT', 'public', 'Personal trading desk.', 'active', '2026-01-15T10:00:00Z', '2026-01-15T10:00:00Z');
+-- NOTE: The bbb... real user profile is defined in merchant-seed-data.sql (canonical source).
+-- This file assumes it already exists. Do NOT re-insert it here.
 
 -- ============ RELATIONSHIPS ============
 INSERT INTO merchant_relationships (id, merchant_a_id, merchant_b_id, relationship_type, status, shared_fields, approval_policy, created_at, updated_at) VALUES
