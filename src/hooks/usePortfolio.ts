@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuth } from "@clerk/react";
+import { useAuthBridge } from "@/lib/authAdapter";
 import {
   fetchAssets,
   fetchPrices,
