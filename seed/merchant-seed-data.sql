@@ -1,5 +1,25 @@
+-- ============ CANONICAL MERCHANT PROFILES ============
+-- This file is the single source of truth for all merchant_profiles rows.
+-- Must run AFTER merchant-schema.sql, BEFORE merchant-full-cycle.sql.
+
+-- Real user profile (parent row for all bbb... references)
+INSERT OR IGNORE INTO merchant_profiles (
+  id, owner_user_id, merchant_id, nickname, display_name,
+  merchant_type, region, default_currency, discoverability, bio,
+  status, created_at, updated_at
+) VALUES (
+  'bbb00000-0000-0000-0000-000000000000',
+  'user_3Ad6MYh466dWCuB3zpAWDe5eaUq',
+  'MRC-BBB00000',
+  'primary_owner',
+  'Primary Owner Merchant',
+  'independent', 'Middle East', 'USDT', 'public',
+  'Owner profile used by merchant full-cycle fixtures.',
+  'active', datetime('now'), datetime('now')
+);
+
 -- Fake merchant profiles for testing
-INSERT INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
+INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
   ('aaa00001-0000-0000-0000-000000000001', 'fake-user-001', 'MRC-A1B2C3D4', 'alpha_trading', 'Alpha Trading Desk', 'desk', 'Asia', 'USDT', 'public', 'High-frequency crypto desk specializing in BTC/ETH arbitrage across CEXs.', 'active', '2025-11-01T10:00:00Z', '2025-11-01T10:00:00Z'),
   ('aaa00002-0000-0000-0000-000000000002', 'fake-user-002', 'MRC-E5F6G7H8', 'luna_capital', 'Luna Capital Partners', 'partner', 'Europe', 'USDT', 'public', 'Institutional lending and DeFi yield strategies. Basel-based.', 'active', '2025-12-05T08:30:00Z', '2025-12-05T08:30:00Z'),
   ('aaa00003-0000-0000-0000-000000000003', 'fake-user-003', 'MRC-I9J0K1L2', 'sensei_otc', 'Sensei OTC', 'independent', 'Middle East', 'USDT', 'public', 'OTC broker for large-block crypto trades. 24/7 settlement.', 'active', '2026-01-10T14:00:00Z', '2026-01-10T14:00:00Z'),
