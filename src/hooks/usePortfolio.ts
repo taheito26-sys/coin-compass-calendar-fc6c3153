@@ -132,7 +132,7 @@ function buildPositions(
 const PRICE_POLL_MS = 120000;
 
 export function usePortfolio(): PortfolioData {
-  const { isLoaded, isSignedIn, getToken } = useAuth();
+  const { isSignedIn, getToken } = useAuthBridge();
   const [positions, setPositions] = useState<Position[]>([]);
   const [txCount, setTxCount] = useState(0);
   const [loading, setLoading] = useState(true);

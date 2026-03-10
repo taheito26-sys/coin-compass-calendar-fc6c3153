@@ -744,7 +744,7 @@ function AuditTab() {
 
 // ── Main Page ──
 export default function MerchantPage() {
-  const { isSignedIn } = useAuth();
+  const { isSignedIn } = useAuthBridge();
   const [profile, setProfile] = useState<api.MerchantProfile | null>(null);
   const [loading, setLoading] = useState(true);
   const [tab, setTab] = useState<MerchantTab>("overview");
