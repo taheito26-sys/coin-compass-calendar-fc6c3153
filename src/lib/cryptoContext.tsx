@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, forwardRef } from "react";
-import { useAuthBridge } from "@/lib/authAdapter";
+import { useAuthBridge } from "@/lib/auth";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
 import {
   fetchImportedFiles,

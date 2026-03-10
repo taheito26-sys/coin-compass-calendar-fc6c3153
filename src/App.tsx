@@ -1,5 +1,5 @@
 import { useState, Suspense, lazy } from "react";
-import { getAuthMode, PreviewAuthProvider } from "@/lib/authAdapter";
+import { getAuthMode, PreviewAuthProvider } from "@/lib/auth";
 import { PAGES, PAGE_MAP, DEFAULT_PAGE, getPageTitle, validatePageId } from "@/lib/pageRegistry";
 import { ErrorBoundary, PageErrorBoundary } from "@/components/ErrorBoundary";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
