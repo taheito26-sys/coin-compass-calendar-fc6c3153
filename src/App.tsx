@@ -1,6 +1,5 @@
-import { useState, Suspense, lazy, useEffect } from "react";
-import { getAuthMode, isClerkConfigured } from "@/lib/authAdapter";
-import { PreviewAuthProvider } from "@/lib/authAdapter";
+import { useState, Suspense, lazy } from "react";
+import { getAuthMode, PreviewAuthProvider } from "@/lib/authAdapter";
 import { PAGES, PAGE_MAP, DEFAULT_PAGE, getPageTitle, validatePageId } from "@/lib/pageRegistry";
 import { ErrorBoundary, PageErrorBoundary } from "@/components/ErrorBoundary";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
