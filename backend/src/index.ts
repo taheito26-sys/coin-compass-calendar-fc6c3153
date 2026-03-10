@@ -37,6 +37,14 @@ app.route("/api/preferences", preferencesRoute);
 app.route("/api/import", importRoute);
 app.route("/api/fear-greed", fearGreedRoute);
 app.route("/api/exchange-sync", exchangeSyncRoute);
+app.route("/api/merchant", merchantProfilesRoute);
+app.route("/api/merchant/invites", merchantInvitesRoute);
+app.route("/api/merchant/relationships", merchantRelationshipsRoute);
+app.route("/api/merchant/deals", merchantDealsRoute);
+app.route("/api/merchant/messages", merchantMessagesRoute);
+app.route("/api/merchant/approvals", merchantApprovalsRoute);
+app.route("/api/merchant/audit", merchantAuditRoute);
+app.route("/api/merchant/notifications", merchantNotificationsRoute);
 
 // Health check
 app.get("/api/status", async (c) => {
