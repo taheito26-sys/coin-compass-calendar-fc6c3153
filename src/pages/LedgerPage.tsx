@@ -248,11 +248,26 @@ export default function LedgerPage() {
     const nextQty = parseFloat(editQty);
     const nextPrice = parseFloat(editPrice);
 
-    const result = await updateLedgerTransaction(editId, {
+    const updates: { type?: string; qty?: number; unit_price?: number; asset_id?: string } = {
       type: editType || undefined,
       qty: Number.isFinite(nextQty) ? nextQty : undefined,
       unit_price: Number.isFinite(nextPrice) ? nextPrice : undefined,
-    });
+    };
+
+    // If asset symbol changed, resolve new asset_id
+    const originalTx = state.txs.find(t => t.id === editId);
+    const trimmedAsset = editAsset.trim().toUpperCase();
+    if (originalTx && trimmedAsset && trimmedAsset !== originalTx.asset.toUpperCase()) {
+      try {
+        const { assetId } = await resolveOrCreateAsset(trimmedAsset);
+        updates.asset_id = assetId;
+      } catch (err: any) {
+        toast(err?.message || "Failed to resolve asset", "bad");
+        return;
+      }
+    }
+
+    const result = await updateLedgerTransaction(editId, updates);
 
     if (result.success) {
       toast("Transaction updated ✓", "good");
