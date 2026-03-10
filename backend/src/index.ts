@@ -11,6 +11,14 @@ import preferencesRoute from "./routes/preferences";
 import importRoute from "./routes/import";
 import fearGreedRoute from "./routes/fear-greed";
 import exchangeSyncRoute from "./routes/exchange-sync";
+import merchantProfilesRoute from "./routes/merchant-profiles";
+import merchantInvitesRoute from "./routes/merchant-invites";
+import merchantRelationshipsRoute from "./routes/merchant-relationships";
+import merchantDealsRoute from "./routes/merchant-deals";
+import merchantMessagesRoute from "./routes/merchant-messages";
+import merchantApprovalsRoute from "./routes/merchant-approvals";
+import merchantAuditRoute from "./routes/merchant-audit";
+import merchantNotificationsRoute from "./routes/merchant-notifications";
 import { pollPrices } from "./cron/poll-prices";
 
 const app = new Hono<{ Bindings: Env }>();
@@ -29,6 +37,14 @@ app.route("/api/preferences", preferencesRoute);
 app.route("/api/import", importRoute);
 app.route("/api/fear-greed", fearGreedRoute);
 app.route("/api/exchange-sync", exchangeSyncRoute);
+app.route("/api/merchant", merchantProfilesRoute);
+app.route("/api/merchant/invites", merchantInvitesRoute);
+app.route("/api/merchant/relationships", merchantRelationshipsRoute);
+app.route("/api/merchant/deals", merchantDealsRoute);
+app.route("/api/merchant/messages", merchantMessagesRoute);
+app.route("/api/merchant/approvals", merchantApprovalsRoute);
+app.route("/api/merchant/audit", merchantAuditRoute);
+app.route("/api/merchant/notifications", merchantNotificationsRoute);
 
 // Health check
 app.get("/api/status", async (c) => {
