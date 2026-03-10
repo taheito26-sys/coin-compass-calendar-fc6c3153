@@ -1,6 +1,7 @@
 /**
  * Auth adapter — centralizes auth environment detection and provides
  * a context bridge so CryptoProvider doesn't depend directly on Clerk.
+ * @module authAdapter
  */
 import React, { createContext, useContext } from "react";
 
