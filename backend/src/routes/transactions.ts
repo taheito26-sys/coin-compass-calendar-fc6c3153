@@ -74,7 +74,7 @@ app.put('/:id', async (c) => {
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const body = await c.req.json<Partial<{
-    timestamp: string; type: string; qty: number; unit_price: number;
+    asset_id: string; timestamp: string; type: string; qty: number; unit_price: number;
     fee_amount: number; fee_currency: string; venue: string; note: string;
     tags: string[]; source: string;
   }>>();
