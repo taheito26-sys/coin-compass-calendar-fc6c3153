@@ -156,6 +156,7 @@ export default function LedgerPage() {
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null);
   const [editType, setEditType] = useState("");
+  const [editAsset, setEditAsset] = useState("");
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
 
