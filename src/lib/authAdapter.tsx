@@ -27,6 +27,8 @@ export function isClerkConfigured(): boolean {
 export type AuthMode = "clerk" | "preview";
 
 export function getAuthMode(): AuthMode {
+  // In preview/dev environments, always use preview mode to avoid Clerk domain issues
+  if (isPreviewEnv()) return "preview";
   if (isClerkConfigured()) return "clerk";
   return "preview";
 }
