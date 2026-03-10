@@ -1,4 +1,6 @@
 -- ============ FAKE MERCHANT PROFILES ============
+-- These are also in merchant-seed-data.sql but repeated here with INSERT OR IGNORE
+-- so this file can run standalone after schema.sql if needed.
 INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
   ('aaa00001-0000-0000-0000-000000000001', 'fake-user-001', 'MRC-A1B2C3D4', 'alpha_trading', 'Alpha Trading Desk', 'desk', 'Asia', 'USDT', 'public', 'High-frequency crypto desk specializing in BTC/ETH arbitrage across CEXs.', 'active', '2025-11-01T10:00:00Z', '2025-11-01T10:00:00Z');
 INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nickname, display_name, merchant_type, region, default_currency, discoverability, bio, status, created_at, updated_at) VALUES
@@ -11,7 +13,10 @@ INSERT OR IGNORE INTO merchant_profiles (id, owner_user_id, merchant_id, nicknam
   ('aaa00005-0000-0000-0000-000000000005', 'fake-user-005', 'MRC-Q7R8S9T0', 'midnight_fx', 'Midnight FX', 'independent', 'Africa', 'USDT', 'public', 'Cross-border payments and stablecoin liquidity provider.', 'active', '2026-02-01T18:00:00Z', '2026-02-01T18:00:00Z');
 
 -- NOTE: The bbb... real user profile is defined in merchant-seed-data.sql (canonical source).
--- This file assumes it already exists. Do NOT re-insert it here.
+-- If the user already created a profile via the app, that existing profile is used instead.
+-- The relationships below reference bbb... but if it was already created with a different id,
+-- you must first query: SELECT id FROM merchant_profiles WHERE owner_user_id = 'user_3Ad6MYh466dWCuB3zpAWDe5eaUq'
+-- and replace bbb00000-0000-0000-0000-000000000000 with the actual id.
 
 -- ============ RELATIONSHIPS ============
 INSERT INTO merchant_relationships (id, merchant_a_id, merchant_b_id, relationship_type, status, shared_fields, approval_policy, created_at, updated_at) VALUES
