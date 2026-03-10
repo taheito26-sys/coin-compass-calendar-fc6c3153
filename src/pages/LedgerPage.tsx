@@ -156,6 +156,7 @@ export default function LedgerPage() {
   // Inline edit
   const [editId, setEditId] = useState<string | null>(null);
   const [editType, setEditType] = useState("");
+  const [editAsset, setEditAsset] = useState("");
   const [editQty, setEditQty] = useState("");
   const [editPrice, setEditPrice] = useState("");
 
@@ -234,6 +235,7 @@ export default function LedgerPage() {
   const startEdit = (t: any) => {
     setEditId(t.id);
     setEditType(t.type);
+    setEditAsset(t.asset);
     setEditQty(String(t.qty));
     setEditPrice(String(t.price));
   };
@@ -246,11 +248,26 @@ export default function LedgerPage() {
     const nextQty = parseFloat(editQty);
     const nextPrice = parseFloat(editPrice);
 
-    const result = await updateLedgerTransaction(editId, {
+    const updates: { type?: string; qty?: number; unit_price?: number; asset_id?: string } = {
       type: editType || undefined,
       qty: Number.isFinite(nextQty) ? nextQty : undefined,
       unit_price: Number.isFinite(nextPrice) ? nextPrice : undefined,
-    });
+    };
+
+    // If asset symbol changed, resolve new asset_id
+    const originalTx = state.txs.find(t => t.id === editId);
+    const trimmedAsset = editAsset.trim().toUpperCase();
+    if (originalTx && trimmedAsset && trimmedAsset !== originalTx.asset.toUpperCase()) {
+      try {
+        const { assetId } = await resolveOrCreateAsset(trimmedAsset);
+        updates.asset_id = assetId;
+      } catch (err: any) {
+        toast(err?.message || "Failed to resolve asset", "bad");
+        return;
+      }
+    }
+
+    const result = await updateLedgerTransaction(editId, updates);
 
     if (result.success) {
       toast("Transaction updated ✓", "good");
@@ -571,7 +588,10 @@ export default function LedgerPage() {
                               {TX_TYPES.map(tt => <option key={tt.value} value={tt.value}>{tt.label}</option>)}
                             </select>
                           </td>
-                          <td className="mono" style={{ fontWeight: 800 }}>{t.asset}</td>
+                          <td>
+                            <input className="inp" value={editAsset} onChange={e => setEditAsset(e.target.value.toUpperCase())}
+                              style={{ width: 80, padding: "2px 4px", fontSize: 11, fontWeight: 800, fontFamily: "var(--font-mono, monospace)" }} />
+                          </td>
                           <td>
                             <input className="inp" type="number" value={editQty} onChange={e => setEditQty(e.target.value)}
                               style={{ width: 90, padding: "2px 4px", fontSize: 11 }} />
