@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useAuthBridge } from "@/lib/authAdapter";
+import { useAuthBridge } from "@/lib/auth";
 import {
   fetchAssets,
   fetchPrices,

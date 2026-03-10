@@ -3,7 +3,7 @@
  * Isolated so the preview/dev path never loads @clerk/react.
  */
 import { ClerkProvider, SignIn, UserButton, useAuth, useUser } from "@clerk/react";
-import { AuthBridgeProvider } from "@/lib/authAdapter";
+import { AuthBridgeProvider } from "@/lib/auth";
 import { CryptoProvider } from "@/lib/cryptoContext";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 
