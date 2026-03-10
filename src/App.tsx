@@ -1,12 +1,14 @@
-import { useState, Suspense } from "react";
-import { getAuthMode } from "@/lib/authAdapter";
-import { AuthBridgeProvider, PreviewAuthProvider } from "@/lib/authAdapter";
+import { useState, Suspense, lazy, useEffect } from "react";
+import { getAuthMode, isClerkConfigured } from "@/lib/authAdapter";
+import { PreviewAuthProvider } from "@/lib/authAdapter";
 import { PAGES, PAGE_MAP, DEFAULT_PAGE, getPageTitle, validatePageId } from "@/lib/pageRegistry";
 import { ErrorBoundary, PageErrorBoundary } from "@/components/ErrorBoundary";
 import { CryptoProvider, useCrypto } from "@/lib/cryptoContext";
 import Sidebar from "@/components/Sidebar";
 import Topbar from "@/components/Topbar";
-import { ClerkProvider, SignIn, UserButton, useAuth, useUser } from "@clerk/react";
+
+/* Clerk is lazy-loaded so the preview path never touches @clerk/react */
+const ClerkShell = lazy(() => import("@/ClerkAuth"));
 
 /* ── Preview mode banner ── */
 function PreviewBanner() {
@@ -49,11 +51,13 @@ function AppShell({
   userLabel,
   isPreview,
   showUserButton,
+  UserButtonComponent,
 }: {
   onLogout?: () => Promise<void>;
   userLabel?: string;
   isPreview: boolean;
   showUserButton?: boolean;
+  UserButtonComponent?: React.ComponentType;
 }) {
   const [pageId, setPageId] = useState(DEFAULT_PAGE);
   const { toastMsg } = useCrypto();
@@ -69,10 +73,10 @@ function AppShell({
       <div className="app">
         <Sidebar page={safePage} onNav={handleNav} onLogout={onLogout} />
         <div className="mainWrap">
-          {showUserButton && (
+          {showUserButton && UserButtonComponent && (
             <div className="appUserBar" style={{ display: "flex", justifyContent: "flex-end", alignItems: "center", gap: 10, padding: "12px 18px 0" }}>
               {userLabel && <span style={{ fontSize: 12, color: "var(--muted, #a1a1aa)" }}>{userLabel}</span>}
-              <UserButton />
+              <UserButtonComponent />
             </div>
           )}
 
@@ -107,57 +111,31 @@ function PageRenderer({ pageDef, onNav }: { pageDef: (typeof PAGES)[number]; onN
   return <Component />;
 }
 
-/* ── Clerk authenticated flow ── */
-function ClerkRoot() {
-  const { isLoaded, isSignedIn, signOut, getToken, userId } = useAuth();
-  const { user } = useUser();
-
-  if (!isLoaded) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "var(--bg, #0a0a0a)", color: "var(--muted, #a1a1aa)" }}>
-        Loading authentication…
-      </div>
-    );
-  }
-
-  if (!isSignedIn) {
-    return (
-      <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", padding: 24, background: "radial-gradient(circle at top, rgba(59,130,246,0.15), transparent 30%), var(--bg, #0a0a0a)" }}>
-        <div style={{ width: "min(980px, 100%)", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(320px, 1fr))", gap: 24, alignItems: "center" }}>
-          <div style={{ color: "var(--text, #ffffff)" }}>
-            <div style={{ display: "inline-flex", alignItems: "center", gap: 8, padding: "6px 10px", borderRadius: 999, background: "rgba(255,255,255,0.06)", color: "var(--muted, #cbd5e1)", fontSize: 12, marginBottom: 16 }}>CoinCompass login</div>
-            <h1 style={{ fontSize: 40, lineHeight: 1.1, margin: "0 0 12px" }}>Sign in once, keep the portfolio synced everywhere.</h1>
-            <p style={{ fontSize: 16, lineHeight: 1.7, color: "var(--muted, #a1a1aa)", margin: 0 }}>Use email and password for the simplest path.</p>
-          </div>
-          <div style={{ display: "flex", justifyContent: "center", background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.08)", borderRadius: 24, padding: 20, boxShadow: "0 24px 64px rgba(0,0,0,0.35)" }}>
-            <SignIn routing="hash" />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const userLabel = user?.primaryEmailAddress?.emailAddress || user?.username || user?.fullName || "Signed in";
-
-  return (
-    <AuthBridgeProvider value={{ isSignedIn: true, userId: userId ?? null, getToken: () => getToken() }}>
-      <CryptoProvider>
-        <AppShell onLogout={() => signOut()} userLabel={userLabel} isPreview={false} showUserButton={true} />
-      </CryptoProvider>
-    </AuthBridgeProvider>
-  );
-}
-
 /* ── App entry point ── */
 export default function App() {
   const authMode = getAuthMode();
 
   if (authMode === "clerk") {
+    const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY as string;
     return (
       <ErrorBoundary>
-        <ClerkProvider publishableKey={import.meta.env.VITE_CLERK_PUBLISHABLE_KEY}>
-          <ClerkRoot />
-        </ClerkProvider>
+        <Suspense fallback={
+          <div style={{ minHeight: "100vh", display: "grid", placeItems: "center", background: "var(--bg, #0a0a0a)", color: "var(--muted, #a1a1aa)" }}>
+            Loading…
+          </div>
+        }>
+          <ClerkShell publishableKey={key}>
+            {({ onLogout, userLabel, showUserButton, UserButton }) => (
+              <AppShell
+                onLogout={onLogout}
+                userLabel={userLabel}
+                isPreview={false}
+                showUserButton={showUserButton}
+                UserButtonComponent={UserButton}
+              />
+            )}
+          </ClerkShell>
+        </Suspense>
       </ErrorBoundary>
     );
   }
