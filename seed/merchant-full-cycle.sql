@@ -1,5 +1,5 @@
 -- ============================================================
--- Merchant Full-Cycle Test Data
+-- Merchant Full-Cycle Test Data — v2 2026-03-10
 -- ============================================================
 -- Dependency order: merchant-schema.sql → merchant-seed-data.sql → THIS FILE
 -- All INSERTs use OR IGNORE for idempotent re-runs.

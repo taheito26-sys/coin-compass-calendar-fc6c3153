@@ -1,4 +1,5 @@
 -- ============ CANONICAL MERCHANT PROFILES ============
+-- Cache-bust: v2 2026-03-10
 -- This file is the single source of truth for all merchant_profiles rows.
 -- Must run AFTER merchant-schema.sql, BEFORE merchant-full-cycle.sql.
 --
