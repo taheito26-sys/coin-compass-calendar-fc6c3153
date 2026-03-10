@@ -1,25 +1,20 @@
 /**
- * Auth adapter — centralizes auth environment detection and preview/dev fallback.
- *
- * Production: Clerk auth is required.
- * Preview/dev: If Clerk is unavailable or misconfigured, the app renders
- * in read-only "preview mode" instead of a blank page.
+ * Auth adapter — centralizes auth environment detection and provides
+ * a context bridge so CryptoProvider doesn't depend directly on Clerk.
  */
+import React, { createContext, useContext } from "react";
 
 /** Detect if we're in a preview or dev environment */
 export function isPreviewEnv(): boolean {
   const host = window.location.hostname;
-  // Lovable preview domains
   if (host.includes("lovable.app")) return true;
   if (host.includes("lovableproject.com")) return true;
-  // localhost / dev
   if (host === "localhost" || host === "127.0.0.1") return true;
-  // Explicit env flag
   if (import.meta.env.DEV) return true;
   return false;
 }
 
-/** Check if Clerk publishable key is properly configured (not empty, not a placeholder) */
+/** Check if Clerk publishable key is properly configured */
 export function isClerkConfigured(): boolean {
   const key = import.meta.env.VITE_CLERK_PUBLISHABLE_KEY;
   if (!key || typeof key !== "string") return false;
@@ -30,11 +25,33 @@ export function isClerkConfigured(): boolean {
 
 export type AuthMode = "clerk" | "preview";
 
-/** Determine the auth mode for the current environment */
 export function getAuthMode(): AuthMode {
   if (isClerkConfigured()) return "clerk";
-  if (isPreviewEnv()) return "preview";
-  // In production without Clerk config, still fall back to preview
-  // rather than showing a blank page
   return "preview";
+}
+
+/* ── Auth context bridge ── */
+export interface AuthBridge {
+  isSignedIn: boolean;
+  userId: string | null;
+  getToken: () => Promise<string | null>;
+}
+
+const defaultBridge: AuthBridge = {
+  isSignedIn: false,
+  userId: null,
+  getToken: async () => null,
+};
+
+const AuthBridgeCtx = createContext<AuthBridge>(defaultBridge);
+
+export const useAuthBridge = () => useContext(AuthBridgeCtx);
+
+export function AuthBridgeProvider({ value, children }: { value: AuthBridge; children: React.ReactNode }) {
+  return <AuthBridgeCtx.Provider value={value}>{children}</AuthBridgeCtx.Provider>;
+}
+
+/** Preview mode provider — no auth */
+export function PreviewAuthProvider({ children }: { children: React.ReactNode }) {
+  return <AuthBridgeCtx.Provider value={defaultBridge}>{children}</AuthBridgeCtx.Provider>;
 }

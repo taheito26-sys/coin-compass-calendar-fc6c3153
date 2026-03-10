@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useCallback, useEffect, useRef, forwardRef } from "react";
-import { getAuthMode } from "@/lib/authAdapter";
+import { useAuthBridge } from "@/lib/authAdapter";
 import { CryptoState, loadState, saveState, defaultState, refreshPrices } from "./cryptoState";
 import {
   fetchImportedFiles,
@@ -34,32 +34,6 @@ const fallbackCtx: CryptoCtx = {
 const Ctx = createContext<CryptoCtx>(fallbackCtx);
 export const useCrypto = () => useContext(Ctx);
 
-/**
- * Safe Clerk hook wrapper. Returns stub values when Clerk is not active.
- * IMPORTANT: Hooks must be called unconditionally, so we import useAuth
- * but guard usage based on auth mode.
- */
-function useClerkAuth() {
-  const mode = getAuthMode();
-  // We must always call the hook (rules of hooks), but we gate the import
-  if (mode === "clerk") {
-    try {
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      const { useAuth } = require("@clerk/react") as typeof import("@clerk/react");
-      // eslint-disable-next-line react-hooks/rules-of-hooks
-      return useAuth();
-    } catch {
-      // Clerk not available
-    }
-  }
-  // Return stub — this is stable and won't change between renders
-  return {
-    isSignedIn: false as boolean,
-    getToken: (async () => null) as () => Promise<string | null>,
-    userId: null as string | null,
-  };
-}
-
 /** Map backend ApiTransaction[] to CryptoTx[] using asset catalog */
 function mapTransactions(
   transactions: ApiTransaction[],
@@ -70,14 +44,11 @@ function mapTransactions(
       const asset = assetById.get(tx.asset_id);
       const symbol = resolveAssetSymbol(asset?.symbol || asset?.binance_symbol || "");
       if (!symbol) return null;
-
       const ts = Date.parse(tx.timestamp);
       if (!Number.isFinite(ts)) return null;
-
       const qty = Number(tx.qty || 0);
       const price = Number(tx.unit_price || 0);
       const fee = Number(tx.fee_amount || 0);
-
       return {
         id: tx.id, ts, type: tx.type, asset: symbol, qty, price,
         total: qty * price, fee, feeAsset: tx.fee_currency || "USD",
@@ -92,21 +63,14 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
   const [toastMsg, setToast] = useState<{ msg: string; type: string } | null>(null);
   const lastHydratedUserRef = useRef<string | null>(null);
 
-  // Auth state — safe for both Clerk and preview modes
-  const clerkAuth = useClerkAuth();
-  const isSignedIn = clerkAuth.isSignedIn ?? false;
-  const getToken = clerkAuth.getToken;
-  const userId = clerkAuth.userId ?? null;
+  // Auth from bridge context — works for both Clerk and preview modes
+  const { isSignedIn, getToken, userId } = useAuthBridge();
 
   // Wire auth token provider
   useEffect(() => {
     setAuthTokenProvider(async () => {
       if (!isSignedIn) return null;
-      try {
-        return await getToken();
-      } catch {
-        return null;
-      }
+      try { return await getToken(); } catch { return null; }
     });
   }, [isSignedIn, getToken]);
 
@@ -135,17 +99,13 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
 
   const rehydrateFromBackend = useCallback(async () => {
     if (!isWorkerConfigured() || !isSignedIn) return;
-
     setStateRaw((prev) => ({ ...prev, syncStatus: "loading" as const }));
-
     try {
       const [assets, transactions, importedFiles, userPrefs] = await Promise.all([
-        getAssetCatalog(true),
-        fetchTransactions(),
+        getAssetCatalog(true), fetchTransactions(),
         fetchImportedFiles().catch(() => []),
         fetchUserPreferences().catch(() => ({} as Record<string, string>)),
       ]);
-
       const assetById = new Map(assets.map((a) => [a.id, a]));
       const canonicalTxs = mapTransactions(transactions, assetById);
       const canonicalImported = (importedFiles || []).map((file: any) => ({
@@ -153,13 +113,11 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
         importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
         exchange: file.exchange, exportType: file.export_type, rowCount: Number(file.row_count || 0),
       }));
-
       const prefUpdates: Partial<CryptoState> = {};
       if (userPrefs.base) prefUpdates.base = userPrefs.base;
       if (userPrefs.method) prefUpdates.method = userPrefs.method;
       if (userPrefs.layout) prefUpdates.layout = userPrefs.layout;
       if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
-
       setStateRaw((prev) => {
         const next = { ...prev, ...prefUpdates, txs: canonicalTxs, importedFiles: canonicalImported, syncStatus: "synced" as const, syncError: undefined };
         saveState(next);
@@ -181,24 +139,19 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
       }
       return;
     }
-
     if (lastHydratedUserRef.current === userId) return;
     lastHydratedUserRef.current = userId;
-
     let cancelled = false;
 
     (async () => {
       setStateRaw((prev) => ({ ...prev, syncStatus: "loading" as const }));
-
       try {
         const [assets, transactions, importedFiles, userPrefs] = await Promise.all([
-          getAssetCatalog(true),
-          fetchTransactions(),
+          getAssetCatalog(true), fetchTransactions(),
           fetchImportedFiles().catch(() => []),
           fetchUserPreferences().catch(() => ({} as Record<string, string>)),
         ]);
         if (cancelled) return;
-
         const assetById = new Map(assets.map((a) => [a.id, a]));
         const canonicalTxs = mapTransactions(transactions, assetById);
         const canonicalImported = (importedFiles || []).map((file: any) => ({
@@ -206,13 +159,11 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
           importedAt: file.imported_at ? Date.parse(file.imported_at) : Date.now(),
           exchange: file.exchange, exportType: file.export_type, rowCount: Number(file.row_count || 0),
         }));
-
         const prefUpdates: Partial<CryptoState> = {};
         if (userPrefs.base) prefUpdates.base = userPrefs.base;
         if (userPrefs.method) prefUpdates.method = userPrefs.method;
         if (userPrefs.layout) prefUpdates.layout = userPrefs.layout;
         if (userPrefs.theme) prefUpdates.theme = userPrefs.theme;
-
         if (!cancelled) {
           setStateRaw((prev) => {
             const next = { ...prev, ...prefUpdates, txs: canonicalTxs, importedFiles: canonicalImported, syncStatus: "synced" as const, syncError: undefined };
@@ -220,7 +171,6 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
             return next;
           });
         }
-
         const migrationResult = await runMigration();
         if (migrationResult?.migrated && migrationResult.txsMigrated > 0 && !cancelled) {
           console.info(`[migration] Migrated ${migrationResult.txsMigrated} txs`);
@@ -255,12 +205,10 @@ export const CryptoProvider = forwardRef<HTMLDivElement, { children: React.React
   useEffect(() => {
     if (!isSignedIn || !isWorkerConfigured()) return;
     if (state.syncStatus !== "synced") return;
-
     const currentPrefs = JSON.stringify({ base: state.base, method: state.method, layout: state.layout, theme: state.theme });
     if (prevPrefsRef.current === currentPrefs) return;
     if (prevPrefsRef.current === "") { prevPrefsRef.current = currentPrefs; return; }
     prevPrefsRef.current = currentPrefs;
-
     const timer = setTimeout(() => {
       saveUserPreferences({ base: state.base, method: state.method, layout: state.layout, theme: state.theme })
         .catch((err) => console.warn("[crypto-context] Failed to sync preferences:", err));
