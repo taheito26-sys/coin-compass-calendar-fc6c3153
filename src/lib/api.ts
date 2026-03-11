@@ -48,7 +48,7 @@ export async function isWorkerAvailable(): Promise<boolean> {
   }
 
   try {
-    const response = await fetch(`${WORKER_BASE}/api/status`, {
+    const primary = await fetch(`${WORKER_BASE}/api/status`, {
       signal: AbortSignal.timeout(5000),
     });
     const available = response.ok;
