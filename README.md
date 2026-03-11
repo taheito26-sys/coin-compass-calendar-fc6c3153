@@ -72,6 +72,17 @@ To connect a domain, navigate to Project > Settings > Domains and click Connect 
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
 
+
+## Backend API URL (Vercel migration)
+
+If you moved the backend from Cloudflare Worker to Vercel, set this in your local environment (for example in `.env.local`):
+
+```env
+VITE_WORKER_API_URL=https://thetracker-rosy.vercel.app
+```
+
+Important: the configured base URL must expose the expected API routes (for example `/api/status` and `/api/assets`).
+
 ## OpenCommit automation
 
 This repository includes a GitHub Actions workflow (`.github/workflows/opencommit-automation.yml`) that uses OpenCommit to improve the latest commit message automatically on PR updates (and manually via `workflow_dispatch`).
