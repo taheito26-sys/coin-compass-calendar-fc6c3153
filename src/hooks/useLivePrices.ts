@@ -45,7 +45,7 @@ export interface LiveCoin {
 
 import { isWorkerConfigured } from "@/lib/api";
 
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://cryptotracker-api.taheito26.workers.dev").replace(/\/$/, "");
+const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://thetracker-rosy.vercel.app").replace(/\/$/, "");
 
 let _marketCache: LiveCoin[] = [];
 let _marketCacheTs = 0;
