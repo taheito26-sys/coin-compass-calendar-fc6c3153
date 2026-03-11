@@ -1,9 +1,12 @@
-// Worker API base URL — STRICT: require explicit configuration
-// No dangerous fallback to a hardcoded production URL
+// Worker API base URL.
+// Falls back to the default deployed worker so write operations still work
+// in environments where VITE_WORKER_API_URL is not injected (e.g. Elder/Lovable previews).
+
+const DEFAULT_WORKER_API_URL = "https://cryptotracker-api.taheito26.workers.dev";
 
 function resolveWorkerBase(raw: string | undefined): string {
-  const candidate = (raw || "").trim();
-  if (!candidate) return ""; // No fallback — must be explicitly configured
+  const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
+  if (!candidate) return "";
 
   try {
     const parsed = new URL(candidate);
