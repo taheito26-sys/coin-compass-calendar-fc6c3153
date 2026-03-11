@@ -1,9 +1,12 @@
-// Worker API base URL — STRICT: require explicit configuration
-// No dangerous fallback to a hardcoded production URL
+// Worker API base URL.
+// Falls back to the default deployed backend for preview environments.
+// Backend must serve routes like /api/status and /api/assets.
+
+const DEFAULT_WORKER_API_URL = "https://thetracker-rosy.vercel.app";
 
 function resolveWorkerBase(raw: string | undefined): string {
-  const candidate = (raw || "").trim();
-  if (!candidate) return ""; // No fallback — must be explicitly configured
+  const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
+  if (!candidate) return "";
 
   try {
     const parsed = new URL(candidate);
@@ -50,6 +53,7 @@ export async function isWorkerAvailable(): Promise<boolean> {
       signal: AbortSignal.timeout(5000),
     });
     const available = response.ok;
+
     _healthCache = { available, ts: Date.now() };
     return available;
   } catch {
@@ -65,7 +69,7 @@ export async function isWorkerAvailable(): Promise<boolean> {
 export async function ensureWriteReady(): Promise<void> {
   if (!WORKER_BASE) {
     throw new Error(
-      "Backend not configured. Set VITE_WORKER_API_URL to enable data persistence."
+      "Backend not configured. Set VITE_WORKER_API_URL to your backend base URL (must expose /api/status and /api/assets)."
     );
   }
 
@@ -116,9 +120,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const url = `${WORKER_BASE}${path}`;
-
   let response: Response;
+  let url = `${WORKER_BASE}${path}`;
   try {
     response = await fetch(url, {
       ...options,
@@ -134,10 +137,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     );
   }
 
+
   if (!response.ok) {
     const text = await response.text().catch(() => `HTTP ${response.status}`);
     const hint = response.status === 404
-      ? " (route missing — check VITE_WORKER_API_URL points to the correct backend + latest deploy)"
+      ? " (route missing — check VITE_WORKER_API_URL points to your backend root that exposes /api/* routes)"
       : "";
     throw new Error(`Worker API ${response.status} for ${url}: ${text}${hint}`);
   }
