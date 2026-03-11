@@ -1,0 +1,35 @@
+name: OpenCommit Automation
+
+on:
+  workflow_dispatch:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  improve-commit-message:
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.pull_request.head.ref || github.ref }}
+
+      - name: Improve latest commit message with OpenCommit
+        uses: di-sukharev/opencommit@main
+        env:
+          OCO_OPENAI_API_KEY: ${{ secrets.OCO_OPENAI_API_KEY }}
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          # Keep history clean by rewriting only the latest commit in PR branches.
+          force_amend: true
+
+      - name: Push updated commit
+        run: |
+          BRANCH="${{ github.event.pull_request.head.ref || github.ref_name }}"
+          git push --force-with-lease origin "HEAD:${BRANCH}"

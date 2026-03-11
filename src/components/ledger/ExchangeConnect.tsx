@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { isWorkerConfigured } from "@/lib/api";
 import { useCrypto } from "@/lib/cryptoContext";
 
-const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://cryptotracker-api.taheito26.workers.dev").replace(/\/$/, "");
+const WORKER_BASE = (import.meta.env.VITE_WORKER_API_URL || "https://thetracker-rosy.vercel.app").replace(/\/$/, "");
 
 interface ExchangeDef {
   id: string;
