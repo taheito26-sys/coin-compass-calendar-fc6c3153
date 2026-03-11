@@ -73,15 +73,21 @@ To connect a domain, navigate to Project > Settings > Domains and click Connect 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
 
 
-## Backend API URL (Vercel migration)
+## Backend API URL
 
-If you moved the backend from Cloudflare Worker to Vercel, set this in your local environment (for example in `.env.local`):
+Set this in your local environment (for example in `.env.local`):
 
 ```env
-VITE_WORKER_API_URL=https://thetracker-rosy.vercel.app
+VITE_WORKER_API_URL=https://cryptotracker-api.taheito26.workers.dev
 ```
 
 Important: the configured base URL must expose the expected API routes (for example `/api/status` and `/api/assets`).
+
+For backend CORS, configure:
+
+```env
+ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8081,http://localhost:5173,https://tracker.pages.dev,https://cryptotracker-api.taheito26.workers.dev
+```
 
 ## OpenCommit automation
 
