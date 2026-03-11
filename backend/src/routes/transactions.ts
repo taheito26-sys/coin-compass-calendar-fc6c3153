@@ -74,7 +74,7 @@ app.put('/:id', async (c) => {
   if (!existing) return c.json({ error: 'Not found' }, 404);
 
   const body = await c.req.json<Partial<{
-    timestamp: string; type: string; qty: number; unit_price: number;
+    asset_id: string; timestamp: string; type: string; qty: number; unit_price: number;
     fee_amount: number; fee_currency: string; venue: string; note: string;
     tags: string[]; source: string;
   }>>();
@@ -110,7 +110,10 @@ app.put('/:id', async (c) => {
   vals.push(new Date().toISOString());
   vals.push(txId);
 
-  await c.env.DB.prepare(`UPDATE transactions SET ${sets.join(', ')} WHERE id = ?`).bind(...vals).run();
+  const sql = `UPDATE transactions SET ${sets.join(', ')} WHERE id = ?`;
+  console.log('[tx-update]', sql, JSON.stringify(vals));
+  const updateResult = await c.env.DB.prepare(sql).bind(...vals).run();
+  console.log('[tx-update] changes:', updateResult.meta.changes);
 
   const row = await c.env.DB.prepare('SELECT * FROM transactions WHERE id = ?').bind(txId).first<TransactionRow>();
   return c.json({ transaction: row });
