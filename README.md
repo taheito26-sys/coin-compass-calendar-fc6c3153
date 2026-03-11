@@ -102,10 +102,11 @@ Do **not** use Next.js-style names like `NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY` in t
 
 Do **not** expose `CLERK_SECRET_KEY` in this frontend (secret keys are backend-only).
 
-If Clerk JS fails to load from a custom domain (CORS/404), force the official CDN URL:
+If Clerk JS fails to load from a custom domain (CORS/404), force the official CDN URL.
+Cloudflare Pages proxy URLs like `https://clerk.<site>.pages.dev/npm/@clerk/clerk-js...` are auto-rejected by the app and replaced with the CDN fallback.
 
 ```env
-VITE_CLERK_JS_URL=https://cdn.jsdelivr.net/npm/@clerk/clerk-js@latest/dist/clerk.browser.js
+VITE_CLERK_JS_URL=https://cdn.jsdelivr.net/npm/@clerk/clerk-js@6/dist/clerk.browser.js
 ```
 
 
