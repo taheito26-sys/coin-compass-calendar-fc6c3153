@@ -1,9 +1,12 @@
-// Worker API base URL — STRICT: require explicit configuration
-// No dangerous fallback to a hardcoded production URL
+// Worker API base URL.
+// Falls back to the default deployed worker so write operations still work
+// in environments where VITE_WORKER_API_URL is not injected (e.g. Elder/Lovable previews).
+
+const DEFAULT_WORKER_API_URL = "https://thetracker-rosy.vercel.app";
 
 function resolveWorkerBase(raw: string | undefined): string {
-  const candidate = (raw || "").trim();
-  if (!candidate) return ""; // No fallback — must be explicitly configured
+  const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
+  if (!candidate) return "";
 
   try {
     const parsed = new URL(candidate);
@@ -46,10 +49,19 @@ export async function isWorkerAvailable(): Promise<boolean> {
   }
 
   try {
-    const response = await fetch(`${WORKER_BASE}/api/status`, {
+    const primary = await fetch(`${WORKER_BASE}/api/status`, {
       signal: AbortSignal.timeout(5000),
     });
-    const available = response.ok;
+    let available = primary.ok;
+
+    // Some deployments expose routes without the /api prefix.
+    if (!available && primary.status === 404) {
+      const fallback = await fetch(`${WORKER_BASE}/status`, {
+        signal: AbortSignal.timeout(5000),
+      });
+      available = fallback.ok;
+    }
+
     _healthCache = { available, ts: Date.now() };
     return available;
   } catch {
@@ -116,9 +128,8 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
   };
 
-  const url = `${WORKER_BASE}${path}`;
-
   let response: Response;
+  let url = `${WORKER_BASE}${path}`;
   try {
     response = await fetch(url, {
       ...options,
@@ -132,6 +143,29 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     throw new Error(
       `Network error calling Worker API (${url}). Check Worker URL, deployment, and CORS ALLOWED_ORIGINS. Root: ${err?.message || "Failed to fetch"}`,
     );
+  }
+
+  // Compatibility fallback for backends mounted without /api prefix.
+  if (!response.ok && response.status === 404 && path.startsWith("/api/")) {
+    const fallbackPath = path.replace(/^\/api/, "");
+    const fallbackUrl = `${WORKER_BASE}${fallbackPath}`;
+    try {
+      const fallbackResponse = await fetch(fallbackUrl, {
+        ...options,
+        headers: {
+          ...headers,
+          ...((options?.headers as Record<string, string>) || {}),
+        },
+        signal: options?.signal ?? AbortSignal.timeout(15000),
+      });
+      if (fallbackResponse.ok) {
+        return fallbackResponse.json() as Promise<T>;
+      }
+      response = fallbackResponse;
+      url = fallbackUrl;
+    } catch {
+      // Keep the original response/error handling below.
+    }
   }
 
   if (!response.ok) {
