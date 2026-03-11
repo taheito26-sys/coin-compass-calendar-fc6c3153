@@ -1,8 +1,7 @@
 // Worker API base URL.
-// Falls back to the default deployed worker so write operations still work
-// in environments where VITE_WORKER_API_URL is not injected (e.g. Elder/Lovable previews).
+// Must point to a backend that serves routes like /api/status and /api/assets.
 
-const DEFAULT_WORKER_API_URL = "https://thetracker-rosy.vercel.app";
+const DEFAULT_WORKER_API_URL = "";
 
 function resolveWorkerBase(raw: string | undefined): string {
   const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
@@ -52,15 +51,7 @@ export async function isWorkerAvailable(): Promise<boolean> {
     const primary = await fetch(`${WORKER_BASE}/api/status`, {
       signal: AbortSignal.timeout(5000),
     });
-    let available = primary.ok;
-
-    // Some deployments expose routes without the /api prefix.
-    if (!available && primary.status === 404) {
-      const fallback = await fetch(`${WORKER_BASE}/status`, {
-        signal: AbortSignal.timeout(5000),
-      });
-      available = fallback.ok;
-    }
+    const available = response.ok;
 
     _healthCache = { available, ts: Date.now() };
     return available;
@@ -77,7 +68,7 @@ export async function isWorkerAvailable(): Promise<boolean> {
 export async function ensureWriteReady(): Promise<void> {
   if (!WORKER_BASE) {
     throw new Error(
-      "Backend not configured. Set VITE_WORKER_API_URL to enable data persistence."
+      "Backend not configured. Set VITE_WORKER_API_URL to your backend base URL (must expose /api/status and /api/assets)."
     );
   }
 
@@ -145,33 +136,11 @@ async function apiFetch<T>(path: string, options?: RequestInit): Promise<T> {
     );
   }
 
-  // Compatibility fallback for backends mounted without /api prefix.
-  if (!response.ok && response.status === 404 && path.startsWith("/api/")) {
-    const fallbackPath = path.replace(/^\/api/, "");
-    const fallbackUrl = `${WORKER_BASE}${fallbackPath}`;
-    try {
-      const fallbackResponse = await fetch(fallbackUrl, {
-        ...options,
-        headers: {
-          ...headers,
-          ...((options?.headers as Record<string, string>) || {}),
-        },
-        signal: options?.signal ?? AbortSignal.timeout(15000),
-      });
-      if (fallbackResponse.ok) {
-        return fallbackResponse.json() as Promise<T>;
-      }
-      response = fallbackResponse;
-      url = fallbackUrl;
-    } catch {
-      // Keep the original response/error handling below.
-    }
-  }
 
   if (!response.ok) {
     const text = await response.text().catch(() => `HTTP ${response.status}`);
     const hint = response.status === 404
-      ? " (route missing — check VITE_WORKER_API_URL points to the correct backend + latest deploy)"
+      ? " (route missing — check VITE_WORKER_API_URL points to your backend root that exposes /api/* routes)"
       : "";
     throw new Error(`Worker API ${response.status} for ${url}: ${text}${hint}`);
   }
