@@ -2,7 +2,7 @@
 // Falls back to the default deployed worker so write operations still work
 // in environments where VITE_WORKER_API_URL is not injected (e.g. Elder/Lovable previews).
 
-const DEFAULT_WORKER_API_URL = "https://cryptotracker-api.taheito26.workers.dev";
+const DEFAULT_WORKER_API_URL = "https://thetracker-rosy.vercel.app";
 
 function resolveWorkerBase(raw: string | undefined): string {
   const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
