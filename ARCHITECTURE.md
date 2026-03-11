@@ -99,7 +99,7 @@
   <App />
 </ClerkProvider>
 ```
-- Falls back to a test key if `VITE_CLERK_PUBLISHABLE_KEY` is missing
+- Throws startup error if `VITE_CLERK_PUBLISHABLE_KEY` is missing
 - Uses `useAuth()` for `getToken()`, `isSignedIn`, `signOut()`
 - Uses `useUser()` for display name/email
 - `<SignIn routing="hash" />` for the login form
@@ -753,7 +753,8 @@ id = "<your-kv-id>"
 ### Frontend (Vite — baked at build time)
 | Variable | Required | Description |
 |---|---|---|
-| `VITE_CLERK_PUBLISHABLE_KEY` | Optional | Clerk publishable key (has fallback test key) |
+| `VITE_CLERK_PUBLISHABLE_KEY` | Required | Clerk publishable key (`pk_live_...` for production) |
+| `VITE_CLERK_JS_URL` | Optional | Override Clerk JS script URL (use CDN if custom domain returns 404/CORS) |
 | `VITE_WORKER_API_URL` | Required | Cloudflare Worker URL (e.g., `https://cryptotracker-api.example.workers.dev`) |
 
 ### Backend (Cloudflare Worker Secrets)
