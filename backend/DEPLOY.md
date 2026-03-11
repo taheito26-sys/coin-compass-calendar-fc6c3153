@@ -39,7 +39,7 @@ Create a `.dev.vars` file in `backend/`:
 
 ```env
 CLERK_JWKS_URL=https://<your-clerk-domain>/.well-known/jwks.json
-ALLOWED_ORIGINS=http://localhost:5173,http://localhost:8788
+ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8081,http://localhost:5173,https://tracker.pages.dev,https://cryptotracker-api.taheito26.workers.dev
 ```
 
 ### 4. Start the dev server
@@ -83,7 +83,7 @@ npx wrangler secret put CLERK_JWKS_URL
 # Enter: https://<your-clerk-domain>/.well-known/jwks.json
 
 npx wrangler secret put ALLOWED_ORIGINS
-# Enter: https://coin-compass-calendar.lovable.app,https://id-preview--2cfe2472-7c29-496d-8af8-dbef09ba09f3.lovable.app
+# Enter: http://localhost:8080,http://localhost:8081,http://localhost:5173,https://tracker.pages.dev,https://cryptotracker-api.taheito26.workers.dev
 ```
 
 ### 5. Deploy
@@ -94,7 +94,7 @@ npm run deploy
 
 ### 6. Connect the frontend
 
-Set `VITE_WORKER_API_URL` in the Lovable project secrets.
+Set `VITE_WORKER_API_URL=https://cryptotracker-api.taheito26.workers.dev` in the Lovable project secrets.
 
 ---
 

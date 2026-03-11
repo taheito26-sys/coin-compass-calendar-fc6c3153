@@ -71,3 +71,31 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+
+## Backend API URL
+
+Set this in your local environment (for example in `.env.local`):
+
+```env
+VITE_WORKER_API_URL=https://cryptotracker-api.taheito26.workers.dev
+```
+
+Important: the configured base URL must expose the expected API routes (for example `/api/status` and `/api/assets`).
+
+For backend CORS, configure:
+
+```env
+ALLOWED_ORIGINS=http://localhost:8080,http://localhost:8081,http://localhost:5173,https://tracker.pages.dev,https://cryptotracker-api.taheito26.workers.dev
+```
+
+## OpenCommit automation
+
+This repository includes a GitHub Actions workflow (`.github/workflows/opencommit-automation.yml`) that uses OpenCommit to improve the latest commit message automatically on PR updates (and manually via `workflow_dispatch`).
+
+### Required secret
+
+Add this repository secret before enabling the workflow:
+
+- `OCO_OPENAI_API_KEY`: OpenAI API key used by OpenCommit.
+
