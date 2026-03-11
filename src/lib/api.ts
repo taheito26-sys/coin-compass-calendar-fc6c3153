@@ -1,8 +1,7 @@
 // Worker API base URL.
-// Falls back to the default deployed backend for preview environments.
-// Backend must serve routes like /api/status and /api/assets.
+// Must point to a backend that serves routes like /api/status and /api/assets.
 
-const DEFAULT_WORKER_API_URL = "https://thetracker-rosy.vercel.app";
+const DEFAULT_WORKER_API_URL = "";
 
 function resolveWorkerBase(raw: string | undefined): string {
   const candidate = (raw || DEFAULT_WORKER_API_URL).trim();
